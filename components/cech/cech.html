@@ -1,0 +1,144 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1>Cursos eliminado con horario</h1>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-model="cech.periodoSeleccionado"
+                    data-ng-change="cech.consultarCalendarios()">
+                    <option value="" disabled selected>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in cech.listaPeriodos | limitTo:10" value="{{periodo.PerCodigo}}">
+                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-disabled="cech.periodoSeleccionado == '' "
+                    data-ng-model="cech.calendarioSeleccionado">
+                    <option value="" disabled>Seleccionar calendario.</option>
+                    <option data-ng-repeat="calendario in cech.listaCalendarios | limitTo:10"
+                        value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <button class="btn btn-danger btn-sm" ng-click="cech.consultarReporte()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<hr>
+<div class="container-fluid" data-ng-if="cech.seccionInformacionReporte == 1">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Reporte cursos eliminados con horario</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm" data-ng-model="cech.filter.Curso"
+                                placeholder="Busqueda reporte">
+                        </div>
+                        <div class="col pt-1 text-right">
+                            <button class="btn btn-default btn-sm" onclick="copiarTabla()">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row" data-ng-if="cech.contenidoReporte.length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de registros encontrados: {{cech.contenidoReporte.length}}</small></span><br>
+                            <span><small>Total de cursos encontrados: {{cech.countCursos}}</small></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm" id="tableData">
+                        <thead>
+                            <th>#</th>
+                            <th>CURSO</th>
+                            <th>SUBGRUPO</th>
+                            <th>ASIGNATURA</th>
+                            <th>NOMBRE</th>
+                            <th>CUPO</th>
+                            <th>SEMANAS</th>
+                            <th>DIA</th>
+                            <th>HORA</th>
+                            <th>MODALIDAD</th>
+                            <th>ESPACIO</th>
+                            <th>UNIDAD PROGRAMADA</th>
+                            <th>MATRICULADOS</th>
+                            <th>OBSERVACIONES</th>
+                            <th>DOCENTE</th>
+                            <th>VINCULACIÓN</th>
+                            <th>DEDICACIÓN</th>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-if="cech.contenidoReporte.length < 1">
+                                <td colspan="13">No se encontraron registros.</td>
+                            </tr>
+                            <tr data-ng-repeat="reporte in cech.contenidoReporte | toArray | filter:cech.filter.Curso">
+                                <td>{{$index + 1}}</td>
+                                <td>{{reporte.CurCodigo}}</td>
+                                <td>{{reporte.EsoSubgrupo}}</td>
+                                <td>{{reporte.AsiNombreCorto}}</td>
+                                <td>{{reporte.AsiNombre}}</td>
+                                <td>{{reporte.CurCupo}}</td>
+                                <td>{{reporte.CurSemanas}}</td>
+                                <td>{{reporte.DiaNombre}}</td>
+                                <td>{{reporte.HraCodigo}}. {{reporte.HraInicio}} - {{reporte.HraFin}}</td>
+                                <td>{{reporte.TicNombre}}</td>
+                                <td>{{reporte.EspNombre}} {{reporte.EspNombreCorto}}</td>
+                                <td>{{reporte.UaaCodigoNombre}}</td>
+                                <td>{{reporte.TotalMatriculados}}</td>
+                                <td>{{reporte.CurObservaciones}}</td>
+                                <td>{{reporte.PerIdentificacion}} - {{reporte.PerNombreApellido}}</td>
+                                <td>{{reporte.VinNombre}}</td>
+                                <td>{{reporte.DedNombre}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function copiarTabla() {
+        // Get the text field
+        let el = document.getElementById('tableData')
+        var body = document.body, range, sel;
+        if (document.createRange && window.getSelection) {
+            range = document.createRange();
+            sel = window.getSelection();
+            sel.removeAllRanges();
+            try {
+                range.selectNodeContents(el);
+                sel.addRange(range);
+            } catch (e) {
+                range.selectNode(el);
+                sel.addRange(range);
+            }
+        } else if (body.createTextRange) {
+            range = body.createTextRange();
+            range.moveToElementText(el);
+            range.select();
+        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        if(document.execCommand('copy')){
+            Toast.fire({
+                icon: 'success',
+                title: 'Información copiada correctamente.'
+            });
+        }else{
+            Toast.fire({
+                icon: 'error',
+                title: 'No se pudo copiar la información.'
+            });
+        }
+    }
+</script>

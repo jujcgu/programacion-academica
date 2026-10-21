@@ -1,0 +1,419 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cupo Curso</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="cupocurso.curCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="cupocurso.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="cupocurso.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{cupocurso.cursoSeleccionado[0].CurCodigo}}
+                            ({{cupocurso.cursoSeleccionado[0].CalNombre}})</b>
+                        <br>
+                        <span style="color:red; " ng-if="cupocurso.PermitidoEditar == false">
+                            EL CALENDARIO DEL CURSO NO SE ENCUENTRA ACTIVO PARA CAMBIOS.
+                        </span>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{cupocurso.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{cupocurso.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{cupocurso.cursoSeleccionado[0].NucNombre}}<br>
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{cupocurso.cursoSeleccionado[0].UaaCodigo}}.
+                            {{cupocurso.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{cupocurso.cursoSeleccionado[0].SedNombre}}<br>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <!-- Inicio formulario cupo curso y ampliacion -->
+        <div class="row justify-content-center align-items-center" ng-show="cupocurso.cursoSeleccionado.length > 0">
+            <div class="col-md-6">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">CONFIGURACIÓN DE CUPOS DEL CURSO</h3>
+                    </div>
+                    <form id="frmActualizarCupoCurso" class="form-horizontal">
+                        <div class="card-body">
+                            <div class="alert alert-light border" role="alert" style="margin-bottom: 18px;">
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <b>Capacidad del salón</b><br>
+                                        <span class="h4 text-danger"
+                                            ng-if="cupocurso.tieneRestriccionAforoTeoria()">{{cupocurso.obtenerAforoBaseTeoria()}}</span>
+                                        <span class="h6 text-muted"
+                                            ng-if="!cupocurso.tieneRestriccionAforoTeoria()">Sin límite por capacidad</span>
+                                    </div>
+                                    <div class="col-sm-4" ng-if="cupocurso.tieneRestriccionAforoTeoria()">
+                                        <b>Máximo permitido en total</b><br>
+                                        <span class="h4 text-primary">{{cupocurso.obtenerLimiteTotalTeoria()}}</span>
+                                    </div>
+                                    <div class="col-sm-4" ng-if="cupocurso.tieneRestriccionAforoTeoria()">
+                                        <b>Cupos aún disponibles</b><br>
+                                        <span class="h4"
+                                            ng-class="{
+                                            'text-success': cupocurso.obtenerDisponibleTotal() > 5,
+                                            'text-warning': cupocurso.obtenerDisponibleTotal() > 0 && cupocurso.obtenerDisponibleTotal() <= 5,
+                                            'text-danger': cupocurso.obtenerDisponibleTotal() <= 0
+                                            }">
+                                            {{cupocurso.obtenerDisponibleTotal()}}
+                                        </span>
+                                    </div>
+                                </div>
+                                <small class="text-muted" ng-if="cupocurso.tieneRestriccionAforoTeoria()">
+                                    El total de estudiantes entre ambos campos no puede superar {{cupocurso.obtenerLimiteTotalTeoria()}}.
+                                </small>
+                                <small class="text-muted" ng-if="!cupocurso.tieneRestriccionAforoTeoria()">
+                                    Este curso está en aula externa (o en un espacio sin capacidad definida)
+                                </small>
+                            </div>
+
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Cupos regulares (matrícula): </label>
+                                <div class="col-sm-8">
+                                    <input type="text" class="form-control form-control-sm" name="txtCupoTotal"
+                                        id="txtCupoTotal" ng-model="cupocurso.cursoSeleccionado[0].CurCupo">
+                                    <small class="text-info"
+                                        ng-if="cupocurso.tieneRestriccionAforoTeoria()">
+                                        Puedes aumentar este campo en <strong>{{cupocurso.obtenerDisponibleCupoRegular()}}</strong> cupo(s) más.
+                                    </small>
+                                    <small class="text-muted"
+                                        ng-if="!cupocurso.tieneRestriccionAforoTeoria()">
+                                        No hay un cupo máximo definido para este curso.
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Cupos personalizados: </label>
+                                <div class="col-sm-8">
+                                    <input type="text" class="form-control form-control-sm" name="txtAmpliacion"
+                                        id="txtAmpliacion" ng-model="cupocurso.cursoSeleccionado[0].CurAmpliacion">
+                                    <small class="text-info" ng-if="cupocurso.tieneRestriccionAforoTeoria()">
+                                        Puedes aumentar este campo en <strong>{{cupocurso.obtenerDisponibleReserva()}}</strong> cupo(s) más.
+                                    </small>
+                                </div>
+                                <div class="col-md-12">
+                                    <span class="text-red ">
+                                        <strong>Atención:</strong> El <strong>"Máximo permitido en total"</strong> se calcula sumando los <strong>cupos regulares</strong> y los <strong>cupos personalizados</strong>.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Total Matriculados:</label>
+                                <div class="col-sm-8">
+                                    <div class="input-group input-group-sm">
+                                        <input class="form-control form-control-sm" disabled
+                                            ng-model="cupocurso.cursoSeleccionado[0].totalMatriculados">
+                                        <span class="input-group-append">
+                                            <button type="button" class="btn btn-danger btn-flat"
+                                                ng-click="cupocurso.mdlMatriculadosCurso();">Ver</button>
+                                        </span>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <button type="button" class="btn btn-danger btn-sm"
+                                ng-click="cupocurso.actualizarCupoCurso();"
+                                ng-if="cupocurso.PermitidoEditar == true">Modificar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <!-- Fin curpo curso y ampliacion -->
+
+        <!-- Inicio formulario cupo curso y ampliacion -->
+        <div class="row justify-content-center align-items-center" ng-if="cupocurso.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">SUBGRUPOS DEL CURSO</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <table id="tbl" class="table table-hover">
+                                    <thead>
+                                        <th>#</th>
+                                        <th>Código Curso</th>
+                                        <th>Subgrupo</th>
+                                        <th>Cupo Subgrupo</th>
+                                        <th>Matriculados</th>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="cupocurso.listaSubgrupo == null" class="text-center">
+                                            <td colspan="5">No se encontraron subgrupos</td>
+                                        </tr>
+                                        <tr ng-repeat="row in cupocurso.listaSubgrupo">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{row.CurCodigo}}</td>
+                                            <td>{{row.SubGrupo}}</td>
+                                            <td class="col-auto">
+                                                <div class="input-group input-group-sm">
+                                                    <label class="form-control form-control-sm col-md-2"
+                                                        type="text">{{row.CusCupo}} </label>
+                                                    <span class="input-group-append"
+                                                        ng-if="cupocurso.PermitidoEditar == true">
+                                                        <button type="button" class="btn btn-danger btn-sm btn-flat"
+                                                            ng-click="cupocurso.mdlCambiarCupoSubGrupo(row);">Cambiar</button>
+                                                    </span>
+                                                </div>
+                                                <small class="text-info"
+                                                    ng-if="row.AforoMaximoSubgrupo !== null && row.AforoMaximoSubgrupo !== undefined && row.AforoMaximoSubgrupo !== '' && row.AforoMaximoSubgrupo > 0">
+                                                    Aforo máximo: {{row.AforoMaximoSubgrupo}}
+                                                </small>
+                                                <small class="text-muted"
+                                                    ng-if="row.AforoMaximoSubgrupo === null || row.AforoMaximoSubgrupo === undefined || row.AforoMaximoSubgrupo === '' || row.AforoMaximoSubgrupo <= 0">
+                                                    Sin aforo configurado.
+                                                </small>
+                                            </td>
+                                            <td class="col-auto">
+                                                <div class="input-group input-group-sm">
+                                                    <label class="form-control form-control-sm col-md-2"
+                                                        type="text">{{row.CantMatriculados}} </label>
+                                                    <span class="input-group-append">
+                                                        <button type="button"
+                                                            class="btn btn-info btn-danger btn-sm btn-flat"
+                                                            ng-click="cupocurso.mdlMatriculadosSubgrupo(row);">Ver</button>
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin curpo curso y ampliacion -->
+
+        <!-- Inicio Zona de modals! -->
+        <!--------- MODAL PARA MODIFICAR EL CUPO DE UN SUBGRUPO ------>
+        <div class="modal fade" id="ModalModificarCupoSubgrupo" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-md modal-dialog-centered">
+                <div class="modal-content" style="margin-top: 0%;">
+                    <div class="modal-body">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <h3 class="card-title">Modificar cupo del subgrupo</h3>
+                            </div>
+                            <form id="frmActualizarCupoSubgrupo" class="form-horizontal">
+                                <div class="card-body">
+                                    <div class="form-group row">
+                                        <label class="col-sm-4 col-form-label">Curso: </label>
+                                        <div class="col-sm-8">
+                                            <label type="text" class="form-control">
+                                                {{cupocurso.subGrupoSeleccionado.CurCodigo}}
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <label class="col-sm-4 col-form-label">Subgrupo: </label>
+                                        <div class="col-sm-8">
+                                            <label type="text" class="form-control" disabled>
+                                                {{cupocurso.subGrupoSeleccionado.SubGrupo}}
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <label class="col-sm-4 col-form-label">Cupo Subgrupo: </label>
+                                        <div class="col-sm-8">
+                                            <input type="text" class="form-control" id="txtCupoSubgrupo"
+                                                name="txtCupoSubgrupo"
+                                                ng-model="cupocurso.subGrupoSeleccionado.CusCupo">
+                                            <small class="text-info"
+                                                ng-if="cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo !== null && cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo !== undefined && cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo !== '' && cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo > 0">
+                                                Aforo máximo subgrupo {{cupocurso.subGrupoSeleccionado.SubGrupo}}:
+                                                {{cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo}}
+                                            </small>
+                                            <small class="text-muted"
+                                                ng-if="cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo === null || cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo === undefined || cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo === '' || cupocurso.subGrupoSeleccionado.AforoMaximoSubgrupo <= 0">
+                                                Sin espacios con aforo configurado para este subgrupo.
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <button type="button" class="btn btn-danger btn-sm" id="btnActualizarCupoSubgrupo"
+                                        ng-disabled="cupocurso.subGrupoSeleccionado.CusCupo < 0 || cupocurso.subGrupoSeleccionado.CusCupo == ''"
+                                        ng-click="cupocurso.actualizarCupoSubgrupo();">Modificar</button>
+                                    <button type="button" class="btn btn-default btn-sm"
+                                        ng-click="cupocurso.cerrarModal('ModalModificarCupoSubgrupo')">Cerrar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!--------- MODAL PARA VER ESTUDIANTES MATRICULADOS------>
+        <div class="modal fade" id="ModalEstudiantesMatriculados" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content" style="margin-top: 0%;">
+                    <div class="modal-body">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <h3 class="card-title">Lista Estudiantes Matriculados</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="input-group">
+                                            <input class="form-control form-control-sm" type="search"
+                                                placeholder="Buscar estudiante" aria-label="Search"
+                                                data-ng-model="cupocurso.filtroEstudiantes">
+                                            <div class="input-group-append">
+                                                <button class="btn btn-sm">
+                                                    <i class="fas fa-search fa-fw"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <br>
+                                    </div>
+                                    <div class="col-md-12 table-responsive" style="height: 500px;">
+                                        <table id="tbl" class="table table-hover table-sm table-head-fixed">
+                                            <thead>
+                                                <th></th>
+                                            </thead>
+                                            <thead>
+                                                <th>#</th>
+                                                <th>Estado</th>
+                                                <th>Identificación</th>
+                                                <th>Nombre</th>
+                                                <th>Código</th>
+                                                <th>Subgrupo</th>
+                                                <th>Programa</th>
+                                            </thead>
+                                            <tbody>
+                                                <tr data-ng-class="{'bg-danger': row.MaaCodigo == 4, 'bg-warning': row.MaaCodigo == 6}"
+                                                    data-ng-repeat="row in cupocurso.listadoEstudiantesMatriculados | toArray | filter:cupocurso.filtroEstudiantes">
+                                                    <td>{{$index + 1}}</td>
+                                                    <td>{{row.MaaNombre}} <span
+                                                            data-ng-if="row.MaaCodigo == 4 || row.MaaCodigo == 6">{{row.MaaFecha}}</span>
+                                                    </td>
+                                                    <td>{{row.PerIdentificacion}}</td>
+                                                    <td>{{row.PerNombre}}</td>
+                                                    <td>{{row.EstCodigo}}</td>
+                                                    <td>{{row.MacGrupo}}</td>
+                                                    <td>{{row.UaaNombreCorto}}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <hr>
+                                        <b>Total Matriculados:</b> {{cupocurso.listadoEstudiantesMatriculados.length}}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button type="button" class="btn btn-default btn-sm"
+                                    ng-click="cupocurso.cerrarModal('ModalEstudiantesMatriculados')">Cerrar</button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Fin Zona de modals! -->
+
+    </div>
+</section>
+
+<script>
+    $('#frmActualizarCupoSubgrupo').validate({
+        rules: {
+            txtCupoSubgrupo: {
+                required: true,
+                number: true,
+                min: 0
+            }
+        },
+        messages: {
+            txtCupoSubgrupo: {
+                required: "Debe ingresar el cupo del subgrupo.",
+                number: "Solo se permiten números.",
+                min: "El cupo no puede ser menor a 0."
+            }
+        },
+        errorElement: 'span',
+        errorPlacement: function (error, element) {
+            error.addClass('invalid-feedback');
+            element.closest('.form-group').append(error);
+        },
+        highlight: function (element, errorClass, validClass) {
+            $(element).addClass('is-invalid');
+        },
+        unhighlight: function (element, errorClass, validClass) {
+            $(element).removeClass('is-invalid');
+        }
+    });
+    $('#frmActualizarCupoCurso').validate({
+        rules: {
+            txtCupoTotal: {
+                required: true,
+                number: true,
+                min: 0
+            },
+            txtAmpliacion: {
+                required: true,
+                number: true,
+                min: 0
+            },
+        },
+        messages: {
+            txtCupoTotal: {
+                required: "Debe ingresar el cupo total del curso.",
+                number: "Solo se permiten números.",
+                min: "El cupo no puede ser menor a 0.",
+            },
+            txtAmpliacion: {
+                required: "Debe ingresar el cupo de la ampliación.",
+                number: "Solo se permiten números.",
+                min: "El cupo no puede ser menor a 0.",
+            },
+        },
+        errorElement: 'span',
+        errorPlacement: function (error, element) {
+            error.addClass('invalid-feedback');
+            element.closest('.form-group').append(error);
+        },
+        highlight: function (element, errorClass, validClass) {
+            $(element).addClass('is-invalid');
+        },
+        unhighlight: function (element, errorClass, validClass) {
+            $(element).removeClass('is-invalid');
+        }
+    });
+</script>

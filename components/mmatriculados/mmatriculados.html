@@ -1,0 +1,135 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cursos con menos de 10 matriculados</h1>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-model="mmatriculados.periodoSeleccionado"
+                    data-ng-change="mmatriculados.consultarCalendarios()">
+                    <option value="" disabled selected>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in mmatriculados.listaPeriodos | limitTo:15"
+                        value="{{periodo.PerCodigo}}">
+                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-disabled="mmatriculados.periodoSeleccionado == '' "
+                    data-ng-model="mmatriculados.calendarioSeleccionado">
+                    <option value="" disabled>Seleccionar calendario.</option>
+                    <option data-ng-repeat="calendario in mmatriculados.listaCalendarios | limitTo:10"
+                        value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <button class="btn btn-danger btn-sm" ng-click="mmatriculados.consultarReporte()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<hr>
+<div class="container-fluid" data-ng-if="mmatriculados.seccionInformacionReporte == 1">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Reporte de cursos con menos de 10 matriculados.</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="mmatriculados.filter.Curso" placeholder="Busqueda reporte">
+                        </div>
+                        <div class="col pt-1 text-right">
+                            <button class="btn btn-default btn-sm" onclick="copiarTabla()">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row" data-ng-if="mmatriculados.listaReporte.length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de cursos encontrados:
+                                    {{mmatriculados.listaReporte.length}}</small></span><br>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm"
+                        id="tableData">
+                        <thead>
+                            <th>#</th>
+                            <th>UNIDAD</th>
+                            <th>CURSO</th>
+                            <th>SEDE</th>
+                            <th>ASIGNATURA</th>
+                            <th>NUCLEO</th>
+                            <th>CARACTER</th>
+                            <th>CUPO</th>
+                            <th>MATRICULADOS</th>
+                            <th>OBSERVACIONES</th>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-if="mmatriculados.listaReporte.length < 1">
+                                <td colspan="10">No se encontraron registros.</td>
+                            </tr>
+                            <tr data-ng-class="{'table-danger bg-opacity-25': reporte.TotalMatriculados == 0}"
+                                data-ng-repeat="reporte in mmatriculados.listaReporte | toArray | filter:mmatriculados.filter.Curso">
+                                <td>{{$index + 1}}</td>
+                                <td>{{reporte.UaaCodigo}}. {{reporte.UaaNombreCorto}}</td>
+                                <td><a href="https://gaitana.usco.edu.co/estadisticas/#/curso/curso-por-codigo-del-curso/{{reporte.CurCodigo}}" target="_blank">{{reporte.CurCodigo}}</a></td>
+                                <td>{{reporte.SedNombre}}</td>
+                                <td>{{reporte.AsiNombre}} {{reporte.AsiNombreCorto}}</td>
+                                <td>{{reporte.NucNombre}}</td>
+                                <td>{{reporte.CarNombre}}</td>
+                                <td>{{reporte.CurCupo}}</td>
+                                <td>{{reporte.TotalMatriculados}}</td>
+                                <td>{{reporte.CurObservaciones}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function copiarTabla() {
+        // Get the text field
+        let el = document.getElementById('tableData')
+        var body = document.body, range, sel;
+        if (document.createRange && window.getSelection) {
+            range = document.createRange();
+            sel = window.getSelection();
+            sel.removeAllRanges();
+            try {
+                range.selectNodeContents(el);
+                sel.addRange(range);
+            } catch (e) {
+                range.selectNode(el);
+                sel.addRange(range);
+            }
+        } else if (body.createTextRange) {
+            range = body.createTextRange();
+            range.moveToElementText(el);
+            range.select();
+        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        if(document.execCommand('copy')){
+            Toast.fire({
+                icon: 'success',
+                title: 'Información copiada correctamente.'
+            });
+        }else{
+            Toast.fire({
+                icon: 'error',
+                title: 'No se pudo copiar la información.'
+            });
+        }
+    }
+</script>
+

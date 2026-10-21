@@ -1,0 +1,255 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Vinculación Docentes</h1>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" placeholder="Identificación, nombre, apellido"
+                    ng-model="vindocente.busquedaDocente">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="vindocente.buscarDocente()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio seccion de lista de docentes encontrados -->
+<div class="content">
+    <div class="container-fluid">
+        <div class="row" ng-if="vindocente.listaCoincidenciaDocente == 1">
+            <hr>
+            <br>
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h5>
+                            <div class="row">
+                                <div class="col-auto">
+                                    DOCENTES ENCONTRADOS ({{vindocente.listaDocentes.length}}) 
+                                </div>
+                                <div class="col-auto">
+                                    <input type="text" class="form-control form-control-sm" placeholder="Filtro busqueda"
+                                        data-ng-model="vindocente.filter.Docentes">
+                                </div>
+                            </div>
+                        </h5>
+                    </div>
+                    <div class="card-body table-responsive" style="max-height: 300px;">
+                        <table class="table table-striped table-bordered table-hover table-sm table-head-fixed">
+                            <thead>
+                                <th>#</th>
+                                <th>Identificación</th>
+                                <th>Nombre</th>
+                                <th>Email Interno</th>
+                                <th></th>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    data-ng-repeat="docente in vindocente.listaDocentes | toArray | filter:vindocente.filter.Docentes">
+                                    <td class="align-middle">{{$index + 1}}</td>
+                                    <td class="align-middle">{{docente.PerIdentificacion}}</td>
+                                    <td class="align-middle">{{docente.PerNombreApellido}}</td>
+                                    <td class="align-middle">{{docente.PerEmailInterno}}</td>
+                                    <td class="align-middle text-center">
+                                        <button class="btn btn-danger btn-sm" data-ng-click="vindocente.consultarVinculacionDocente(docente)">Vinculación</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin seccion de lista de docentes encontrados -->
+
+<!-- Inicio seccion de lista de vinculaciones docente -->
+<div class="content">
+    <div class="container-fluid">
+        <div class="row" ng-if="vindocente.seccionVinculaciones == 1">
+            <hr>
+            <br>
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h5>
+                            <div class="row">
+                                <div class="col-auto">
+                                    VINCULACIONES ENCONTRADAS DE {{vindocente.docenteSeleccionado.PerNombreApellido}} ({{vindocente.listaVinculaciones.length}})
+                                </div>
+                            </div>
+                        </h5>
+                    </div>
+                    <div class="card-body table-responsive" style="max-height: 300px;">
+                        <table class="table table-striped table-bordered table-hover table-sm table-head-fixed">
+                            <thead>
+                                <th>#</th>
+                                <th>Codigo</th>
+                                <th>Fecha Inicio</th>
+                                <th>Fecha Fin</th>
+                                <th>Vinculación</th>
+                                <th>Dedicación</th>
+                                <th>Sede</th>
+                                <th>Unidad</th>
+                                <th>Carga</th>
+                                <th></th>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    data-ng-repeat="vinculacion in vindocente.listaVinculaciones">
+                                    <td class="align-middle">{{$index + 1}}</td>
+                                    <td class="align-middle">{{vinculacion.UapCodigo}}</td>
+                                    <td class="align-middle"><b>{{vinculacion.UapFechaInicio}}</b></td>
+                                    <td class="align-middle"><b>{{vinculacion.UapFechaFin}}</b></td>
+                                    <td class="align-middle">{{vinculacion.VinNombre}}</td>
+                                    <td class="align-middle">{{vinculacion.DedNombre}}</td>
+                                    <td class="align-middle">{{vinculacion.SedNombre}}</td>
+                                    <td class="align-middle">{{vinculacion.UaaCodigoNombre}}</td>
+                                    <td class="align-middle">
+                                        <p data-ng-if="vinculacion.CargaAcademica > 0">Si</p>
+                                        <p data-ng-if="vinculacion.CargaAcademica < 1">No</p>
+                                    </td>
+                                    <td class="align-middle text-center">
+                                        <button class="btn btn-success btn-sm" data-ng-click="vindocente.consultarCursosVinculacion(vinculacion)">Cursos</button>
+                                        <button class="btn btn-danger btn-sm" data-ng-click="vindocente.consultarAuditoriaVinculacion(vinculacion)">Auditoria</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin seccion de lista de vinculaciones docente -->
+
+<!-- Inicio modal lista cursos ============================================================ -->
+<div class="modal fade" id="modalCursos" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de curso</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        {{vindocente.vinculacionSeleccionada.UapCodigo}}. {{vindocente.docenteSeleccionado.PerNombreApellido}} - {{vindocente.vinculacionSeleccionada.VinNombre}} - {{vindocente.vinculacionSeleccionada.DedNombre}}
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-bordered table-striped table-sm table-head-fixed">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>CALENDARIO</th>
+                                        <th>CURSO</th>
+                                        <th>SUBGRUPO</th>
+                                        <th>MODALIDAD</th>
+                                        <th>ASIGNATURA</th>
+                                        <th>SEMANAS</th>
+                                        <th>DÍA</th>
+                                        <th>HORA INICIO</th>
+                                        <th>HORA FIN</th>
+                                        <th>ESPACIO</th>
+                                        <th>UNIDAD</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-repeat="curso in vindocente.listaCursos">
+                                        <td>{{$index + 1}}</td>
+                                        <td>{{curso.CalNombre}}</td>
+                                        <td>{{curso.CurCodigo}}</td>
+                                        <td>{{curso.EsoSubgrupo}}</td>
+                                        <td>{{curso.TicNombre}}</td>
+                                        <td>{{curso.AsiNombreCorto}} - {{curso.AsiNombre}}</td>
+                                        <td>{{curso.CurSemanas}}</td>
+                                        <td>{{curso.DiaCodigo}}. {{curso.DiaNombre}}</td>
+                                        <td>{{curso.HoraInicio}}</td>
+                                        <td>{{curso.HoraFin}}</td>
+                                        <td>{{curso.EspNombre}}</td>
+                                        <td>{{curso.UaaCodigoNombre}}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista cursos =============================================================== -->
+
+<!-- Inicio modal lista cursos ============================================================ -->
+<div class="modal fade" id="modalAuditoria" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Auditoria vinculacion {{vindocente.vinculacionSeleccionada.UapCodigo}}</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        {{vindocente.vinculacionSeleccionada.UapCodigo}}. {{vindocente.docenteSeleccionado.PerNombreApellido}}
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-bordered table-striped table-sm table-head-fixed">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>TIPO</th>
+                                        <th>UNIDAD</th>
+                                        <th>VINCULACIÓN</th>
+                                        <th>DEDICACIÓN</th>
+                                        <th>ESCALAFON</th>
+                                        <th>FECHA INICIO</th>
+                                        <th>FECHA FIN</th>
+                                        <th>FECHA DE CAMBIO</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-class="{
+                                            'table-danger': auditoria.AudTipo == 'VIEJO', 
+                                            'table-warning': auditoria.AudTipo == 'NUEVO',
+                                            'table-success': auditoria.AudTipo == 'INSERT', 
+                                        }"
+                                        data-ng-repeat="auditoria in vindocente.listaAuditoria">
+                                        <td>{{$index + 1}}</td>
+                                        <td>{{auditoria.AudTipo}}</td>
+                                        <td>{{auditoria.UaaCodigoNombre}}</td>
+                                        <td>{{auditoria.VinNombre}}</td>
+                                        <td>{{auditoria.DedNombre}}</td>
+                                        <td>{{auditoria.EscNombre}}</td>
+                                        <td nowrap>{{auditoria.UapFechaInicio}}</td>
+                                        <td nowrap>{{auditoria.UapFechaFin}}</td>
+                                        <td nowrap>{{auditoria.AudFecha}}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista cursos =============================================================== -->

@@ -1,0 +1,193 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cambio unidad</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="cambiounidad.CurCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="cambiounidad.mostrarSweetAlertCargando();cambiounidad.consultarCurso();">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<section class="content">
+    <div class="container-fluid">
+
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="cambiounidad.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{cambiounidad.cursoSeleccionado[0].CurCodigo}}
+                            ({{cambiounidad.cursoSeleccionado[0].CalNombre}})</b>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{cambiounidad.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{cambiounidad.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{cambiounidad.cursoSeleccionado[0].NucNombre}}<br>
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{cambiounidad.cursoSeleccionado[0].UaaCodigo}}.
+                            {{cambiounidad.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{cambiounidad.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{cambiounidad.creadorCurso}}<br>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <!-- Inicio seccion de formulario de seleccion de unidad -->
+        <div class="row align-items-center" ng-if="cambiounidad.listaHorario.length != null">
+            <div class="col-md-6">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        FORMULARIO CAMBIO UNIDAD
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label class="col-auto col-form-label">Unidad</label>
+                                    <input style="cursor: pointer" type="text"
+                                        data-ng-model="cambiounidad.UaaCodigoNombre"
+                                        data-ng-click="cambiounidad.abrirModal('modalUnidades')"
+                                        class="form-control form-control-sm" readonly placeholder="Seleccione...">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-danger btn-sm"
+                            data-ng-click="cambiounidad.mostrarSweetAlertDisabled('cambiar_unidad','')"
+                        >Actualizar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de formulario de seleccion de unidad -->
+
+        <!-- Inicio seccion de lista de horario -->
+        <div class="row justify-content-center align-items-center" ng-if="cambiounidad.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h5>HORARIO DEL CURSO <b>{{cambiounidad.cursoSeleccionado[0].CurCodigo}}
+                                ({{cambiounidad.cursoSeleccionado[0].CalNombre}})</b>
+                            <br>
+                        </h5>
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-sm btn-primary"
+                                title="Actualizar agenda de curso."
+                                ng-click="cambiounidad.actualizarAgenda()">Actualizar Agenda</button>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="table">
+                                <table class="table table-bordered table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Subgrupo</th>
+                                            <th>Docente</th>
+                                            <th>Semana</th>
+                                            <th>Fecha Inicial</th>
+                                            <th>Fecha Final</th>
+                                            <th>Dia</th>
+                                            <th>Hora</th>
+                                            <th>Espacio</th>
+                                            <th>Vinculación</th>
+                                            <th>Dedicación</th>
+                                            <th>Unidad Programada</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="cambiounidad.listaHorario.length == null">
+                                            <td colspan="11">
+                                                No se encontro horario para este curso
+                                            </td>
+                                        </tr>
+                                        <tr data-ng-repeat="horario in cambiounidad.listaHorario">
+                                            <td>{{horario.EsoSubGrupo}}</td>
+                                            <td>{{horario.NombreApellidoDocente}}</td>
+                                            <td>{{horario.EsoSemanas}}</td>
+                                            <td>{{horario.EsoFechaInicio}}</td>
+                                            <td>{{horario.EsoFechaFin}}</td>
+                                            <td>{{horario.DiaNombre}}</td>
+                                            <td>{{horario.EsoHora}}</td>
+                                            <td>{{horario.EspNombreCorto}}</td>
+                                            <td>{{horario.VinNombre}}</td>
+                                            <td>{{horario.DedNombre}}</td>
+                                            <td>{{horario.UaaCodigo}}. {{horario.UaaNombreCorto}}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de lista de horario -->
+
+    </div>
+</section>
+
+
+
+<!-- Inicio modal lista Uaa ============================================================ -->
+<div class="modal fade" id="modalUnidades" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de unidades</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="cambiounidad.UaaFilter"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm">
+                        <thead>
+                            <tr>
+                                <th width="100px">CODIGO</th>
+                                <th>NOMBRE</th>
+                                <th width="100px" class="text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-repeat="unidad in cambiounidad.listaUnidades | toArray | filter:cambiounidad.UaaFilter">
+                                <td>{{unidad.UaaCodigo}}</td>
+                                <td>{{unidad.UaaNombreCorto}}</td>
+                                <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                        data-dismiss="modal"
+                                        data-ng-click="cambiounidad.UaaCodigo = unidad.UaaCodigo;cambiounidad.UaaCodigoNombre = unidad.UaaCodigoNombre;">Seleccionar</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Uaa =============================================================== -->

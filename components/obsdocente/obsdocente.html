@@ -1,0 +1,98 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Observaciones Docente</h1>
+            </div>
+            <div class="col-auto">
+                <select class="form-control form-control-sm" id="" style="margin-top: 4px;" data-ng-model="obsdocente.periodoSeleccionado">
+                    <option value="" selected disabled>Seleccione periodo</option>
+                    <option value="{{periodo.PerCodigo}}" data-ng-repeat="periodo in obsdocente.listaPeriodos">{{periodo.PerCodigo}}. {{periodo.PerNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" style="margin-top: 4px;" placeholder="Identificacion, nombres, apellidos del docente"
+                    data-ng-model="obsdocente.busquedaDocente">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="obsdocente.consultarDocentes()">Buscar</button>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col">
+                <hr>
+            </div>
+        </div>
+        <div class="row" data-ng-if="obsdocente.informacionDocentes == 1">
+            <div class="col">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h4>Información docentes encontrados</h4> 
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive" style="height: 300px;">
+                            <table class="table table-head-fixed table-hover">
+                                <thead>
+                                    <th>Identificación</th>
+                                    <th>Nombres</th>
+                                    <th>Apellidos</th>
+                                    <th>Código</th>
+                                    <th>Vinculación</th>
+                                    <th>Estado</th>
+                                    <th></th>
+                                </thead>
+                                <tbody>
+                                    <tr data-ng-if="obsdocente.listaDocentes.length <= 0 || obsdocente.listaDocentes == null ">
+                                        <td colspan="7">No se encontraron docentes.</td>
+                                    </tr>
+                                    <tr data-ng-repeat="docente in obsdocente.listaDocentes">
+                                        <td>{{docente.PerIdentificacion}}</td>
+                                        <td>{{docente.PerNombre}}</td>
+                                        <td>{{docente.PerApellido}}</td>
+                                        <td>{{docente.UapCodigo}}</td>
+                                        <td>{{docente.VinNombre}} - {{docente.DedNombre}}</td>
+                                        <td>
+                                            <span class="badge badge-success" data-ng-if="docente.TieneCarga">Con carga</span>
+                                            <span class="badge badge-secondary" data-ng-if="!docente.TieneCarga">Sin carga</span>
+                                        </td>
+                                        <td class="text-right">
+                                            <button class="btn btn-danger btn-sm" data-ng-click="obsdocente.seleccionarDocente(docente)">
+                                                Seleccionar
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" data-ng-if="obsdocente.observacionesDocentes == 1">
+            <div class="col">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h4>Observaciones del docente</h4> 
+                    </div>
+                    <div class="card-body">
+                        <span>Docente seleccionado: <b>{{obsdocente.docenteSeleccionado.PerIdentificacion}} - {{obsdocente.docenteSeleccionado.PerNombreCompleto}}</b> </span>
+                        <br>
+                        <span>Vinculación seleccionada: <b>{{obsdocente.docenteSeleccionado.UapCodigo}} - {{obsdocente.docenteSeleccionado.VinNombre}} {{obsdocente.docenteSeleccionado.DedNombre}}</b></span>
+                        <br>
+                        <hr>
+                        <div class="form-group">
+                            <label>Observación</label>
+                            <textarea class="form-control" id="" cols="30" rows="10" data-ng-model="obsdocente.observacionDocente">{{obsdocente.observacionDocente}}</textarea>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-danger btn-sm" data-ng-click="obsdocente.actualizarObservacion()">
+                            Actualizar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

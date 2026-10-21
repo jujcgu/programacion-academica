@@ -1,0 +1,141 @@
+<div class="content-header" data-ng-if="rcurhi.administrador == 0">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-auto">
+                <h4><b>Esta seccion solo es permitida para los administradores.</b></h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="content-header" data-ng-if="rcurhi.administrador == 1">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1>Cursos con horario incompleto</h1>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-model="rcurhi.periodoSeleccionado"
+                    data-ng-change="rcurhi.consultarCalendarios()">
+                    <option value="" disabled selected>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in rcurhi.listaPeriodos | limitTo:10"
+                        value="{{periodo.PerCodigo}}">{{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-disabled="rcurhi.periodoSeleccionado == ''"
+                    data-ng-model="rcurhi.calendarioSeleccionado">
+                    <option value="" disabled>Seleccionar calendario.</option>
+                    <option data-ng-repeat="calendario in rcurhi.listaCalendarios | limitTo:10"
+                        value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <button class="btn btn-danger btn-sm" ng-click="rcurhi.consultarReporte()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<hr data-ng-if="rcurhi.administrador == 1">
+
+<div class="container-fluid" data-ng-if="rcurhi.administrador == 1 && rcurhi.seccionInformacionReporte == 1">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Reporte cursos con horario incompleto</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <button class="btn btn-default btn-sm" data-ng-click="rcurhi.limpiarFiltros()">Limpiar filtros</button>
+                        </div>
+                        <div class="col pt-1 text-right">
+                            <button class="btn btn-default btn-sm" data-ng-click="rcurhi.copiarReporte()">COPIAR</button>
+                        </div>
+                    </div>
+                    <div class="row mt-2" data-ng-if="rcurhi.contenidoReporte.length > 0">
+                        <div class="col-auto">
+                            <p>Buscar en reporte:</p>
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="rcurhi.busquedaGeneral" data-ng-change="rcurhi.actualizarVista()"
+                                placeholder="Buscar en toda la tabla">
+                        </div>
+                        <div class="col-auto">
+                            <p>Filtrar por usuario:</p>
+                            <select class="form-control form-control-sm" data-ng-model="rcurhi.usuarioCreadorSeleccionado"
+                                data-ng-change="rcurhi.actualizarVista()">
+                                <option value="">Todos</option>
+                                <option data-ng-repeat="usuario in rcurhi.listaUsuariosCreadores"
+                                    value="{{usuario.UsuCodigo}}">{{usuario.UsuarioCreador}}</option>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <p>Filtrar por Unidad Académica:</p>
+                            <select class="form-control form-control-sm" data-ng-model="rcurhi.unidadAcademicaSeleccionada"
+                                data-ng-change="rcurhi.actualizarVista()">
+                                <option value="">Todas</option>
+                                <option data-ng-repeat="unidad in rcurhi.listaUnidadesAcademicas"
+                                    value="{{unidad.UaaCodigo || unidad.UaaCodigoNombre}}">{{unidad.UaaCodigoNombre}}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row" data-ng-if="rcurhi.contenidoReporte.length > 0">
+                            <span><small>Total de cursos encontrados: {{rcurhi.countCursos}}    Total visible con filtros: {{rcurhi.filasVisibles.length}}</small></span>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm text-center">
+                        <thead>
+                            <tr>
+                                <th data-ng-repeat="columna in rcurhi.columnas">{{columna.label}}</th>
+                            </tr>
+                        </thead>
+                        <tbody data-ng-if="rcurhi.filasVisibles.length < 1">
+                            <tr>
+                                <td colspan="18">No se encontraron registros.</td>
+                            </tr>
+                        </tbody>
+                        <tbody data-ng-repeat="grupo in rcurhi.gruposVisibles">
+                            <tr class="bg-info">
+                                <td colspan="18" class="text-left">
+                                    <b>Unidad Académica:</b> {{grupo.unidad}}
+                                </td>
+                            </tr>
+                            <tr data-ng-repeat="reporte in grupo.cursos">
+                                <td>{{reporte.CurEstado}}</td>
+                                <td>{{reporte.CurCodigo}}</td>
+                                <td>{{reporte.SubGrupo}}</td>
+                                <td>{{reporte.AsiNombreCorto}}</td>
+                                <td class="text-left">{{reporte.AsiNombre}}</td>
+                                <td>{{reporte.CurCupo}}</td>
+                                <td>{{reporte.CurSemanas}}</td>
+                                <td>{{reporte.DiaNombre}}</td>
+                                <td>{{reporte.Hora}}</td>
+                                <td>{{reporte.TicNombre}}</td>
+                                <td>{{reporte.Espacio}}</td>
+                                <td class="text-left">{{reporte.UnidadProgramada}}</td>
+                                <td>{{reporte.TotalMatriculados}}</td>
+                                <td class="text-left">{{reporte.CurObservaciones}}</td>
+                                <td class="text-left">{{rcurhi.valorColumna(reporte, 'Docente')}}</td>
+                                <td>{{reporte.VinNombre}}</td>
+                                <td>{{reporte.DedNombre}}</td>
+                                <td class="text-left">{{reporte.UsuarioCreador}}</td>
+                            </tr>
+                            <tr class="bg-secondary">
+                                <td colspan="17" class="text-right"><b>Subtotal {{grupo.unidad}}</b></td>
+                                <td><b>{{grupo.subtotal}}</b></td>
+                            </tr>
+                        </tbody>
+                        <tfoot data-ng-if="rcurhi.filasVisibles.length > 0">
+                            <tr class="bg-danger">
+                                <td colspan="17" class="text-right"><b>TOTAL VISIBLE</b></td>
+                                <td><b>{{rcurhi.filasVisibles.length}}</b></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

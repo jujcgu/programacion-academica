@@ -1,0 +1,1591 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Apertura de fechas</h1>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<section class="content">
+    <div class="container-fluid">
+        <div class="card card-danger card-outline card-outline-tabs">
+            <!-- Inicio titulo de pestañas -->
+            <div class="card-header p-0 border-bottom-0">
+                <ul class="nav nav-tabs" role="tablist" style="cursor: pointer;">
+                    <li class="nav-item">
+                        <a class="nav-link active text-danger" id="custom-tabs-four-home-tab" data-toggle="pill"
+                            role="tab" aria-controls="custom-tabs-four-home"
+                            data-ng-click="aperfe.cambiarPestana('CalendariosActivos');" aria-selected="true">Historial Apertura por Programa</a>
+                    </li>
+                    <!-- <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-home-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-home"
+                            data-ng-click="aperfe.cambiarPestana('CalendariosActivosPeriodo');"
+                            aria-selected="true">Lista de
+                            Activos por Periodo</a>
+                    </li> -->
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-profile-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-profile"
+                            data-ng-click="aperfe.cambiarPestana('CalendariosProgramacion');"
+                            aria-selected="false">Apertura Programación Académica</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-messages-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-messages"
+                            data-ng-click="aperfe.cambiarPestana('CalendariosGestion');" aria-selected="false">Apertura Administrador Secretarias</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-messages-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-messages"
+                            data-ng-click="aperfe.cambiarPestana('GrupoUnidades');" aria-selected="false">Grupo de
+                            Programas</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-messages-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-messages" 
+                            data-ng-click="aperfe.cambiarPestana('ModuloSolicitudes');" aria-selected="false">Módulo de Solicitudes</a>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <!-- Fin titulo de pestañas -->
+
+            <!-- Inicio contenido de pestañas -->
+            <div class="card-body">
+                <div class="tab-content">
+                    <div class="" role="tabpanel" data-ng-if="aperfe.listaCalendariosActivos == 1">
+                        <div class="card card-danger mb-3">
+                            <div class="card-header">
+                                <h3 class="card-title">Búsqueda de historial de aperturas</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <label><b>Tipo de búsqueda</b></label>
+                                        <div class="btn-group btn-group-sm w-100" role="group">
+                                            <button type="button" class="btn"
+                                                data-ng-class="aperfe.historialModoBusqueda == 'UNIDAD' ? 'btn-danger' : 'btn-outline-danger'"
+                                                data-ng-click="aperfe.cambiarModoHistorial('UNIDAD')">Por Unidad</button>
+                                            <button type="button" class="btn"
+                                                data-ng-class="aperfe.historialModoBusqueda == 'PERIODO' ? 'btn-danger' : 'btn-outline-danger'"
+                                                data-ng-click="aperfe.cambiarModoHistorial('PERIODO')">Por Periodo</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label><b>Filtro grupo de programas</b></label>
+                                        <select class="form-control form-control-sm"
+                                            data-ng-model="aperfe.historialGrupoSeleccionado"
+                                            data-ng-change="aperfe.actualizarFiltroGrupoHistorial()">
+                                            <option value="">Todos</option>
+                                            <option data-ng-repeat="grupo in aperfe.listaGrupos" value="{{grupo.PgrCodigo}}">
+                                                {{grupo.PgrNombre}}
+                                            </option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label><b>Filtro tipo apertura</b></label>
+                                        <select class="form-control form-control-sm"
+                                            data-ng-model="aperfe.historialTipoSeleccionado">
+                                            <option value="TODOS">Todos</option>
+                                            <option value="PROGRAMACION">Programación Académica</option>
+                                            <option value="GESTION">Administrador Secretarias</option>
+                                            <option value="SOLICITUDES">Módulo Solicitudes</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label><b>Filtro estado</b></label>
+                                        <select class="form-control form-control-sm"
+                                            data-ng-model="aperfe.historialEstadoSeleccionado">
+                                            <option value="TODOS">Todos</option>
+                                            <option value="ACTIVO">Activos</option>
+                                            <option value="PENDIENTE">Pendientes</option>
+                                            <option value="VENCIDO">Vencidos</option>
+                                            <option value="INACTIVO">Inactivos</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row mt-2" data-ng-if="aperfe.historialModoBusqueda == 'PERIODO'">
+                                    <div class="col-md-5">
+                                        <label><b>Periodo académico</b></label>
+                                        <select class="form-control form-control-sm"
+                                            data-ng-model="aperfe.historialPeriodoSeleccionado">
+                                            <option value="" disabled selected>Seleccionar periodo</option>
+                                            <option data-ng-repeat="periodo in aperfe.listaPeriodos | limitTo:15" value="{{periodo.PerCodigo}}">
+                                                {{periodo.PerAnio}} - {{periodo.PerPeriodo}} ({{periodo.PerNombre}})
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2 d-flex align-items-end">
+                                        <button class="btn btn-danger btn-sm w-100"
+                                            data-ng-click="aperfe.buscarHistorialPeriodo()">Buscar</button>
+                                    </div>
+                                    <div class="col-md-5 d-flex align-items-end">
+                                        <input type="text" class="form-control form-control-sm"
+                                            data-ng-model="aperfe.filtroHistorialPeriodo"
+                                            placeholder="Filtrar resultados por UAA, tipo o detalle">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Lista de calendarios activos. -->
+                        <div class="row">
+                            <!-- Inicio lista de unidades -->
+                            <div class="col-md-6" data-ng-if="aperfe.historialModoBusqueda == 'UNIDAD'">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado Unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcNivel" id="" class="form-control form-control-sm"
+                                                style="margin-top: 6px;" data-ng-model="aperfe.filtroNivelAcademico">
+                                                <option value="">Todos</option>
+                                                <option value="Pregrado">Pregrados</option>
+                                                <option value="Postgrado">Postgrados</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                                class="form-control form-control-sm" data-ng-model="aperfe.filtroUaa"
+                                                autocomplete="off" placeholder="Buscador">
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="programa in aperfe.listaUnidadesEspeciales | toArray | filter:aperfe.filtroUaa"
+                                        data-ng-if="aperfe.unidadVisibleHistorial(programa.UaaCodigo)"
+                                        data-ng-click="aperfe.buscarCalendarioUnidad(programa.UaaCodigo,programa.UaaNombreCorto);
+                                        aperfe.consultarUsuarioUnidad(programa.UaaCodigo)" class="itemUaa">
+                                        <div class="row">
+                                            <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                                    class="fas fa-circle"></i></div>
+                                            <div class="col-auto">
+                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="facultad in aperfe.listaUnidades">
+                                        <i style="font-size: 10px; color: #a33535;" class="fas fa-circle"></i>
+                                        <small>{{facultad.UaaCodigo}}.
+                                            {{facultad.UaaNombre}}</small>
+                                        <ul>
+                                            <li data-ng-repeat="uaaunificada in facultad.UaaUnificada">
+                                                <div class="row"
+                                                    data-ng-click="aperfe.seleccionarUnificada(uaaunificada.UaaCodigo)">
+                                                    <div class="col-auto"><i style="font-size: 10px; color: #356ea3;"
+                                                            class="fas fa-circle"></i> </div>
+                                                    <div class="col-auto">
+                                                        <small>{{uaaunificada.UaaCodigo}}.{{uaaunificada.UaaNombre}}</small>
+                                                    </div>
+                                                </div>
+
+                                                <ul>
+                                                    <li data-ng-repeat="programa in uaaunificada.UaaPrograma | toArray | filter:{Nivel: aperfe.filtroNivelAcademico, $: aperfe.filtroUaa}"
+                                                        data-ng-if="aperfe.unidadVisibleHistorial(programa.UaaCodigo)"
+                                                        data-ng-click="aperfe.buscarCalendarioUnidad(programa.UaaCodigo,programa.UaaNombreCorto);
+                                                        aperfe.consultarUsuarioUnidad(programa.UaaCodigo)"
+                                                        class="itemUaa">
+                                                        <div class="row">
+                                                            <div class="col-auto"><i
+                                                                    style="font-size: 10px; color: #42a335;"
+                                                                    class="fas fa-circle"></i></div>
+                                                            <div class="col-auto">
+                                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                            <!-- Fin lista de unidades -->
+
+                            <!-- Inicio Apertura Calendarios Activos -->
+                            <div class="col-md-6" data-ng-if="aperfe.historialModoBusqueda == 'UNIDAD'">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-12 col-form-label">
+                                            <h5>{{aperfe.nombreUaaAperturaActiva}}</h5>
+                                        </label>
+                                    </div>
+                                </form>
+                                <div class="row">
+
+                                    <!-- Inicio lista de fechas programacion academica -->
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <form action="">
+                                                    <div class="form-group row">
+                                                        <label class="col-md-8 col-form-label">
+                                                            <h5>Fechas Apertura Programación Académica</h5>
+                                                        </label>
+                                                        <div class="col-md-4">
+                                                            <input type="text" name="txtFiltroUnidades"
+                                                                style="margin-top: 6px;"
+                                                                class="form-control form-control-sm"
+                                                                data-ng-model="aperfe.filtroProgramacionActiva"
+                                                                autocomplete="off" placeholder="Buscador">
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                            <div class="card-body" style="overflow: auto;max-height:600px">
+                                                <small style="color:#a9a7a7"
+                                                    data-ng-if="aperfe.listaAperturaActiva.length <= 0 || aperfe.listaAperturaActiva === undefined">
+                                                    Esta unidad no tiene apertura de calendarios para programación
+                                                    académica.
+                                                </small>
+                                                <div class="col-sm-12">
+                                                    <div class="card"
+                                                        data-ng-repeat="calendario in aperfe.listaAperturaActiva  | toArray | filter:aperfe.filtroProgramacionActiva"
+                                                        data-ng-if="aperfe.filtroAperturaHistorial(calendario, 'PROGRAMACION')">
+                                                        <div class="card-body">
+                                                            <h4 class="card-title"><b>{{calendario.PraCodigo}}.
+                                                                    {{calendario.CalNombre}} {{calendario.PrpNombre}}
+                                                                </b>
+                                                                <span
+                                                                    data-ng-if="calendario.PraEstado == 1 && calendario.Pendiente != 1 && calendario.Vencida != 1"
+                                                                    class="badge bg-success">Activo</span>
+                                                                <span
+                                                                    data-ng-if="calendario.PraEstado == 1 && calendario.Pendiente == 1"
+                                                                    class="badge bg-info">Pendiente</span>
+                                                                <span data-ng-if="calendario.PraEstado == 0"
+                                                                    class="badge bg-danger">Inactivo</span>
+                                                                <span
+                                                                    data-ng-if="calendario.Vencida == 1 && calendario.PraEstado == 1"
+                                                                    class="badge bg-warning">Vencida</span>
+                                                            </h4><br>
+                                                            <span class="card-text"><b>Fechas de apertura:
+                                                                    {{calendario.PraFechaInicio}} -
+                                                                    {{calendario.PraFechaFin}}</b></span><br>
+                                                            <small class="card-text">Fechas de periodo:
+                                                                {{calendario.PerFechaInicio}} -
+                                                                {{calendario.PerFechaFin}}</small><br><br>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                data-ng-click="aperfe.desactivarProgramacionApertura(calendario)"
+                                                                data-ng-if="calendario.PraEstado == 1 && calendario.Vencida != 1">
+                                                                Desactivar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Fin lista de fechas programacion academica -->
+
+                                    <!-- Inicio lista de fechas gestion -->
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <form action="">
+                                                    <div class="form-group row">
+                                                        <label class="col-md-8 col-form-label">
+                                                            <h5>Fechas Apertura Administrador Secretarias</h5>
+                                                        </label>
+                                                        <div class="col-md-4">
+                                                            <input type="text" name="txtFiltroUnidades"
+                                                                style="margin-top: 6px;"
+                                                                class="form-control form-control-sm"
+                                                                data-ng-model="aperfe.filtroGestionActiva"
+                                                                autocomplete="off" placeholder="Buscador">
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                            <div class="card-body" style="overflow: auto;max-height:600px">
+                                                <small style="color:#a9a7a7"
+                                                    data-ng-if="aperfe.listaAperturaGestionActiva.length <= 0 || aperfe.listaAperturaGestionActiva === undefined">
+                                                    Esta unidad no tiene apertura de calendarios para gestión.
+                                                </small>
+                                                <div class="col-sm-12">
+                                                    <div class="card"
+                                                        data-ng-repeat="calendario in aperfe.listaAperturaGestionActiva  | toArray | filter:aperfe.filtroGestionActiva"
+                                                        data-ng-if="aperfe.filtroAperturaHistorial(calendario, 'GESTION')">
+                                                        <div class="card-body">
+                                                            <h4 class="card-title"><b>{{calendario.PrgCodigo}}.
+                                                                    {{calendario.CalNombre}}
+                                                                </b>
+                                                                <span
+                                                                    data-ng-if="calendario.PrgEstado == 1 && calendario.Pendiente != 1 && calendario.Vencida != 1"
+                                                                    class="badge bg-success">Activo</span>
+                                                                <span
+                                                                    data-ng-if="calendario.PrgEstado == 1 && calendario.Pendiente == 1"
+                                                                    class="badge bg-info">Pendiente</span>
+                                                                <span data-ng-if="calendario.PrgEstado == 0"
+                                                                    class="badge bg-danger">Inactivo</span>
+                                                                <span
+                                                                    data-ng-if="calendario.Vencida == 1 && calendario.PrgEstado == 1"
+                                                                    class="badge bg-warning">Vencida</span>
+                                                            </h4><br>
+                                                            <span class="card-text"><b>Fechas de apertura:
+                                                                    {{calendario.PrgFechaInicio}} -
+                                                                    {{calendario.PrgFechaFin}}</b></span><br>
+                                                            <small class="card-text">Fechas de periodo:
+                                                                {{calendario.PerFechaInicio}} -
+                                                                {{calendario.PerFechaFin}}</small><br><br>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                data-ng-click="aperfe.desactivarProgramacionAperturaGestion(calendario)"
+                                                                data-ng-if="calendario.PrgEstado == 1 && calendario.Vencida != 1">
+                                                                Desactivar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Fin lista de fechas gestion -->
+
+                                    <!-- Inicio lista de fechas módulo solicitudes -->
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <form action="">
+                                                    <div class="form-group row">
+                                                        <label class="col-md-8 col-form-label">
+                                                            <h5>Fechas Apertura Módulo Solicitudes</h5>
+                                                        </label>
+                                                        <div class="col-md-4">
+                                                            <input type="text" name="txtFiltroSolicitudesActivas"
+                                                                style="margin-top: 6px;"
+                                                                class="form-control form-control-sm"
+                                                                data-ng-model="aperfe.filtroSolicitudesActiva"
+                                                                autocomplete="off" placeholder="Buscador">
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                            <div class="card-body" style="overflow: auto;max-height:600px">
+                                                <small style="color:#a9a7a7"
+                                                    data-ng-if="aperfe.listaAperturaSolicitudesActiva.length <= 0 || aperfe.listaAperturaSolicitudesActiva === undefined">
+                                                    Esta unidad no tiene apertura del módulo de solicitudes.
+                                                </small>
+                                                <div class="col-sm-12">
+                                                    <div class="card"
+                                                        data-ng-repeat="apertura in aperfe.listaAperturaSolicitudesActiva | toArray | filter:aperfe.filtroSolicitudesActiva"
+                                                        data-ng-if="aperfe.filtroAperturaHistorial(apertura, 'SOLICITUDES')">
+                                                        <div class="card-body">
+                                                            <h4 class="card-title"><b>{{apertura.PrsCodigo}}.
+                                                                    {{apertura.CalNombre}} - {{apertura.PtsNombre}}</b>
+                                                                <span
+                                                                    data-ng-if="apertura.PrsEstado == 1 && apertura.Pendiente != 1 && apertura.Vencida != 1"
+                                                                    class="badge bg-success">Activo</span>
+                                                                <span
+                                                                    data-ng-if="apertura.PrsEstado == 1 && apertura.Pendiente == 1"
+                                                                    class="badge bg-info">Pendiente</span>
+                                                                <span data-ng-if="apertura.PrsEstado == 0"
+                                                                    class="badge bg-danger">Inactivo</span>
+                                                                <span
+                                                                    data-ng-if="apertura.Vencida == 1 && apertura.PrsEstado == 1"
+                                                                    class="badge bg-warning">Vencida</span>
+                                                            </h4><br>
+                                                            <span class="card-text"><b>Fechas de apertura:
+                                                                    {{apertura.PrsFechaInicio}} -
+                                                                    {{apertura.PrsFechaFin}}</b></span><br>
+                                                            <small class="card-text">Fechas de periodo:
+                                                                {{apertura.PerFechaInicio}} -
+                                                                {{apertura.PerFechaFin}}</small><br><br>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                data-ng-click="aperfe.desactivarAperturaSolicitudes(apertura)"
+                                                                data-ng-if="apertura.PrsEstado == 1 && apertura.Vencida != 1">
+                                                                Desactivar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Fin lista de fechas módulo solicitudes -->
+
+                                    <!-- Inicio lista de usuarios -->
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <form action="">
+                                                    <div class="form-group row">
+                                                        <label class="col-md-8 col-form-label">
+                                                            <h5>Lista de usuarios</h5>
+                                                        </label>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                            <div class="card-body" style="overflow: auto;max-height:600px">
+                                                <small style="color:#a9a7a7"
+                                                    data-ng-if="aperfe.listaUsuariosUnidad.length <= 0 || aperfe.listaUsuariosUnidad === undefined">
+                                                    Esta unidad no tiene usuarios activos vinculados actualmente.
+                                                </small>
+                                                <div class="col-sm-12">
+                                                    <div class="card"
+                                                        data-ng-repeat="usuario in aperfe.listaUsuariosUnidad">
+                                                        <div class="card-body">
+                                                            <span class="card-text"><b>{{usuario.PerNombre}}
+                                                                    {{usuario.PerApellido}}</b></span><br>
+                                                            <small class="card-text"><b>Email Interno:</b>
+                                                                {{usuario.PerEmailInterno}}</small><br>
+                                                            <small class="card-text"><b>Perfil:</b>
+                                                                {{usuario.GruNombre}}</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Fin lista de usuarios -->
+
+                                </div>
+                            </div>
+                            <!-- Fin Apertura Calendarios Activos -->
+
+                            <!-- Inicio resultados por periodo -->
+                            <div class="col-md-12" data-ng-if="aperfe.historialModoBusqueda == 'PERIODO'">
+                                <div class="card card-danger">
+                                    <div class="card-header">
+                                        <h3 class="card-title">Resultados por periodo</h3>
+                                    </div>
+                                    <div class="card-body" style="max-height: 70vh; overflow: auto;">
+                                        <small style="color:#a9a7a7"
+                                            data-ng-if="aperfe.historialPeriodoAgrupado.length <= 0">
+                                            No se encontraron aperturas para el periodo y filtros seleccionados.
+                                        </small>
+
+                                        <div class="card mb-3"
+                                            data-ng-repeat="uaa in aperfe.historialPeriodoAgrupado | filter:aperfe.filtroHistorialPeriodo">
+                                            <div class="card-header bg-light">
+                                                <h5 class="mb-0">{{uaa.UaaCodigo}}. {{uaa.UaaNombreCorto}}</h5>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="card mb-2"
+                                                    data-ng-repeat="item in uaa.Items | filter:aperfe.filtroHistorialPeriodo"
+                                                    data-ng-if="aperfe.filtroAperturaHistorial(item, item.TipoApertura)">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title mb-1">
+                                                            <b>{{item.TipoApertura}} - {{item.CalNombre}}</b>
+                                                            <span class="badge bg-success" data-ng-if="item.EstadoApertura == 1 && item.Pendiente != 1 && item.Vencida != 1">Activo</span>
+                                                            <span class="badge bg-info" data-ng-if="item.EstadoApertura == 1 && item.Pendiente == 1">Pendiente</span>
+                                                            <span class="badge bg-danger" data-ng-if="item.EstadoApertura == 0">Inactivo</span>
+                                                            <span class="badge bg-warning" data-ng-if="item.Vencida == 1 && item.EstadoApertura == 1">Vencida</span>
+                                                        </h5>
+                                                        <p class="mb-1"><b>Detalle:</b> {{item.Detalle}}</p>
+                                                        <p class="mb-1"><b>Apertura:</b> {{item.FechaInicio}} - {{item.FechaFin}}</p>
+                                                        <small class="text-muted">Código apertura: {{item.CodigoApertura}}</small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Fin resultados por periodo -->
+                        </div>
+                    </div>
+
+                    <!-- Lista de consulta por periodo de las unidades activas. -->
+                    <div class="" role="tabpanel" data-ng-if="aperfe.listaCalendariosActivosPeriodo == 1">
+                        <div class="row">
+                            <!-- Inicio lista de periodos academicos -->
+                            <div class="col-md-5">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado periodos académicos</h4>
+                                        </label>
+                                        <div class="col-md-6">
+                                            <input type="text" name="txtFiltroPeriodos" style="margin-top: 6px;"
+                                                class="form-control form-control-sm"
+                                                data-ng-model="aperfe.filtroPeriodos" autocomplete="off"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <small style="color:#a9a7a7"
+                                    data-ng-if="aperfe.listaPeriodos.length <= 0 || aperfe.listaPeriodos == null">
+                                    No se encontraron periodos activos.
+                                </small>
+                                <div class="row">
+                                    <div class="col-md-12" style="overflow: auto;max-height:80vh">
+                                        <div class="card cardPeriodo"
+                                            data-ng-repeat="periodos in aperfe.listaPeriodos | toArray | filter:aperfe.filtroPeriodos"
+                                            data-ng-click="aperfe.listarUnidadesPeriodo(periodos)">
+                                            <div class="card-body">
+                                                <h4 class="card-title"><b>{{periodos.PerCodigo}}.
+                                                        {{periodos.PerNombre}}
+                                                    </b>
+                                                </h4><br>
+                                                <small class="card-text">Fechas de inicio:
+                                                    {{periodos.PerFechaInicio}}</small><br>
+                                                <small class="card-text">Fechas de fin:
+                                                    {{periodos.PerFechaFin}}</small><br>
+                                                <small class="card-text">Año:
+                                                    {{periodos.PerAnio}}</small><br>
+                                                <small class="card-text">Periodo:
+                                                    {{periodos.PerPeriodo}}</small><br>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Fin listas de periodos academicos -->
+                        </div>
+                    </div>
+
+                    <div class="" role="tabpanel" data-ng-if="aperfe.listaCalendariosProgramacion == 1">
+                        <!-- Lista de programacion calendarios de programacion academica. -->
+                        <div class="row">
+                            <!-- Inicia lista de unidades -->
+                            <div class="col-md-6">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado Unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcNivel" id="" class="form-control form-control-sm"
+                                                style="margin-top: 6px;" data-ng-model="aperfe.filtroNivelAcademico">
+                                                <option value="">Todos</option>
+                                                <option value="Pregrado">Pregrados</option>
+                                                <option value="Postgrado">Postgrados</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                                class="form-control form-control-sm" data-ng-model="aperfe.filtroUaa"
+                                                autocomplete="off" data-ng-keyup="aperfe.rellenarCheck()"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Grupo unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcGrupoUnidades" id="" class="form-control form-control-sm"
+                                                style="margin-top: 6px;"
+                                                data-ng-model="aperfe.grupoSeleccionadoApertura"
+                                                data-ng-change="aperfe.listarUnidadesGrupo('', 'select')">
+                                                <option value="" disabled>Seleccione un grupo</option>
+                                                <option value="">Ninguno</option>
+                                                <option data-ng-repeat="grupo in aperfe.listaGrupos"
+                                                    value="{{grupo.PgrCodigo}}">{{grupo.PgrNombre}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="programa in aperfe.listaUnidadesEspeciales | toArray | filter:aperfe.filtroUaa"
+                                        data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)" class="itemUaa">
+                                        <div class="row">
+                                            <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                                    class="fas fa-circle"></i></div>
+                                            <div class="col-auto"><input
+                                                    class="input input-sm unidad unidad{{programa.UaaCodigo}}"
+                                                    data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                    style="margin-top:7px" type="checkbox" name="chkUnidad[]"
+                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                    value="{{programa.UaaCodigo}}"></div>
+                                            <div class="col-auto">
+                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <hr>
+                                <ul>
+                                    <li
+                                        data-ng-repeat="facultad in aperfe.listaUnidades | toArray | filter:aperfe.filtroUaa">
+                                        <i style="font-size: 10px; color: #a33535;" class="fas fa-circle"></i>
+                                        <small>{{facultad.UaaCodigo}}.
+                                            {{facultad.UaaNombre}}</small>
+                                        <ul>
+                                            <li
+                                                data-ng-repeat="uaaunificada in facultad.UaaUnificada  | toArray | filter:aperfe.filtroUaa">
+                                                <div class="row itemUnificado"
+                                                    data-ng-click="aperfe.seleccionarUnificada(uaaunificada.UaaCodigo)">
+                                                    <div class="col-auto"><i style="font-size: 10px; color: #356ea3;"
+                                                            class="fas fa-circle"></i> </div>
+                                                    <div class="col-auto">
+                                                        <small>{{uaaunificada.UaaCodigo}}.{{uaaunificada.UaaNombre}}</small>
+                                                    </div>
+                                                </div>
+
+                                                <ul>
+                                                    <li data-ng-repeat="programa in uaaunificada.UaaPrograma | toArray | filter:{Nivel: aperfe.filtroNivelAcademico, UaaNombreCorto: aperfe.filtroUaa}"
+                                                        data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                        class="itemUaa">
+                                                        <div class="row">
+                                                            <div class="col-auto"><i
+                                                                    style="font-size: 10px; color: #42a335;"
+                                                                    class="fas fa-circle"></i></div>
+                                                            <div class="col-auto"><input class="input input-sm unidad unidad{{programa.UaaCodigo}} 
+                                                                    unificada{{uaaunificada.UaaCodigo}}"
+                                                                    data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                                    style="margin-top:7px" type="checkbox"
+                                                                    name="chkUnidad[]"
+                                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                                    value="{{programa.UaaCodigo}}"></div>
+                                                            <div class="col-auto">
+                                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                            <!-- Fin lista de unidades -->
+
+                            <!-- Inicio seccion formulario de programacion academica -->
+                            <div class="col-md-6">
+                                <div class="row">
+
+                                    <!-- Inicia lista de unidades seleccionadas -->
+                                    <div class="col-md-12">
+                                        <form action="">
+                                            <div class="form-group row">
+                                                <label class="col-md-6 col-form-label">
+                                                    <h4>Unidades Seleccionadas {{'(' +
+                                                        aperfe.listaUnidadesSeleccionadas.length + ')'}}</h4>
+                                                </label>
+                                            </div>
+                                        </form>
+                                        <hr>
+                                    </div>
+                                    <!-- Fin lista de unidades seleccionadas -->
+
+                                    <!-- Inicio formulario de programacion academica -->
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <h3 class="card-title">Fechas Apertura Programación Académica</h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <form class="form-horizontal" id="frmAperturaProgramacion"
+                                                    method="post">
+                                                    <div class="card-body">
+                                                        <!-- Fecha de inicio apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    name="txtFechaInicio" id="txtFechaInicio" datepicker
+                                                                    data-ng-model="aperfe.crearAperturaProaca.fechaInicial"
+                                                                    autocomplete="off" placeholder="Desde aaaa-mm-dd">
+                                                            </div>
+                                                            <label class="col-sm-4 col-form-label">Hora Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="time" class="form-control form-control-sm"
+                                                                    name="txtHoraInicio" id="txtHoraInicio"
+                                                                    data-ng-model="aperfe.crearAperturaProaca.horaInicial"
+                                                                    autocomplete="off" placeholder="hh:mm">
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Fecha de fin apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    id="txtFechaFin" name="txtFechaFin" datepicker
+                                                                    ng-min="aperfe.crearAperturaProaca.fechaInicial"
+                                                                    data-ng-model="aperfe.crearAperturaProaca.fechaFinal"
+                                                                    autocomplete="off" placeholder="Hasta aaaa-mm-dd">
+                                                            </div>
+                                                            <label class="col-sm-4 col-form-label">Hora Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="time" class="form-control form-control-sm"
+                                                                    name="txtHoraFinal" id="txtHoraFinal"
+                                                                    data-ng-model="aperfe.crearAperturaProaca.horaFinal"
+                                                                    autocomplete="off" placeholder="hh:mm">
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Calendario de apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Calendario <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcCalendario" id="slcCalendario"
+                                                                    autocomplete="off"
+                                                                    data-ng-model="aperfe.crearAperturaProaca.calendario">
+                                                                    <option value="" disabled selected>Seleccionar
+                                                                    </option>
+                                                                    <option value="{{calendario.CalCodigo}}"
+                                                                        data-ng-repeat="calendario in aperfe.listaCalendarios">
+                                                                        {{calendario.CalCodigo}}.
+                                                                        {{calendario.CalNombre}}
+                                                                        ({{calendario.PerFechaInicio}} -
+                                                                        {{calendario.PerFechaFin}})
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Procesos programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Procesos <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm" size="4"
+                                                                    multiple name="slcProcesos" id="slcProcesos"
+                                                                    data-ng-model="aperfe.crearAperturaProaca.procesos">
+                                                                    <option value="{{proceso.PrpCodigo}}"
+                                                                        data-ng-repeat="proceso in aperfe.listaProcesos">
+                                                                        {{proceso.PrpCodigo}}.
+                                                                        {{proceso.PrpNombre}}
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Procesos programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">¿Enviar correos?
+                                                                <span style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcCorreos" id="slcCorreos"
+                                                                    data-ng-model="aperfe.crearAperturaProaca.correo">
+                                                                    <option value="0">No
+                                                                    </option>
+                                                                    <option value="1">Si</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Aviso campos obligatorios -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-auto col-form-label"
+                                                                style="color:red"><small>* Los campos son
+                                                                    obligatorios.</small></label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer">
+                                                        <button type="submit" data-ng-click="aperfe.guardarApertura()"
+                                                            class="btn btn-danger btn-sm">Crear</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                        <hr>
+                                    </div>
+                                    <!-- Fin formulario de programacion academica -->
+                                </div>
+                            </div>
+                            <!-- Fin seccion formulario de programacion academica -->
+
+                        </div>
+                    </div>
+
+                    <div class="" role="tabpanel" data-ng-if="aperfe.listaCalendariosGestion == 1">
+                        <!-- Lista de programacion calendarios de gestion -->
+                        <div class="row">
+                            <!-- Inicia lista de unidades -->
+                            <div class="col-md-6">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado Unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcNivel" id="" class="form-control form-control-sm"
+                                                style="margin-top: 6px;" data-ng-model="aperfe.filtroNivelAcademico">
+                                                <option value="">Todos</option>
+                                                <option value="Pregrado">Pregrados</option>
+                                                <option value="Postgrado">Postgrados</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                                class="form-control form-control-sm" data-ng-model="aperfe.filtroUaa"
+                                                autocomplete="off" data-ng-keyup="aperfe.rellenarCheck()"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Grupo unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcGrupoUnidades" id="" class="form-control form-control-sm"
+                                                style="margin-top: 6px;"
+                                                data-ng-model="aperfe.grupoSeleccionadoApertura"
+                                                data-ng-change="aperfe.listarUnidadesGrupo('', 'select')">
+                                                <option value="" disabled>Seleccione un grupo</option>
+                                                <option value="">Ninguno</option>
+                                                <option data-ng-repeat="grupo in aperfe.listaGrupos"
+                                                    value="{{grupo.PgrCodigo}}">{{grupo.PgrNombre}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="programa in aperfe.listaUnidadesEspeciales | toArray | filter:aperfe.filtroUaa"
+                                        data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)" class="itemUaa">
+                                        <div class="row">
+                                            <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                                    class="fas fa-circle"></i></div>
+                                            <div class="col-auto"><input
+                                                    class="input input-sm unidad unidad{{programa.UaaCodigo}}"
+                                                    data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                    style="margin-top:7px" type="checkbox" name="chkUnidad[]"
+                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                    value="{{programa.UaaCodigo}}"></div>
+                                            <div class="col-auto">
+                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <hr>
+                                <ul>
+                                    <li
+                                        data-ng-repeat="facultad in aperfe.listaUnidades | toArray | filter:aperfe.filtroUaa">
+                                        <i style="font-size: 10px; color: #a33535;" class="fas fa-circle"></i>
+                                        <small>{{facultad.UaaCodigo}}.
+                                            {{facultad.UaaNombre}}</small>
+                                        <ul>
+                                            <li
+                                                data-ng-repeat="uaaunificada in facultad.UaaUnificada | toArray | filter:aperfe.filtroUaa">
+                                                <div class="row itemUnificado"
+                                                    data-ng-click="aperfe.seleccionarUnificada(uaaunificada.UaaCodigo)">
+                                                    <div class="col-auto"><i style="font-size: 10px; color: #356ea3;"
+                                                            class="fas fa-circle"></i> </div>
+                                                    <div class="col-auto">
+                                                        <small>{{uaaunificada.UaaCodigo}}.{{uaaunificada.UaaNombre}}</small>
+                                                    </div>
+                                                </div>
+
+                                                <ul>
+                                                    <li data-ng-repeat="programa in uaaunificada.UaaPrograma | toArray | filter:{Nivel: aperfe.filtroNivelAcademico, UaaNombreCorto: aperfe.filtroUaa}"
+                                                        data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                        class="itemUaa">
+                                                        <div class="row">
+                                                            <div class="col-auto"><i
+                                                                    style="font-size: 10px; color: #42a335;"
+                                                                    class="fas fa-circle"></i></div>
+                                                            <div class="col-auto"><input class="input input-sm unidad unidad{{programa.UaaCodigo}} 
+                                                                    unificada{{uaaunificada.UaaCodigo}}"
+                                                                    data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                                    style="margin-top:7px" type="checkbox"
+                                                                    name="chkUnidad[]"
+                                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                                    value="{{programa.UaaCodigo}}"></div>
+                                                            <div class="col-auto">
+                                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                            <!-- Fin lista de unidades -->
+
+                            <!-- Inicio seccion formulario de gestion -->
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <!-- Inicia lista de unidades seleccionadas -->
+                                    <div class="col-md-12">
+                                        <form action="">
+                                            <div class="form-group row">
+                                                <label class="col-md-6 col-form-label">
+                                                    <h4>Unidades Seleccionadas {{'(' +
+                                                        aperfe.listaUnidadesSeleccionadas.length + ')'}}</h4>
+                                                </label>
+                                            </div>
+                                        </form>
+                                        <hr>
+                                    </div>
+                                    <!-- Fin lista de unidades seleccionadas -->
+
+                                    <!-- Inicio formulario de programacion academica -->
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <h3 class="card-title">Fechas Apertura Administrador Secretarias</h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <form class="form-horizontal" id="frmAperturaGestion" method="post">
+                                                    <div class="card-body">
+                                                        <!-- Fecha de inicio apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    name="txtFechaInicioGestion"
+                                                                    id="txtFechaInicioGestion" datepicker
+                                                                    data-ng-model="aperfe.crearAperturaGestion.fechaInicial"
+                                                                    autocomplete="off" placeholder="Desde aaaa-mm-dd">
+                                                            </div>
+                                                            <label class="col-sm-4 col-form-label">Hora Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="time" class="form-control form-control-sm"
+                                                                    name="txtHoraInicioGestion"
+                                                                    id="txtHoraInicioGestion"
+                                                                    data-ng-model="aperfe.crearAperturaGestion.horaInicial"
+                                                                    autocomplete="off" placeholder="hh:mm">
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Fecha de fin apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    id="txtFechaFinGestion" name="txtFechaFinGestion"
+                                                                    datepicker
+                                                                    ng-min="aperfe.crearAperturaProaca.fechaInicial"
+                                                                    data-ng-model="aperfe.crearAperturaGestion.fechaFinal"
+                                                                    autocomplete="off" placeholder="Hasta aaaa-mm-dd">
+                                                            </div>
+                                                            <label class="col-sm-4 col-form-label">Hora Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="time" class="form-control form-control-sm"
+                                                                    name="txtHoraFinalGestion" id="txtHoraFinalGestion"
+                                                                    data-ng-model="aperfe.crearAperturaGestion.horaFinal"
+                                                                    autocomplete="off" placeholder="hh:mm">
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Calendario de apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Calendario <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcCalendarioGestion"
+                                                                    id="slcCalendarioGestion" autocomplete="off"
+                                                                    data-ng-model="aperfe.crearAperturaGestion.calendario">
+                                                                    <option value="" disabled selected>Seleccionar
+                                                                    </option>
+                                                                    <option value="{{calendario.CalCodigo}}"
+                                                                        data-ng-repeat="calendario in aperfe.listaCalendarios">
+                                                                        {{calendario.CalCodigo}}.
+                                                                        {{calendario.CalNombre}}
+                                                                        ({{calendario.PerFechaInicio}} -
+                                                                        {{calendario.PerFechaFin}})
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Envio de correo -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">¿Enviar correos?
+                                                                <span style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcCorreosGestion" id="slcCorreosGestion"
+                                                                    data-ng-model="aperfe.crearAperturaGestion.correo">
+                                                                    <option value="0">No
+                                                                    </option>
+                                                                    <option value="1">Si</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Aviso campos obligatorios -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-auto col-form-label"
+                                                                style="color:red"><small>* Los campos son
+                                                                    obligatorios.</small></label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer">
+                                                        <button type="submit"
+                                                            data-ng-click="aperfe.guardarAperturaGestion()"
+                                                            class="btn btn-danger btn-sm">Crear</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                        <hr>
+                                    </div>
+                                    <!-- Fin formulario de programacion academica -->
+                                </div>
+                            </div>
+                            <!-- Fin seccion formulario de gestion -->
+
+
+                        </div>
+                    </div>
+
+                    <!-- Inicio tab de grupo de unidades. -->
+                    <div class="" role="tabpanel" data-ng-if="aperfe.listaGruposUnidad == 1">
+                        <div class="row">
+                            <div class="col-md-5">
+                                <!-- Inicio cabecera de grupos -->
+                                <div class="form-group row">
+                                    <label class="col-md col-form-label">
+                                        <h4>Listado Grupos</h4>
+                                    </label>
+                                    <div class="col-md-auto">
+                                        <input type="text" name="txtFiltroGrupos" style="margin-top: 6px;"
+                                            class="form-control form-control-sm" data-ng-model="aperfe.filtroGrupos"
+                                            autocomplete="off" placeholder="Buscador">
+                                    </div>
+                                    <div class="col-md-auto">
+                                        <button class="btn btn-danger btn-sm" style="margin-top: 6px"
+                                            data-ng-click="aperfe.modalCrearGrupo()">Crear</button>
+                                    </div>
+                                </div>
+                                <!-- Fin cabecera de grupos -->
+                                <hr>
+                                <small style="color:#a9a7a7"
+                                    data-ng-if="aperfe.listaGrupos.length <= 0 || aperfe.listaGrupos == null">
+                                    No se encontraron grupos activos.
+                                </small>
+                                <!-- Inicio lista de grupos activos -->
+                                <div class="row">
+                                    <div class="col-md-12" style="overflow: auto;max-height:80vh">
+                                        <div class="card cardPeriodo"
+                                            data-ng-repeat="grupo in aperfe.listaGrupos | toArray | filter:aperfe.filtroGrupos">
+                                            <div class="card-body">
+                                                <small class="card-text">{{grupo.PgrNombre}}</small><br>
+                                                <small class="card-text">Estado:
+                                                    <span data-ng-if="grupo.PgrEstado == 1">Activo</span>
+                                                    <span data-ng-if="grupo.PgrEstado != 1">Inactivo</span>
+                                                </small>
+                                            </div>
+                                            <div class="card-footer">
+                                                <button class="btn btn-success btn-sm" data-ng-click="aperfe.listarUnidadesGrupo(grupo)">Unidades</button>
+                                                <button class="btn btn-danger btn-sm" data-ng-click="aperfe.eliminarGrupo(grupo)">Eliminar</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Fin lista de grupos activos -->
+                            </div>
+                            <div class="col-md-7" data-ng-if="aperfe.grupoSeleccionado.PgrNombre != ''">
+                                <div class="form-group row">
+                                    <label class="col-md col-form-label">
+                                        <h4>Listado Unidades</h4>
+                                    </label>
+                                    <div class="col-md-auto">
+                                        <input type="text" name="txtFiltroUnidadesGrupo" style="margin-top: 6px;"
+                                            class="form-control form-control-sm"
+                                            data-ng-model="aperfe.filtroUnidadesGrupo" autocomplete="off"
+                                            placeholder="Buscador">
+                                    </div>
+                                    <div class="col-md-auto">
+                                        <button class="btn btn-danger btn-sm" style="margin-top: 6px"
+                                            data-ng-click="aperfe.modalCrearUnidad()">Crear</button>
+                                    </div>
+                                </div>
+                                <!-- Fin cabecera de grupos -->
+                                <hr>
+                                <small style="color:#a9a7a7"
+                                    data-ng-if="aperfe.listaUnidadesGrupo.length <= 0 || aperfe.listaGrupos == null">
+                                    No se encontraron unidades para el grupo seleccionado.
+                                </small>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <ul>
+                                            <li class="itemUaa"
+                                                data-ng-repeat="unidad in aperfe.listaUnidadesGrupo | toArray | filter:aperfe.filtroUnidadesGrupo"
+                                                style="cursor: pointer; margin-bottom: 3px;">
+                                                <div class="row">
+                                                    <div class="col-md">
+                                                        <small>{{unidad.UaaCodigo}}. {{unidad.UaaNombreCorto}}</small>
+                                                    </div>
+                                                    <div class="col-md-auto">
+                                                        <button class="btn btn-sm btn-danger"
+                                                            data-ng-click="aperfe.eliminarUnidad(unidad)">Eliminar</button>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    </πdiv>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin tab de grupos de unidades  -->
+                    </div>
+
+                    <!-- Inicio tab módulo de solicitudes -->
+                    <div class="" role="tabpanel" data-ng-if="aperfe.listaModuloSolicitudes == 1">
+                        <div class="row">
+                            <!-- Inicia lista de unidades -->
+                            <div class="col-md-6">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado Unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcNivel" class="form-control form-control-sm"
+                                                style="margin-top: 6px;" data-ng-model="aperfe.filtroNivelAcademico">
+                                                <option value="">Todos</option>
+                                                <option value="Pregrado">Pregrados</option>
+                                                <option value="Postgrado">Postgrados</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                                class="form-control form-control-sm" data-ng-model="aperfe.filtroUaa"
+                                                autocomplete="off" data-ng-keyup="aperfe.rellenarCheck()"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Grupo unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcGrupoUnidades" class="form-control form-control-sm"
+                                                style="margin-top: 6px;"
+                                                data-ng-model="aperfe.grupoSeleccionadoApertura"
+                                                data-ng-change="aperfe.listarUnidadesGrupo('', 'select')">
+                                                <option value="" disabled>Seleccione un grupo</option>
+                                                <option value="">Ninguno</option>
+                                                <option data-ng-repeat="grupo in aperfe.listaGrupos"
+                                                    value="{{grupo.PgrCodigo}}">{{grupo.PgrNombre}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="programa in aperfe.listaUnidadesEspeciales | toArray | filter:aperfe.filtroUaa"
+                                        data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo); aperfe.buscarCalendarioUnidadSolicitudes(programa.UaaCodigo, programa.UaaNombreCorto)"
+                                        class="itemUaa">
+                                        <div class="row">
+                                            <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                                    class="fas fa-circle"></i></div>
+                                            <div class="col-auto"><input
+                                                    class="input input-sm unidad unidad{{programa.UaaCodigo}}"
+                                                    data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                    style="margin-top:7px" type="checkbox" name="chkUnidad[]"
+                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                    value="{{programa.UaaCodigo}}"></div>
+                                            <div class="col-auto">
+                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="facultad in aperfe.listaUnidades | toArray | filter:aperfe.filtroUaa">
+                                        <i style="font-size: 10px; color: #a33535;" class="fas fa-circle"></i>
+                                        <small>{{facultad.UaaCodigo}}.
+                                            {{facultad.UaaNombre}}</small>
+                                        <ul>
+                                            <li data-ng-repeat="uaaunificada in facultad.UaaUnificada | toArray | filter:aperfe.filtroUaa">
+                                                <div class="row itemUnificado"
+                                                    data-ng-click="aperfe.seleccionarUnificada(uaaunificada.UaaCodigo)">
+                                                    <div class="col-auto"><i style="font-size: 10px; color: #356ea3;"
+                                                            class="fas fa-circle"></i> </div>
+                                                    <div class="col-auto">
+                                                        <small>{{uaaunificada.UaaCodigo}}.{{uaaunificada.UaaNombre}}</small>
+                                                    </div>
+                                                </div>
+
+                                                <ul>
+                                                    <li data-ng-repeat="programa in uaaunificada.UaaPrograma | toArray | filter:{Nivel: aperfe.filtroNivelAcademico, UaaNombreCorto: aperfe.filtroUaa}"
+                                                        data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo); aperfe.buscarCalendarioUnidadSolicitudes(programa.UaaCodigo, programa.UaaNombreCorto)"
+                                                        class="itemUaa">
+                                                        <div class="row">
+                                                            <div class="col-auto"><i
+                                                                    style="font-size: 10px; color: #42a335;"
+                                                                    class="fas fa-circle"></i></div>
+                                                            <div class="col-auto"><input class="input input-sm unidad unidad{{programa.UaaCodigo}} 
+                                                                    unificada{{uaaunificada.UaaCodigo}}"
+                                                                    data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                                    style="margin-top:7px" type="checkbox"
+                                                                    name="chkUnidad[]"
+                                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                                    value="{{programa.UaaCodigo}}"></div>
+                                                            <div class="col-auto">
+                                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                            <!-- Fin lista de unidades -->
+
+                            <!-- Inicio seccion solicitudes -->
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <form action="">
+                                            <div class="form-group row">
+                                                <label class="col-md-6 col-form-label">
+                                                    <h4>Unidades Seleccionadas {{'(' +
+                                                        aperfe.listaUnidadesSeleccionadas.length + ')'}}</h4>
+                                                </label>
+                                            </div>
+                                        </form>
+                                        <hr>
+                                    </div>
+
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <h3 class="card-title">Fechas Apertura Módulo de Solicitudes</h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <form class="form-horizontal" id="frmAperturaSolicitudes" method="post">
+                                                    <div class="card-body">
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    name="txtFechaInicioSolicitudes" datepicker
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.fechaInicial"
+                                                                    autocomplete="off" placeholder="Desde aaaa-mm-dd">
+                                                            </div>
+                                                            <label class="col-sm-4 col-form-label">Hora Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="time" class="form-control form-control-sm"
+                                                                    name="txtHoraInicioSolicitudes"
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.horaInicial"
+                                                                    autocomplete="off" placeholder="hh:mm">
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    name="txtFechaFinSolicitudes" datepicker
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.fechaFinal"
+                                                                    autocomplete="off" placeholder="Hasta aaaa-mm-dd">
+                                                            </div>
+                                                            <label class="col-sm-4 col-form-label">Hora Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="time" class="form-control form-control-sm"
+                                                                    name="txtHoraFinalSolicitudes"
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.horaFinal"
+                                                                    autocomplete="off" placeholder="hh:mm">
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Calendario <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcCalendarioSolicitudes"
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.calendario">
+                                                                    <option value="" disabled selected>Seleccionar</option>
+                                                                    <option value="{{calendario.CalCodigo}}"
+                                                                        data-ng-repeat="calendario in aperfe.listaCalendarios">
+                                                                        {{calendario.CalCodigo}}.
+                                                                        {{calendario.CalNombre}}
+                                                                        ({{calendario.PerFechaInicio}} -
+                                                                        {{calendario.PerFechaFin}})
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Tipos de solicitud <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm" size="4"
+                                                                    multiple name="slcTiposSolicitudes"
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.tipos">
+                                                                    <option value="{{tipo.PtsCodigo}}"
+                                                                        data-ng-repeat="tipo in aperfe.listaTiposSolicitud">
+                                                                        {{tipo.PtsCodigo}}. {{tipo.PtsNombre}}
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">¿Enviar correos?
+                                                                <span style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcCorreosSolicitudes"
+                                                                    data-ng-model="aperfe.crearAperturaSolicitudes.correo">
+                                                                    <option value="0">No</option>
+                                                                    <option value="1">Si</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-auto col-form-label"
+                                                                style="color:red"><small>* Los campos son
+                                                                    obligatorios.</small></label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer">
+                                                        <button type="submit"
+                                                            data-ng-click="aperfe.guardarAperturaSolicitudes()"
+                                                            class="btn btn-danger btn-sm">Crear</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <!-- Fin seccion solicitudes -->
+                        </div>
+                    </div>
+                </div>
+                <!-- /.card -->
+            </div>
+        </div>
+</section>
+
+<!-- Inicio seccion modals -->
+<div class="modal fade" id="mdlCrearUnidad" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-body">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="form-group row">
+                            <label class="col-md col-form-label">
+                                <h3 class="card-title">Asignar Unidad a Grupo ({{aperfe.grupoSeleccionado.PgrNombre}})
+                                    {{'(' +
+                                    aperfe.listaUnidadesSeleccionadas.length + ')'}}
+                                </h3>
+                            </label>
+                            <div class="col-auto">
+                                <select name="slcNivel" id="" class="form-control form-control-sm"
+                                    style="margin-top: 6px;" data-ng-model="aperfe.filtroNivelAcademico">
+                                    <option value="">Todos</option>
+                                    <option value="Pregrado">Pregrados</option>
+                                    <option value="Postgrado">Postgrados</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                    class="form-control form-control-sm" data-ng-model="aperfe.filtroUaa"
+                                    autocomplete="off" data-ng-keyup="aperfe.rellenarCheck()" placeholder="Buscador">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body" style="max-height: 800px;overflow-y: auto;">
+                        <ul>
+                            <li data-ng-repeat="programa in aperfe.listaUnidadesEspeciales | toArray | filter:aperfe.filtroUaa"
+                                data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)" class="itemUaa">
+                                <div class="row">
+                                    <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                            class="fas fa-circle"></i></div>
+                                    <div class="col-auto"><input
+                                            class="input input-sm unidad unidad{{programa.UaaCodigo}}"
+                                            data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                            style="margin-top:7px" type="checkbox" name="chkUnidad[]"
+                                            checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                            checkUnidadCodigo="{{programa.UaaCodigo}}" value="{{programa.UaaCodigo}}">
+                                    </div>
+                                    <div class="col-auto">
+                                        <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                        <hr>
+                        <ul>
+                            <li data-ng-repeat="facultad in aperfe.listaUnidades">
+                                <i style="font-size: 10px; color: #a33535;" class="fas fa-circle"></i>
+                                <small>{{facultad.UaaCodigo}}.
+                                    {{facultad.UaaNombre}}</small>
+                                <ul>
+                                    <li data-ng-repeat="uaaunificada in facultad.UaaUnificada">
+                                        <div class="row itemUnificado"
+                                            data-ng-click="aperfe.seleccionarUnificada(uaaunificada.UaaCodigo)">
+                                            <div class="col-auto"><i style="font-size: 10px; color: #356ea3;"
+                                                    class="fas fa-circle"></i> </div>
+                                            <div class="col-auto">
+                                                <small>{{uaaunificada.UaaCodigo}}.{{uaaunificada.UaaNombre}}</small>
+                                            </div>
+                                        </div>
+
+                                        <ul>
+                                            <li data-ng-repeat="programa in uaaunificada.UaaPrograma | toArray | filter:{Nivel: aperfe.filtroNivelAcademico, $: aperfe.filtroUaa}"
+                                                data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                class="itemUaa">
+                                                <div class="row">
+                                                    <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                                            class="fas fa-circle"></i></div>
+                                                    <div class="col-auto"><input class="input input-sm unidad unidad{{programa.UaaCodigo}} 
+                                                                    unificada{{uaaunificada.UaaCodigo}}"
+                                                            data-ng-click="aperfe.seleccionarUnidad(programa.UaaCodigo)"
+                                                            style="margin-top:7px" type="checkbox" name="chkUnidad[]"
+                                                            checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                            checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                            value="{{programa.UaaCodigo}}"></div>
+                                                    <div class="col-auto">
+                                                        <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-danger btn-sm" style="margin-top: 6px"
+                            data-ng-click="aperfe.asignarUnidad()">Guardar</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin seccion modals -->
+
+<!-- Inicio seccion modals -->
+<div class="modal fade" id="mdlCrearGrupo" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-body">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="form-group row">
+                            <label class="col-md col-form-label">
+                                <h3 class="card-title">Creacion grupo de unidades
+                                </h3>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="card-body" style="max-height: 800px;overflow-y: auto;">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="col-auto col-form-label">Nombre grupo</label>
+                                    <input type="text" required data-ng-model="aperfe.crearGrupo.nombre"
+                                        class="form-control form-control-sm">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-danger btn-sm" style="margin-top: 6px"
+                            data-ng-click="aperfe.guardarGrupo()">Guardar</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin seccion modals -->
+
+<script>
+    $(document).ready(function () {
+        $(".cardPeriodo").on("click", function () {
+            console.log('ok');
+            $(".cardPeriodo").removeClass("cardSelected");
+            $(this).addClass("cardSelected");
+        });
+    });
+</script>
+
+<style>
+    .itemUaa {
+        cursor: pointer;
+        padding: 1px 7px;
+    }
+
+    .itemUaa:hover {
+        background-color: #c2c2c2;
+    }
+
+    .itemUnificado {
+        cursor: pointer;
+        padding: 1px 7px;
+    }
+
+    .itemUnificado:hover {
+        background-color: #a9a7a7;
+    }
+
+    ul {
+        list-style: none;
+    }
+
+    .cardPeriodo {
+        cursor: pointer;
+    }
+
+    .cardPeriodo:hover {
+        background-color: #e1e1e1;
+    }
+
+    .cardSelected {
+        background-color: #cccccc
+    }
+
+    .itemUaa {
+        cursor: pointer;
+        padding: 1px 7px;
+    }
+
+    .itemUaa:hover {
+        background-color: #c2c2c2;
+    }
+
+    .itemUnificado {
+        cursor: pointer;
+        padding: 1px 7px;
+    }
+
+    .itemUnificado:hover {
+        background-color: #a9a7a7;
+    }
+</style>

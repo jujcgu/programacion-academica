@@ -1,0 +1,335 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Matriculados Curso</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="matcurso.curCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="matcurso.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="matcurso.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{matcurso.cursoSeleccionado[0].CurCodigo}}
+                            ({{matcurso.cursoSeleccionado[0].CalNombre}})</b>
+                        <br>
+                        <span style="color:red; " ng-if="matcurso.PermitidoEditar == false">
+                            EL CALENDARIO DEL CURSO NO SE ENCUENTRA ACTIVO PARA CAMBIOS.
+                        </span>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{matcurso.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{matcurso.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{matcurso.cursoSeleccionado[0].NucNombre}}<br>
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{matcurso.cursoSeleccionado[0].UaaCodigo}}.
+                            {{matcurso.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{matcurso.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{matcurso.creadorCurso}}<br>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <!-- Inicio formulario cupo curso y ampliacion -->
+        <div class="row justify-content-center align-items-center" ng-show="matcurso.cursoSeleccionado.length > 0">
+            <div class="col-md-6">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">MATRICULADOS CURSOS</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group row">
+                            <label class="col-sm-4 col-form-label">Total Matriculados Activos: </label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control form-control-sm" name="txtCupoTotal"
+                                    id="txtCupoTotal" ng-model="matcurso.totalMatriculados.matriculados_activos">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label class="col-sm-4 col-form-label">Total Matriculados Cancelados: </label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control form-control-sm" name="txtCupoTotal"
+                                    id="txtCupoTotal" ng-model="matcurso.totalMatriculados.matriculados_cancelados">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label class="col-sm-4 col-form-label">Total Matriculados Covid: </label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control form-control-sm" name="txtCupoTotal"
+                                    id="txtCupoTotal" ng-model="matcurso.totalMatriculados.matriculados_covid">
+                            </div>
+                        </div>
+                        <div class="form-group row">
+                            <label class="col-sm-4 col-form-label">Total Matriculados: </label>
+                            <div class="col-sm-8">
+                                <input type="text" class="form-control form-control-sm" name="txtCupoTotal"
+                                    id="txtCupoTotal" ng-model="matcurso.totalMatriculados.matriculados_total">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="button" class="btn btn-danger btn-flat"
+                            ng-click="matcurso.mdlMatriculadosCurso();">Ver</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin curpo curso y ampliacion -->
+
+        <!-- Inicio formulario cupo curso y ampliacion -->
+        <div class="row justify-content-center align-items-center" ng-if="matcurso.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">SUBGRUPOS DEL CURSO</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-sm-12">
+                                <table id="tbl" class="table table-hover">
+                                    <thead>
+                                        <th>#</th>
+                                        <th>Código Curso</th>
+                                        <th>Subgrupo</th>
+                                        <th>Matriculados</th>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="matcurso.listaSubgrupo == null" class="text-center">
+                                            <td colspan="4">No se encontraron subgrupos</td>
+                                        </tr>
+                                        <tr ng-repeat="row in matcurso.listaSubgrupo">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{row.CurCodigo}}</td>
+                                            <td>{{row.SubGrupo}}</td>
+                                            <td class="col-auto">
+                                                <div class="input-group input-group-sm">
+                                                    <label class="form-control form-control-sm col-md-2"
+                                                        type="text">{{row.CantMatriculados}} </label>
+                                                    <span class="input-group-append">
+                                                        <button type="button"
+                                                            class="btn btn-info btn-danger btn-sm btn-flat"
+                                                            ng-click="matcurso.mdlMatriculadosSubgrupo(row);">Ver</button>
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin curpo curso y ampliacion -->
+
+        <!-- Inicio Zona de modals! -->
+        <!--------- MODAL PARA MODIFICAR EL CUPO DE UN SUBGRUPO ------>
+        <div class="modal fade" id="ModalModificarCupoSubgrupo" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-md modal-dialog-centered">
+                <div class="modal-content" style="margin-top: 0%;">
+                    <div class="modal-body">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <h3 class="card-title">Modificar cupo del subgrupo</h3>
+                            </div>
+                            <form id="frmActualizarCupoSubgrupo" class="form-horizontal">
+                                <div class="card-body">
+                                    <div class="form-group row">
+                                        <label class="col-sm-4 col-form-label">Curso: </label>
+                                        <div class="col-sm-8">
+                                            <label type="text" class="form-control">
+                                                {{matcurso.subGrupoSeleccionado.CurCodigo}}
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <label class="col-sm-4 col-form-label">Subgrupo: </label>
+                                        <div class="col-sm-8">
+                                            <label type="text" class="form-control" disabled>
+                                                {{matcurso.subGrupoSeleccionado.SubGrupo}}
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="form-group row">
+                                        <label class="col-sm-4 col-form-label">Cupo Subgrupo: </label>
+                                        <div class="col-sm-8">
+                                            <input type="text" class="form-control" id="txtCupoSubgrupo"
+                                                name="txtCupoSubgrupo" ng-model="matcurso.subGrupoSeleccionado.CusCupo">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-footer">
+                                    <button type="button" class="btn btn-danger btn-sm" id="btnActualizarCupoSubgrupo"
+                                        ng-disabled="matcurso.subGrupoSeleccionado.CusCupo < 0 || matcurso.subGrupoSeleccionado.CusCupo == ''"
+                                        ng-click="matcurso.actualizarCupoSubgrupo();">Modificar</button>
+                                    <button type="button" class="btn btn-default btn-sm"
+                                        ng-click="matcurso.cerrarModal('ModalModificarCupoSubgrupo')">Cerrar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!--------- MODAL PARA VER ESTUDIANTES MATRICULADOS------>
+        <div class="modal fade" id="ModalEstudiantesMatriculados" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content" style="margin-top: 0%;">
+                    <div class="modal-body">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <h3 class="card-title">Lista Estudiantes Matriculados</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="input-group">
+                                            <input class="form-control form-control-sm" type="search"
+                                                placeholder="Buscar estudiante" aria-label="Search"
+                                                data-ng-model="matcurso.filtroEstudiantes">
+                                            <div class="input-group-append">
+                                                <button class="btn btn-sm">
+                                                    <i class="fas fa-search fa-fw"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <br>
+                                    </div>
+                                    <div class="col-md-12 table-responsive" style="height: 500px;">
+                                        <table id="tbl" class="table table-hover table-sm table-head-fixed">
+                                            <thead>
+                                                <th>#</th>
+                                                <th>Estado</th>
+                                                <th>Identificación</th>
+                                                <th>Nombre</th>
+                                                <th>Código</th>
+                                                <th>Subgrupo</th>
+                                                <th>Programa</th>
+                                            </thead>
+                                            <tbody>
+                                                <tr data-ng-class="{'bg-danger': row.MaaCodigo == 4, 'bg-warning': row.MaaCodigo == 6}"
+                                                    data-ng-repeat="row in matcurso.listadoEstudiantesMatriculados | toArray | filter:matcurso.filtroEstudiantes">
+                                                    <td>{{$index + 1}}</td>
+                                                    <td>{{row.MaaNombre}} 
+                                                        <span>{{row.MaaFecha}}</span>
+                                                    </td>
+                                                    <td>{{row.PerIdentificacion}}</td>
+                                                    <td>{{row.PerNombre}}</td>
+                                                    <td>{{row.EstCodigo}}</td>
+                                                    <td>{{row.MacGrupo}}</td>
+                                                    <td>{{row.UaaNombreCorto}}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <hr>
+                                        <b>Total Matriculados:</b> {{matcurso.listadoEstudiantesMatriculados.length}}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button type="button" class="btn btn-default btn-sm"
+                                    ng-click="matcurso.cerrarModal('ModalEstudiantesMatriculados')">Cerrar</button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Fin Zona de modals! -->
+
+    </div>
+</section>
+
+<script>
+    $('#frmActualizarCupoSubgrupo').validate({
+        rules: {
+            txtCupoSubgrupo: {
+                required: true,
+                number: true,
+                min: 0
+            }
+        },
+        messages: {
+            txtCupoSubgrupo: {
+                required: "Debe ingresar el cupo del subgrupo.",
+                number: "Solo se permiten números.",
+                min: "El cupo no puede ser menor a 0."
+            }
+        },
+        errorElement: 'span',
+        errorPlacement: function (error, element) {
+            error.addClass('invalid-feedback');
+            element.closest('.form-group').append(error);
+        },
+        highlight: function (element, errorClass, validClass) {
+            $(element).addClass('is-invalid');
+        },
+        unhighlight: function (element, errorClass, validClass) {
+            $(element).removeClass('is-invalid');
+        }
+    });
+    $('#frmActualizarCupoCurso').validate({
+        rules: {
+            txtCupoTotal: {
+                required: true,
+                number: true,
+                min: 0
+            },
+            txtAmpliacion: {
+                required: true,
+                number: true,
+                min: 0
+            },
+        },
+        messages: {
+            txtCupoTotal: {
+                required: "Debe ingresar el cupo total del curso.",
+                number: "Solo se permiten números.",
+                min: "El cupo no puede ser menor a 0.",
+            },
+            txtAmpliacion: {
+                required: "Debe ingresar el cupo de la ampliación.",
+                number: "Solo se permiten números.",
+                min: "El cupo no puede ser menor a 0.",
+            },
+        },
+        errorElement: 'span',
+        errorPlacement: function (error, element) {
+            error.addClass('invalid-feedback');
+            element.closest('.form-group').append(error);
+        },
+        highlight: function (element, errorClass, validClass) {
+            $(element).addClass('is-invalid');
+        },
+        unhighlight: function (element, errorClass, validClass) {
+            $(element).removeClass('is-invalid');
+        }
+    });
+</script>

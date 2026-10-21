@@ -1,0 +1,378 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Periodos Académicos</h1>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<section class="content">
+    <div class="container-fluid">
+        <div class="card card-danger card-outline card-outline-tabs">
+            <!-- Inicio titulo de pestañas -->
+            <div class="card-header p-0 border-bottom-0">
+                <ul class="nav nav-tabs" role="tablist" style="cursor: pointer;">
+                    <li class="nav-item">
+                        <a class="nav-link active text-danger" id="custom-tabs-four-home-tab" data-toggle="pill"
+                            role="tab" aria-controls="custom-tabs-four-home"
+                            data-ng-click="peraca.cambiarPestana('ListaPeriodos');" aria-selected="true">Lista de
+                            periodos</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-profile-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-profile"
+                            data-ng-click="peraca.cambiarPestana('CambioFechaPeriodos');" aria-selected="false">Crear Periodos Personalizados por Programa</a>
+                    </li>
+                </ul>
+            </div>
+            <!-- Fin titulo de pestañas -->
+
+            <!-- Inicio contenido de pestañas -->
+            <div class="card-body">
+                <div class="tab-content">
+                    <div class="" role="tabpanel" data-ng-if="peraca.ListaPeriodos == 1">
+                        <!-- Inicia seccion de periodos academicos -->
+                        <div class="row">
+                            <!-- Inicio lista de periodos academicos -->
+                            <div class="col-md-5">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado periodos académicos</h4>
+                                        </label>
+                                        <div class="col-md-6">
+                                            <input type="text" name="txtFiltroPeriodos" style="margin-top: 6px;"
+                                                class="form-control form-control-sm"
+                                                data-ng-model="peraca.filtroPeriodos" autocomplete="off"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <small style="color:#a9a7a7"
+                                    data-ng-if="peraca.listaPeriodos.length <= 0 || peraca.listaPeriodos == null">
+                                    No se encontraron periodos activos.
+                                </small>
+                                <div class="row">
+                                    <div class="col-md-12" style="overflow: auto;max-height:80vh">
+                                        <div class="card cardPeriodo"
+                                            data-ng-repeat="periodos in peraca.listaPeriodos | toArray | filter:peraca.filtroPeriodos"
+                                            data-ng-click="peraca.listarPeriodosUnidad(periodos)">
+                                            <div class="card-body">
+                                                <h4 class="card-title"><b>{{periodos.PerCodigo}}.
+                                                        {{periodos.PerNombre}}
+                                                    </b>
+                                                </h4><br>
+                                                <small class="card-text">Fechas de inicio:
+                                                    {{periodos.PerFechaInicio}}</small><br>
+                                                <small class="card-text">Fechas de fin:
+                                                    {{periodos.PerFechaFin}}</small><br>
+                                                <small class="card-text">Año:
+                                                    {{periodos.PerAnio}}</small><br>
+                                                <small class="card-text">Periodo:
+                                                    {{periodos.PerPeriodo}}</small><br>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Fin listas de periodos academicos -->
+
+                            <!-- Inicio lista de periodos por unidad -->
+                            <div class="col-md-7">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado periodos por unidad</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                                class="form-control form-control-sm"
+                                                data-ng-model="peraca.filtroUnidades" autocomplete="off"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <small style="color:#a9a7a7"
+                                    data-ng-if="peraca.listaUnidadesPeriodo.length <= 0 || peraca.listaUnidadesPeriodo == null">
+                                    No se encontraron periodos activos para esta unidad.
+                                </small>
+                                <div class="col-md-12">
+                                    <div class="card"
+                                        data-ng-repeat="periodo_unidad in peraca.listaUnidadesPeriodo  | toArray | filter:peraca.filtroUnidades">
+                                        <div class="card-body">
+                                            <div class="row align-items-center">
+                                                <div class="col-md-auto">
+                                                    <h4 class="card-title"><b>{{periodo_unidad.UaaCodigo}}.
+                                                            {{periodo_unidad.UaaNombreCorto}}
+                                                        </b>
+                                                    </h4><br>
+                                                    <small class="card-text">Fechas de inicio:
+                                                        {{periodo_unidad.PeuFechaInicio}}</small><br>
+                                                    <small class="card-text">Fechas de fin:
+                                                        {{periodo_unidad.PeuFechaFin}}</small><br>
+                                                    <small class="card-text">Periodo:
+                                                        <b>{{periodo_unidad.PerCodigo}}.
+                                                            {{periodo_unidad.PerAnio}}-{{periodo_unidad.PerPeriodo}}</b></small>
+                                                </div>
+                                                <div class="col">
+                                                    <button class="btn btn-danger btn-sm float-right"
+                                                        data-ng-click="peraca.mostrarSweetAlertDisabled('¿Desea eliminar el periodo para esta unidad?','periodo_unidad',periodo_unidad)">
+                                                        Eliminar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Fin lista de periodos por unidad -->
+
+                        </div>
+                        <!-- Fin seccion de periodos academicos -->
+                    </div>
+                    <div class="" role="tabpanel" data-ng-if="peraca.CambioFechaPeriodos == 1">
+                        <!-- Inicio seccion para cambio de fechas periodo -->
+                        <div class="row">
+                            <!-- Inicia lista de unidades -->
+                            <div class="col-md-6">
+                                <form action="">
+                                    <div class="form-group row">
+                                        <label class="col-md-6 col-form-label">
+                                            <h4>Listado Unidades</h4>
+                                        </label>
+                                        <div class="col-auto">
+                                            <select name="slcNivel" id="" class="form-control form-control-sm"
+                                                style="margin-top: 6px;" data-ng-model="peraca.filtroNivelAcademico">
+                                                <option value="">Todos</option>
+                                                <option value="Pregrado">Pregrados</option>
+                                                <option value="Postgrado">Postgrados</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-auto">
+                                            <input type="text" name="txtFiltroUnidades" style="margin-top: 6px;"
+                                                class="form-control form-control-sm" data-ng-model="peraca.filtroUaa"
+                                                autocomplete="off" data-ng-keyup="peraca.rellenarCheck()"
+                                                placeholder="Buscador">
+                                        </div>
+                                    </div>
+                                </form>
+                                <hr>
+                                <ul>
+                                    <li data-ng-repeat="programa in peraca.listaUnidadesEspeciales | toArray | filter:peraca.filtroUaa"
+                                        data-ng-click="peraca.seleccionarUnidad(programa.UaaCodigo)" class="itemUaa">
+                                        <div class="row">
+                                            <div class="col-auto"><i style="font-size: 10px; color: #42a335;"
+                                                    class="fas fa-circle"></i></div>
+                                            <div class="col-auto"><input class="input input-sm unidad unidad{{programa.UaaCodigo}}"
+                                                    data-ng-click="peraca.seleccionarUnidad(programa.UaaCodigo)"
+                                                    style="margin-top:7px" type="checkbox" name="chkUnidad[]"
+                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                    value="{{programa.UaaCodigo}}"></div>
+                                            <div class="col-auto">
+                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                                <hr>
+                                <ul style="overflow: auto;max-height:80vh">
+                                    <li
+                                        data-ng-repeat="facultad in peraca.listaUnidades | toArray | filter:peraca.filtroUaa">
+                                        <i style="font-size: 10px; color: #a33535;" class="fas fa-circle"></i>
+                                        <small>{{facultad.UaaCodigo}}.
+                                            {{facultad.UaaNombre}}</small>
+                                        <ul>
+                                            <li
+                                                data-ng-repeat="uaaunificada in facultad.UaaUnificada | toArray | filter:peraca.filtroUaa">
+                                                <div class="row itemUnificado"
+                                                    data-ng-click="peraca.seleccionarUnificada(uaaunificada.UaaCodigo)">
+                                                    <div class="col-auto"><i style="font-size: 10px; color: #356ea3;"
+                                                            class="fas fa-circle"></i> </div>
+                                                    <div class="col-auto">
+                                                        <small>{{uaaunificada.UaaCodigo}}.{{uaaunificada.UaaNombre}}</small>
+                                                    </div>
+                                                </div>
+
+                                                <ul>
+                                                    <li data-ng-repeat="programa in uaaunificada.UaaPrograma | toArray | filter:{Nivel: peraca.filtroNivelAcademico, UaaNombreCorto: peraca.filtroUaa}"
+                                                        data-ng-click="peraca.seleccionarUnidad(programa.UaaCodigo)"
+                                                        class="itemUaa">
+                                                        <div class="row">
+                                                            <div class="col-auto"><i
+                                                                    style="font-size: 10px; color: #42a335;"
+                                                                    class="fas fa-circle"></i></div>
+                                                            <div class="col-auto"><input class="input input-sm unidad unidad{{programa.UaaCodigo}} 
+                                                                    unificada{{uaaunificada.UaaCodigo}}"
+                                                                    data-ng-click="peraca.seleccionarUnidad(programa.UaaCodigo)"
+                                                                    style="margin-top:7px" type="checkbox"
+                                                                    name="chkUnidad[]"
+                                                                    checkUnidadNombre="{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}"
+                                                                    checkUnidadCodigo="{{programa.UaaCodigo}}"
+                                                                    value="{{programa.UaaCodigo}}"></div>
+                                                            <div class="col-auto">
+                                                                <small>{{programa.UaaCodigo}}.{{programa.UaaNombreCorto}}</small>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                                <hr>
+                            </div>
+                            <!-- Fin lista de unidades -->
+
+                            <!-- Inicio formulario para cambio de fechas del periodo -->
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <form action="">
+                                            <div class="form-group row">
+                                                <label class="col-md-6 col-form-label">
+                                                    <h4>Unidades Seleccionadas {{'(' +
+                                                        peraca.listaUnidadesSeleccionadas.length + ')'}}</h4>
+                                                </label>
+                                            </div>
+                                        </form>
+                                        <hr>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="card card-danger">
+                                            <div class="card-header">
+                                                <h3 class="card-title">Cambio de fechas periodo academico por unidad
+                                                </h3>
+                                            </div>
+                                            <div class="card-body">
+                                                <form class="form-horizontal" id="frmAperturaProgramacion"
+                                                    method="post">
+                                                    <div class="card-body">
+                                                        <!-- Periodos -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Periodo <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <select class="form-control form-control-sm"
+                                                                    name="slcPeriodo" id="slcPeriodo" autocomplete="off"
+                                                                    data-ng-model="peraca.crearFechaPeriodo.periodoCodigo">
+                                                                    <option value="" disabled selected>Seleccionar
+                                                                    </option>
+                                                                    <option value="{{periodo.PerCodigo}}"
+                                                                        data-ng-repeat="periodo in peraca.listaPeriodos">
+                                                                        {{periodo.PerCodigo}}.
+                                                                        {{periodo.PerAnio}}-{{periodo.PerPeriodo}}
+                                                                        ({{periodo.PerFechaInicio}} -
+                                                                        {{periodo.PerFechaFin}})
+                                                                    </option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Fecha de inicio apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Inicial <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    name="txtFechaInicio" id="txtFechaInicio" datepicker
+                                                                    data-ng-model="peraca.crearFechaPeriodo.fechaInicial"
+                                                                    autocomplete="off" placeholder="Desde aaaa-mm-dd">
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Fecha de fin apertura programacion academica -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-4 col-form-label">Fecha Final <span
+                                                                    style="color:red">*</span></label>
+                                                            <div class="col-sm-8">
+                                                                <input type="text" class="form-control form-control-sm"
+                                                                    id="txtFechaFin" name="txtFechaFin" datepicker
+                                                                    ng-min="peraca.crearFechaPeriodo.fechaInicial"
+                                                                    data-ng-model="peraca.crearFechaPeriodo.fechaFinal"
+                                                                    autocomplete="off" placeholder="Hasta aaaa-mm-dd">
+                                                            </div>
+                                                        </div>
+
+                                                        <!-- Aviso campos obligatorios -->
+                                                        <div class="form-group row">
+                                                            <label class="col-sm-auto col-form-label"
+                                                                style="color:red"><small>* Los campos son
+                                                                    obligatorios.</small></label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer">
+                                                        <button type="submit"
+                                                            data-ng-click="peraca.guardarFechasPeriodo()"
+                                                            class="btn btn-danger btn-sm">Crear</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Fin formulario para cambio de fechas del periodo -->
+                        </div>
+                        <!-- Fin seccion para cambio de fechas periodo -->
+                    </div>
+                </div>
+            </div>
+            <!-- Fin contenido de pestañas -->
+        </div>
+    </div>
+</section>
+
+<!-- Inicia seccion de modals -->
+
+<!-- Fin seccion de modals -->
+<script>
+    $(document).ready(function () {
+        $(".cardPeriodo").on("click", function () {
+            console.log('ok');
+            $(".cardPeriodo").removeClass("cardSelected");
+            $(this).addClass("cardSelected");
+        });
+    });
+</script>
+<style>
+    ul {
+        list-style: none;
+    }
+
+    .cardPeriodo {
+        cursor: pointer;
+    }
+
+    .cardPeriodo:hover {
+        background-color: #e1e1e1;
+    }
+
+    .cardSelected {
+        background-color: #cccccc
+    }
+
+    .itemUaa {
+        cursor: pointer;
+        padding: 1px 7px;
+    }
+
+    .itemUaa:hover {
+        background-color: #c2c2c2;
+    }
+
+    .itemUnificado {
+        cursor: pointer;
+        padding: 1px 7px;
+    }
+
+    .itemUnificado:hover {
+        background-color: #a9a7a7;
+    }
+</style>

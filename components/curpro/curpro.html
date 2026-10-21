@@ -1,0 +1,534 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cursos Programados</h1>
+            </div>
+            <div class="col-auto">
+                <select class="form-control form-control-sm" id="slcCalendarios"
+                    data-ng-model="curpro.calendarioSeleccionado">
+                    <option value="" disabled selected>Seleccione...</option>
+                    <option value="{{calendario.CalCodigo}}" data-ng-repeat="calendario in curpro.listaCalendario">
+                        {{calendario.CalNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="curpro.consultarCursosProgramados()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<section class="content" data-ng-if="curpro.contenidoPestanas == 1">
+    <div class="container-fluid">
+        <div class="card card-danger card-outline card-outline-tabs">
+            <!-- Inicio titulos de pestañas -->
+            <div class="card-header p-0 border-bottom-0">
+                <ul class="nav nav-tabs" role="tablist" style="cursor: pointer;">
+                    <li class="nav-item">
+                        <a class="nav-link active text-danger" id="custom-tabs-four-home-tab" data-toggle="pill"
+                            role="tab" aria-controls="custom-tabs-four-home"
+                            data-ng-click="curpro.cambiarPestana('simple');" aria-selected="true">Simple</a>
+                    </li>
+                    <!-- <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-profile-tab" data-toggle="pill" role="tab" disabled
+                            aria-controls="custom-tabs-four-profile"
+                            data-ng-click="curpro.cambiarPestana('matriculados');" aria-selected="false">Cupos y
+                            matriculados</a>
+                    </li> -->
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" id="custom-tabs-four-messages-tab" data-toggle="pill" role="tab"
+                            aria-controls="custom-tabs-four-messages"
+                            data-ng-click="curpro.cambiarPestana('primiparos');" aria-selected="false">Cursos
+                            primer semestre</a>
+                    </li>
+                </ul>
+            </div>
+            <!-- Fin titulos de pestañas -->
+
+            <!-- Inicio contenido de pestañas -->
+            <div class="card-body">
+                <div class="tab-content">
+                    <!-- Inicio lista de cursos programados simple -->
+                    <div class="" role="tabpanel" data-ng-if="curpro.contenidoSimple == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between align-items-center">
+                                    <div class="col-auto">
+                                        <h3 class="card-title">Listado simple de cursos</h3>
+                                    </div>
+                                    <div class="col-auto" data-ng-if="curpro.listaCursosProgramadosSimple.length >= 1">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-default btn-sm"
+                                                    style="margin-top: 3px;"
+                                                    data-ng-click="curpro.toggleSeleccionarTodos()">{{curpro.textoBotonSeleccionarTodos}}</button>
+                                            </div>
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-default btn-sm"
+                                                    style="margin-top: 3px;"
+                                                    onclick="copiarTablaSimple()">Copiar</button>
+                                            </div>
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-default btn-sm"
+                                                    style="margin-top: 3px;"
+                                                    onclick="exportarExcelSimple()">Excel</button>
+
+                                            </div>
+                                            <div class="col-auto">
+                                                <div class="card-tools">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text" name="table_search"
+                                                            class="form-control float-right"
+                                                            data-ng-model="curpro.filterListaSimple"
+                                                            data-ng-change="curpro.actualizarEstadoSeleccion()"
+                                                            placeholder="Buscar">
+
+                                                        <div class="input-group-append">
+                                                            <button type="submit" class="btn btn-default">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body table-responsive p-0" style="height: 70vh;">
+                                <table class="table table-head-fixed text-nowrap" id="tableCursosSimple">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <th># ({{curpro.totalMostrado}})</th>
+                                            <th>CURSO</th>
+                                            <th>MODALIDAD</th>
+                                            <th>ESTADO</th>
+                                            <th>GRUPO</th>
+                                            <th>COD. ASIGNATURA</th>
+                                            <th>ASIGNATURA</th>
+                                            <th>CARACTER</th>
+                                            <th>SEDE</th>
+                                            <th>COORDINADOR</th>
+                                            <th>MATRICULADOS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="curpro.listaCursosProgramadosSimple.length <= 0">
+                                            <td colspan="12" class="text-center"><small>No se encontraron
+                                                    registros</small></td>
+                                        </tr>
+                                        <tr data-ng-if="curpro.listaCursosProgramadosSimple.length >= 1"
+                                            data-ng-class="{'bg-red': curso.CurEstado != 1}"
+                                            data-ng-repeat="curso in curpro.listaCursosProgramadosSimple | toArray | filter:curpro.filterListaSimple">
+                                            <td><input type="checkbox" data-ng-model="curso.seleccionado"
+                                                    data-ng-change="curpro.actualizarEstadoSeleccion()"></td>
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{curso.CurCodigo}}</td>
+                                            <td>{{curso.TicNombre}}</td>
+                                            <td>
+                                                <p data-ng-if="curso.CurEstado == 1">Activo</p>
+                                                <p data-ng-if="curso.CurEstado != 1">Eliminado</p>
+                                            </td>
+                                            <td>{{curso.CurGrupo}}</td>
+                                            <td>{{curso.AsiNombreCorto}}</td>
+                                            <td>{{curso.AsiNombre}}</td>
+                                            <td>{{curso.CarCodigo}}</td>
+                                            <td>{{curso.SedNombre}}</td>
+                                            <td>{{curso.PerNombreCoordinador}}</td>
+                                            <td>{{curso.TotalMatriculados}}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin lista de cursos programados simple -->
+
+                    <!-- Inicio eidy -->
+                    <!-- <div class="" role="tabpanel" data-ng-if="curpro.contenidoSimple == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between align-items-center">
+                                    <div class="col-auto">
+                                        <h3 class="card-title">Listado simple de cursos</h3>
+                                    </div>
+                                    <div class="col-auto" data-ng-if="curpro.listaCursosProgramadosSimple.length >= 1">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-default btn-sm"
+                                                    style="margin-top: 3px;"
+                                                    onclick="ExportToExcel(jQuery('#tableCursosSimple').prop('outerHTML'), 'listadoCursosSimple')">Excel</button>
+
+                                            </div>
+                                            <div class="col-auto">
+                                                <div class="card-tools">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text" name="table_search"
+                                                            class="form-control float-right"
+                                                            data-ng-model="curpro.filterListaSimple"
+                                                            placeholder="Buscar">
+
+                                                        <div class="input-group-append">
+                                                            <button type="submit" class="btn btn-default">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body table-responsive p-0" id="tableCursosSimple" style="height: 70vh;">
+                                <table class="table "  data-ng-repeat="curso in curpro.listaCursosProgramadosSimple">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="7">{{curso.SedNombre}} - {{curso.SusNombre}} - {{curso.BloNombre}} - {{curso.EspNombre}}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td data-ng-repeat="dia in curso.DiaCodigo">
+                                                <table>
+                                                    <thead>
+                                                        <tr><td colspan="7">{{dia.DiaNombre}}</td></tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr data-ng-repeat="hora in dia.HraCodigo">
+                                                            <td>
+                                                                {{hora.HraInicio}}-
+                                                                {{hora.HraFin}} 
+                                                            </td>
+                                                            <td>
+                                                                <b>{{hora.Ocupacion}}</b>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div> -->
+                    <!-- Fin eidy -->
+
+                    <!-- Inicio lista de cursos programados con subgrupo y matriculados -->
+                    <div class="" role="tabpanel" data-ng-if="curpro.contenidoMatriculados == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between align-items-center">
+                                    <div class="col-auto">
+                                        <h3 class="card-title">Listado cursos subgrupos y matriculados</h3>
+                                    </div>
+                                    <div class="col-auto"
+                                        data-ng-if="curpro.listaCursosProgramadosMatriculados.length >= 1">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-default btn-sm"
+                                                    style="margin-top: 3px;"
+                                                    onclick="ExportToExcel(jQuery('#tableCursosMatriculados').prop('outerHTML'), 'listadoCursosMatriculados')">Excel</button>
+
+                                            </div>
+                                            <div class="col-auto">
+                                                <div class="card-tools">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text" name="table_search"
+                                                            class="form-control float-right"
+                                                            data-ng-model="curpro.filterListaMatriculados"
+                                                            placeholder="Buscar">
+
+                                                        <div class="input-group-append">
+                                                            <button type="submit" class="btn btn-default">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body table-responsive p-0" style="height: 70vh;">
+                                <table class="table table-head-fixed text-nowrap" id="tableCursosMatriculados">
+                                    <thead>
+                                        <tr>
+                                            <th># ({{curpro.totalCursos}})</th>
+                                            <th>CURSO</th>
+                                            <th>ESTADO</th>
+                                            <th>GRUPO</th>
+                                            <th>COD. ASIGNATURA</th>
+                                            <th>ASIGNATURA</th>
+                                            <th>CARACTER</th>
+                                            <th>SEDE</th>
+                                            <th>COORDINADOR</th>
+                                            <th>SUBGRUPO</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="curpro.listaCursosProgramadosMatriculados.length <= 0">
+                                            <td colspan="10" class="text-center"><small>No se encontraron
+                                                    registros</small></td>
+                                        </tr>
+                                        <tr data-ng-if="curpro.listaCursosProgramadosMatriculados.length >= 1"
+                                            data-ng-class="{'bg-red': curso.CurEstado != 1}"
+                                            data-ng-repeat="curso in curpro.listaCursosProgramadosMatriculados | toArray | filter:curpro.filterListaMatriculados">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{curso.CurCodigo}}</td>
+                                            <td>
+                                                <p data-ng-if="curso.CurEstado == 1">Activo</p>
+                                                <p data-ng-if="curso.CurEstado != 1">Eliminado</p>
+                                            </td>
+                                            <td>{{curso.CurGrupo}}</td>
+                                            <td>{{curso.AsiNombreCorto}}</td>
+                                            <td>{{curso.AsiNombre}}</td>
+                                            <td>{{curso.CarCodigo}}</td>
+                                            <td>{{curso.SedNombre}}</td>
+                                            <td>{{curso.PerNombreCoordinador}}</td>
+                                            <td>
+                                                <div class="card" data-ng-repeat="subgrupo in curso.listaSubgrupos">
+                                                    <div class="card-body">
+                                                        <p>
+                                                            <b>Subgrupo: </b> {{subgrupo.EsoSubgrupo}}
+                                                            <b>Cupo: </b>
+                                                            <span data-ng-if="subgrupo.CusCupo == '' ">N/A</span>
+                                                            <span
+                                                                data-ng-if="subgrupo.CusCupo != '' ">{{subgrupo.CusCupo}}</span>
+                                                            <b>Total matriculados: </b> {{subgrupo.TotalMatriculados}}
+                                                        </p>
+                                                        <p><b>Docente: </b> {{subgrupo.PerNombre}}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin lista de cursos programados con subgrupo y matriculados -->
+
+                    <!-- Inicio lista de cursos programados para primiparos -->
+                    <div class="" role="tabpanel" data-ng-if="curpro.contenidoPrimiparos == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between align-items-center">
+                                    <div class="col-auto">
+                                        <h3 class="card-title">Listado cursos primer semestre</h3>
+                                    </div>
+                                    <div class="col-auto"
+                                        data-ng-if="curpro.listaCursosProgramadosMatriculados.length >= 1">
+                                        <div class="row align-items-center">
+                                            <div class="col-auto">
+                                                <button type="button" class="btn btn-default btn-sm"
+                                                    style="margin-top: 3px;"
+                                                    onclick="ExportToExcel(jQuery('#tableCursosPrimiparos').prop('outerHTML'), 'listadoCursosPrimerSemestre')">Excel</button>
+
+                                            </div>
+                                            <div class="col-auto">
+                                                <div class="card-tools">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="text" name="table_search"
+                                                            class="form-control float-right"
+                                                            data-ng-model="curpro.filterListaPrimiparos"
+                                                            placeholder="Buscar">
+
+                                                        <div class="input-group-append">
+                                                            <button type="submit" class="btn btn-default">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body table-responsive p-0" style="height: 70vh;">
+                                <table class="table table-head-fixed text-nowrap" id="tableCursosPrimiparos">
+                                    <thead>
+                                        <tr>
+                                            <th># ({{curpro.totalCursos}})</th>
+                                            <th>CURSO</th>
+                                            <th>ESTADO</th>
+                                            <th>COD. ASIGNATURA</th>
+                                            <th>ASIGNATURA</th>
+                                            <th>EXCLUSIVO PARA</th>
+                                            <th>PLAN</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="curpro.listaCursosProgramadosPrimiparos.length <= 0">
+                                            <td colspan="7" class="text-center"><small>No se encontraron
+                                                    registros</small></td>
+                                        </tr>
+                                        <tr data-ng-if="curpro.listaCursosProgramadosPrimiparos.length >= 1"
+                                            data-ng-class="{'bg-red': curso.CurEstado != 1}"
+                                            data-ng-repeat="curso in curpro.listaCursosProgramadosPrimiparos | toArray | filter:curpro.filterListaPrimiparos">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{curso.CurCodigo}}</td>
+                                            <td>
+                                                <p data-ng-if="curso.CurEstado == 1">Activo</p>
+                                                <p data-ng-if="curso.CurEstado != 1">Eliminado</p>
+                                            </td>
+                                            <td>{{curso.AsiNombreCorto}}</td>
+                                            <td>{{curso.AsiNombre}}</td>
+                                            <td>{{curso.UaaNombreExclusivo}}</td>
+                                            <td>{{curso.PlaNombre}}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin lista de cursos programados para primiparos -->
+                </div>
+            </div>
+            <!-- Fin contenido de pestañas -->
+        </div>
+    </div>
+</section>
+
+
+<script>
+    function prepararTablaFiltrada(tablaId) {
+        var $tabla = jQuery('#' + tablaId);
+        var scope = angular.element($tabla).scope();
+        var filtroAnterior = scope.curpro.filterListaSimple;
+        var haySeleccionados = scope.curpro.listaCursosProgramadosSimple.some(function (curso) {
+            return curso.seleccionado === true;
+        });
+
+        var $original = jQuery('#' + tablaId);
+        var requiereReRender = haySeleccionados && filtroAnterior;
+
+        // Si hay filas marcadas y el filtro de texto está activo, ng-repeat puede haber
+        // quitado del DOM filas marcadas que ya no coinciden con el filtro. Se limpia el
+        // filtro temporalmente para forzar el re-render de todas las filas antes de clonar.
+        // El try/finally garantiza que el filtro se restaure aunque scope.$apply() u otra
+        // parte del proceso lance una excepción.
+        // No se muestra un indicador de carga: todo este bloque corre de forma síncrona
+        // dentro del mismo handler de click, así que el navegador no pinta el modal hasta
+        // que el trabajo ya terminó (solo se vería un flash al cerrarlo). Se acepta que la
+        // pestaña se congele brevemente en tablas grandes con selección filtrada.
+        if (requiereReRender) {
+            var $clone;
+
+            try {
+                scope.curpro.filterListaSimple = '';
+                scope.$apply();
+
+                $clone = clonarYFiltrarTabla($original, haySeleccionados);
+            } finally {
+                scope.curpro.filterListaSimple = filtroAnterior;
+                scope.$apply();
+            }
+
+            return $clone;
+        }
+
+        return clonarYFiltrarTabla($original, haySeleccionados);
+    }
+
+    function clonarYFiltrarTabla($original, haySeleccionados) {
+        var $clone = $original.clone();
+        var $filasOriginal = $original.find('tbody > tr');
+        var $filasClonadas = $clone.find('tbody > tr');
+
+        if (haySeleccionados) {
+            $filasOriginal.each(function (i) {
+                var marcado = jQuery(this).find('td:first-child input[type="checkbox"]').is(':checked');
+                if (!marcado) {
+                    $filasClonadas.eq(i).remove();
+                }
+            });
+        }
+
+        $clone.find('tr').each(function () {
+            jQuery(this).find('th:first-child, td:first-child').remove();
+        });
+
+        return $clone;
+    }
+
+    function exportarExcelSimple() {
+        var $clone = prepararTablaFiltrada('tableCursosSimple');
+        ExportToExcel($clone.prop('outerHTML'), 'listadoCursosSimple');
+    }
+
+    function copiarTablaSimple() {
+        var $clone = prepararTablaFiltrada('tableCursosSimple');
+        var $wrapper = jQuery('<div>').css({ position: 'fixed', left: '-9999px' }).append($clone);
+        jQuery('body').append($wrapper);
+
+        var el = $clone[0];
+        var range, sel;
+        if (document.createRange && window.getSelection) {
+            range = document.createRange();
+            sel = window.getSelection();
+            sel.removeAllRanges();
+            try {
+                range.selectNodeContents(el);
+                sel.addRange(range);
+            } catch (e) {
+                range.selectNode(el);
+                sel.addRange(range);
+            }
+        }
+
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        if (document.execCommand('copy')) {
+            Toast.fire({
+                icon: 'success',
+                title: 'Información copiada correctamente.'
+            });
+        } else {
+            Toast.fire({
+                icon: 'error',
+                title: 'No se pudo copiar la información.'
+            });
+        }
+
+        if (sel) {
+            sel.removeAllRanges();
+        }
+        $wrapper.remove();
+    }
+
+    function ExportToExcel(htmlExport, nombre) {
+        var ua = window.navigator.userAgent;
+        var msie = ua.indexOf("MSIE ");
+
+        //other browser not tested on IE 11
+        // If Internet Explorer
+        if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./)) {
+            jQuery('body').append(" <iframe id=\"iframeExport\" style=\"display:none\"></iframe>");
+            iframeExport.document.open("txt/html", "replace");
+            iframeExport.document.write(htmlExport);
+            iframeExport.document.close();
+            iframeExport.focus();
+            sa = iframeExport.document.execCommand("SaveAs", true, nombre + ".xls");
+        }
+        else {
+            var link = document.createElement('a');
+
+            document.body.appendChild(link); // Firefox requires the link to be in the body
+            link.download = nombre + ".xls";
+            link.href = 'data:application/vnd.ms-excel,' + escape(htmlExport);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+</script>

@@ -1,0 +1,311 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1>Cursos editados Administrador</h1>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-model="ceadmin.periodoSeleccionado"
+                    data-ng-change="ceadmin.consultarCalendarios()">
+                    <option value="" disabled selected>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in ceadmin.listaPeriodos | limitTo:10" value="{{periodo.PerCodigo}}">
+                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-disabled="ceadmin.periodoSeleccionado == '' "
+                    data-ng-model="ceadmin.calendarioSeleccionado">
+                    <option value="" disabled>Seleccionar calendario.</option>
+                    <option data-ng-repeat="calendario in ceadmin.listaCalendarios | limitTo:10"
+                        value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-disabled="ceadmin.calendarioSeleccionado == '' "
+                    data-ng-model="ceadmin.tipoSeleccionado">
+                    <option value="" disabled>Seleccionar tipo.</option>
+                    <option value="1">Cursos Creados</option>
+                    <option value="2">Cursos Editados</option>
+                    <option value="4">Cursos Eliminados</option>
+                    <option value="_" disabled></option>
+                    <option value="3">Subgrupos Eliminados</option>
+                    <option value="_" disabled></option>
+                    <option value="5">Horario Creado</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <button class="btn btn-danger btn-sm" ng-click="ceadmin.consultarReporte()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<hr>
+<div class="container-fluid" data-ng-if="ceadmin.seccionInformacionReporte == 1">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Reporte cursos creados o editados por administradores</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm" data-ng-model="ceadmin.filter.Curso"
+                                placeholder="Busqueda reporte">
+                        </div>
+                        <div class="col pt-1 text-right">
+                            <button class="btn btn-default btn-sm" onclick="copiarTabla()">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row" data-ng-if="ceadmin.contenidoReporte.length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de cursos encontrados: {{ceadmin.contenidoReporte.length}}</small></span><br>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm" id="tableData">
+                        <thead>
+                            <th>#</th>
+                            <th></th>
+                            <th>ESTADO</th>
+                            <th>CURSO</th>
+                            <th>ASIGNATURA</th>
+                            <th>NOMBRE</th>
+                            <th>CUPO</th>
+                            <th>SEMANAS</th>
+                            <th>MODALIDAD</th>
+                            <th>UNIDAD PROPIETARIA</th>
+                            <th>OBSERVACIONES</th>
+                            <th>COORDINADOR</th>
+                            <th>VINCULACIÓN</th>
+                            <th>DEDICACIÓN</th>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-if="ceadmin.contenidoReporte.length < 1">
+                                <td colspan="13">No se encontraron registros.</td>
+                            </tr>
+                            <tr data-ng-repeat="reporte in ceadmin.contenidoReporte | toArray | filter:ceadmin.filter.Curso">
+                                <td>{{$index + 1}}</td>
+                                <td><button class="btn btn-danger btn-sm" data-ng-click="ceadmin.consultarHistorial(reporte)">Historial</button></td>
+                                <td>
+                                    <span class="badge bg-success" data-ng-if="reporte.CurEstado == 1">ACTIVO</span>
+                                    <span class="badge bg-danger" data-ng-if="reporte.CurEstado == 0">ELIMINADO</span>
+                                </td>
+                                <td>{{reporte.CurCodigo}}</td>
+                                <td>{{reporte.AsiNombreCorto}}</td>
+                                <td>{{reporte.AsiNombre}}</td>
+                                <td>{{reporte.CurCupo}}</td>
+                                <td>{{reporte.CurSemanas}}</td>
+                                <td>{{reporte.TicNombre}}</td>
+                                <td>{{reporte.UaaCodigoNombre}}</td>
+                                <td>{{reporte.CurObservaciones}}</td>
+                                <td>{{reporte.PerIdentificacion}} - {{reporte.PerNombreApellido}}</td>
+                                <td>{{reporte.VinNombre}}</td>
+                                <td>{{reporte.DedNombre}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid" data-ng-if="ceadmin.seccionInformacionReporte == 2">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Reporte subgrupos eliminados por administradores</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm" data-ng-model="ceadmin.filter.Curso"
+                                placeholder="Busqueda reporte">
+                        </div>
+                        <div class="col pt-1 text-right">
+                            <button class="btn btn-default btn-sm" onclick="copiarTabla()">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row" data-ng-if="ceadmin.contenidoReporte2.SubGrupo.length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de subgrupos encontrados: {{ceadmin.contenidoReporte2.SubGrupo.length}}</small></span><br>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm" id="tableData">
+                        <thead>
+                            <th>#</th>
+                            <th></th>
+                            <th>ESTADO CURSO</th>
+                            <th>CURSO</th>
+                            <th>SUBGRUPO</th>
+                            <th>ASIGNATURA</th>
+                            <th>NOMBRE</th>
+                            <th>CARACTER</th>
+                            <th>CUPO</th>
+                            <th>SEMANAS</th>
+                            <th>MODALIDAD</th>
+                            <th>UNIDAD PROPIETARIA</th>
+                            <th>OBSERVACIONES</th>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-if="ceadmin.contenidoReporte2.SubGrupo.length < 1">
+                                <td colspan="11">No se encontraron registros.</td>
+                            </tr>
+                            <tr data-ng-repeat="reporte in ceadmin.contenidoReporte2.SubGrupo | toArray | filter:ceadmin.filter.Curso">
+                                <td>{{$index + 1}}</td>
+                                <td><button class="btn btn-danger btn-sm" data-ng-click="ceadmin.consultarHistorial(reporte)">Historial</button></td>
+                                <td>
+                                    <span class="badge bg-success" data-ng-if="reporte.CurEstado == 1">ACTIVO</span>
+                                    <span class="badge bg-danger" data-ng-if="reporte.CurEstado == 0">ELIMINADO</span>
+                                </td>
+                                <td>{{reporte.CurCodigo}}</td>
+                                <td>{{reporte.EsoSubgrupo}}</td>
+                                <td>{{reporte.AsiNombreCorto}}</td>
+                                <td>{{reporte.AsiNombre}}</td>
+                                <td>{{reporte.CarCodigo}}</td>
+                                <td>{{reporte.CurCupo}}</td>
+                                <td>{{reporte.CurSemanas}}</td>
+                                <td>{{reporte.TicNombre}}</td>
+                                <td>{{reporte.UaaCodigoNombre}}</td>
+                                <td>{{reporte.CurObservaciones}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal agenda docente -->
+<div class="modal fade" id="modalHistorialCurso" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-xl" style="max-width: 90% !important;">
+        <div class="modal-content" style="margin-top: 0%">
+            <div class="modal-header modal-header-danger">
+                <h5 class="modal-title" id="myModalLabel">Historial cambios de curso: <b>{{ceadmin.historialCurso[0].CurCodigo}}</b></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body table-responsive pt-0">
+                <div class="row">   
+                    <div class="col-md-12">
+                        <table class="table table-hover table-bordered table-striped table-sm table-head-fixed">
+                            <thead>
+                                <th>#</th>
+                                <th>USUARIO AUDITORIA</th>
+                                <th>TIPO</th>
+                                <th>FECHA CAMBIO</th>
+                                <th>ESTADO CURSO</th>
+                                <th>ESTADO SUBGRUPO</th>
+                                <th>SUBGRUPO</th>
+                                <th>SEMANAS</th>
+                                <th>CUPO</th>
+                                <th>CUPO RESERVA</th>
+                                <th>OBSERVACIONES</th>
+                                <th>ALFANUMERICO</th>
+                                <th>ASIGNATURA</th>
+                                <th>CARACTER</th>
+                                <th>NUCLEO</th>
+                                <th>MODALIDAD</th>
+                                <th>SEDE</th>
+                                <th>COORDINADOR</th>
+                                <th>VINCULACIÓN</th>
+                                <th>DEDICACIÓN</th>
+                                <th>PROPIETARIA ASIGNATURA</th>
+                            </thead>
+                            <tbody>
+                                <tr data-ng-repeat="curso in ceadmin.historialCurso" data-ng-class="{
+                                    'table-success': curso.LogType == 'INSERT',
+                                    'table-danger': curso.LogType == 'VIEJO', 
+                                    'table-warning': curso.LogType == 'NUEVO'
+                                }"> 
+                                    <td>{{$index + 1}}</td>
+                                    <td>{{curso.PerNombreApellido}}</td>
+                                    <td>
+                                        <p data-ng-if="curso.LogType == 'INSERT'">CREACIÓN</p>
+                                        <p data-ng-if="curso.LogType == 'VIEJO' ">ANTIGUO</p>
+                                        <p data-ng-if="curso.LogType == 'NUEVO' ">NUEVO</p>
+                                    </td>
+                                    <td>{{curso.FechaCambio}}</td>
+                                    <td>
+                                        <span class="badge bg-success" data-ng-if="curso.CurEstado == 1">Activo</span>
+                                        <span class="badge bg-danger" data-ng-if="curso.CurEstado == 0">Eliminado</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success" data-ng-if="curso.CusEstado == 1">Activo</span>
+                                        <span class="badge bg-danger" data-ng-if="curso.CusEstado == 0">Eliminado</span>
+                                    </td>
+                                    <td>{{curso.EsoSubgrupo}}</td>
+                                    <td>{{curso.CurSemanas}}</td>
+                                    <td>{{curso.CurCupo}}</td>
+                                    <td>{{curso.CurAmpliacion}}</td>
+                                    <td>{{curso.CurObservaciones}}</td>
+                                    <td>{{curso.AsiNombreCorto}}</td>
+                                    <td>{{curso.AsiNombre}}</td>
+                                    <td>{{curso.CarCodigo}}</td>
+                                    <td>{{curso.NucNombre}}</td>
+                                    <td>{{curso.TicNombre}}</td>
+                                    <td>{{curso.SedNombre}}</td>
+                                    <td>{{curso.CoorPerNombreApellido}}</td>
+                                    <td>{{curso.VinNombre}}</td>
+                                    <td>{{curso.DedNombre}}</td>
+                                    <td>{{curso.UaaCodigoNombre}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal agenda docente -->
+
+
+<script>
+    function copiarTabla() {
+        // Get the text field
+        let el = document.getElementById('tableData')
+        var body = document.body, range, sel;
+        if (document.createRange && window.getSelection) {
+            range = document.createRange();
+            sel = window.getSelection();
+            sel.removeAllRanges();
+            try {
+                range.selectNodeContents(el);
+                sel.addRange(range);
+            } catch (e) {
+                range.selectNode(el);
+                sel.addRange(range);
+            }
+        } else if (body.createTextRange) {
+            range = body.createTextRange();
+            range.moveToElementText(el);
+            range.select();
+        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        if(document.execCommand('copy')){
+            Toast.fire({
+                icon: 'success',
+                title: 'Información copiada correctamente.'
+            });
+        }else{
+            Toast.fire({
+                icon: 'error',
+                title: 'No se pudo copiar la información.'
+            });
+        }
+    }
+</script>
+

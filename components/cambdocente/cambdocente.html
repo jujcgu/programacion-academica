@@ -1,0 +1,763 @@
+<style>
+    input[type="checkbox"] {
+        transform: scale(1.3);
+        -webkit-transform: scale(1.3);
+        margin: 5px;
+        cursor: pointer;
+    }
+</style>
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cambio docente</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="cambdocente.codigo_curso">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="cambdocente.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="cambdocente.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{cambdocente.cursoSeleccionado[0].CurCodigo}}
+                            ({{cambdocente.cursoSeleccionado[0].CalNombre}})</b>
+                        <br>
+                        <span style="color:red; " ng-if="cambdocente.PermitidoProgramar == false">
+                            EL CURSO NO TIENE APERTURA ACTIVA DE PROGRAMACIÓN ACADÉMICA NI APERTURA ACTIVA PARA CAMBIO DOCENTE.
+                        </span>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{cambdocente.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{cambdocente.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{cambdocente.cursoSeleccionado[0].NucNombre}}<br>
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{cambdocente.cursoSeleccionado[0].UaaCodigo}}.
+                            {{cambdocente.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{cambdocente.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{cambdocente.creadorCurso}}<br>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-auto">
+                            <b>Coordinador: </b> {{cambdocente.cursoSeleccionado[0].PerNombreApellido}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <!-- Inicio seccion de docentes del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="cambdocente.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">SUBGRUPOS DEL CURSO</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <th>#</th>
+                                        <th>Grupo</th>
+                                        <th>Subgrupo</th>
+                                        <th>Identificación</th>
+                                        <th>Nombre</th>
+                                        <th>Apellido</th>
+                                        <th>Vinculación</th>
+                                        <th>Vinc. Inicio</th>
+                                        <th>Vinc. Fin</th>
+                                        <th>Matriculados</th>
+                                        <th title="Semanas Programadas.">Semanas Prog.</th>
+                                        <th title="Cursos cargados en la vinculación de este docente.">Cur. Docente</th>
+                                        <th></th>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-if="cambdocente.listaSubgrupo == null" class="text-center">
+                                            <td colspan="10">No se encontraron subgrupos</td>
+                                        </tr>
+                                        <tr ng-repeat="row in cambdocente.listaSubgrupo">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{row.CurGrupo}}</td>
+                                            <td>{{row.EsoSubGrupo}}</td>
+                                            <td>{{row.PerIdentificacion}}</td>
+                                            <td>{{row.PerNombre}}</td>
+                                            <td>{{row.PerApellido}}</td>
+                                            <td><strong>{{row.UapCodigo}}.</strong> {{row.VinNombre}} - {{row.DedNombre}}</td>
+                                            <td>{{row.UapFechaInicio}}</td>
+                                            <td>{{row.UapFechaFin}}</td>
+                                            <td>{{row.TotalMatriculados}}</td>
+                                            <td>{{row.SemanasProgramadas}}</td>
+                                            <td>{{row.Carga}}</td>
+                                            <td>
+                                                <button class="btn btn-danger btn-sm"
+                                                    ng-click="cambdocente.consultarHorario(row.UapCodigo, row.EsoSubGrupo)">Horario</button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de docentes del curso -->
+
+        <!-- Inicio formulario de cambio docente -->
+        <!--  -->
+        <div class="row justify-content-center align-items-center"
+            ng-if="cambdocente.listaHorario.length > 0 && cambdocente.PermitidoProgramar == true">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">FORMULARIO CAMBIO DE DOCENTE</h3>
+                    </div>
+                    <div class="card-body">
+                        <!-- Nueva forma de buscar -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <!-- Modal para seleccionar la persona vinculada a los programas del usuario -->
+                                    <div class="col-md-12">
+                                        <label>Busqueda de docentes</label>
+                                        <div class="input-group">
+                                            <p class="form-control  form-control-sm">
+                                                {{cambdocente.docenteSeleccionado.PerNombreApellido}}
+                                            <div class="input-group-append">
+                                                <button class="btn btn-success btn-sm"
+                                                    data-ng-click="cambdocente.consultarAgendaDocente()"
+                                                    title="Ver la agenda docente del coordinador.">Agenda</button>
+                                                <button class="btn btn-danger btn-sm"
+                                                    data-ng-click="cambdocente.consultarDocente()"
+                                                    title="Ver los docentes disponibles para las unidades.">Propios</button>
+                                                <button class="btn btn-danger btn-sm"
+                                                    data-ng-click="cambdocente.consultarDocentesPrestados()"
+                                                    title="Ver los docentes aprobados por otros programas.">Asignados</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row"
+                            data-ng-if="cambdocente.docenteSeleccionado.PerIdentificacion != '' && cambdocente.docenteSeleccionado.PerIdentificacion != undefined">
+                            <div class="col-md-12">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row"
+                            data-ng-if="cambdocente.docenteSeleccionado.PerIdentificacion != '' && cambdocente.docenteSeleccionado.PerIdentificacion != undefined">
+                            <div class="col">
+                                <div class="callout callout-danger">
+                                    <h5>Información del docente</h5>
+                                    <hr>
+                                    <div class="row">
+                                        <div class="col-auto">
+                                            <span><b>Identificación: </b>
+                                                {{cambdocente.docenteSeleccionado.PerIdentificacion}}</span><br>
+                                            <span><b>Vinculación: </b>
+                                                {{cambdocente.docenteSeleccionado.UapCodigo}}</span><br>
+                                            <span><b>Fecha Inicio:
+                                                </b>{{cambdocente.docenteSeleccionado.UapFechaInicio}}</span><br>
+                                            <span><b>Carga académica: </b>
+                                                {{cambdocente.docenteSeleccionado.UapCarga}}</span> <br> <br>
+                                        </div>
+                                        <div class="col-auto">
+                                            <span><b>Nombre: </b>
+                                                {{cambdocente.docenteSeleccionado.PerNombreApellido}}</span><br>
+                                            <span>{{cambdocente.docenteSeleccionado.VinNombre}}</span>
+                                            <span>{{cambdocente.docenteSeleccionado.DedNombre}}</span><br>
+                                            <span><b>Fecha Fin:
+                                                </b>{{cambdocente.docenteSeleccionado.UapFechaFin}}</span>
+                                            <br>
+                                            <span><b>Unidad: </b>{{cambdocente.docenteSeleccionado.UaaCodigo + '. '}}
+                                                {{cambdocente.docenteSeleccionado.UaaNombreCorto}}</span><br>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6"
+                                data-ng-if="cambdocente.docenteSeleccionado.Horario !== undefined && cambdocente.docenteSeleccionado.Horario.length > 0">
+                                <div class="callout callout-danger">
+                                    <h5>Horario permitido para el docente</h5>
+                                    <hr>
+                                    <p data-ng-repeat="horario in cambdocente.docenteSeleccionado.Horario"
+                                        class="badge bg-success m-1">{{horario.DiaCodigo}}.
+                                        {{horario.DiaNombre}}
+                                        {{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <br>
+                        <div class="row"
+                            data-ng-if="cambdocente.docenteSeleccionado.PerIdentificacion != '' && cambdocente.docenteSeleccionado.PerIdentificacion != undefined">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>¿Cambiar coordinador?</label>
+                                    <select class="form-control form-control-sm"
+                                        data-ng-model="cambdocente.docenteSeleccionado.CambioCoordinador">
+                                        <option value="" disabled>Seleccione...</option>
+                                        <option value="1">Si</option>
+                                        <option value="0">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer"
+                    data-ng-if="cambdocente.docenteSeleccionado.PerIdentificacion != '' && cambdocente.docenteSeleccionado.PerIdentificacion != undefined">
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <button type="submit" data-ng-click="cambdocente.cambiarHorasDocente()"
+                                class="btn btn-danger btn-sm">Cambiar docente</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin formulario de cambio docente -->
+
+        <!-- Inicio seccion de horario del docente -->
+        <div class="row justify-content-center align-items-center" ng-if="cambdocente.listaHorario.length > 0">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row">
+                            <div class="col">
+                                <h3 class="card-title">HORARIO SUBGRUPO DEL CURSO
+                                    SELECCIONADOS ({{cambdocente.listaHorarioSeleccionado.length}})</h3>
+                            </div>
+                            <div class="col-auto">
+                                <b>Todos </b>
+                                <input type="checkbox" class="todos" id="todos" value="1"
+                                    data-ng-click="cambdocente.seleccionarTodasSemanas($event)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card card-danger"
+                                    ng-repeat="semana in cambdocente.listaHorario track by $index"
+                                    ng-init="outerIndex = $index">
+                                    <div class="card-header">
+                                        <div class="row">
+                                            <div class="col">
+                                                <span>SEMANA {{$index + 1}}</span>
+                                            </div>
+                                            <div class="col-auto" data-ng-if="cambdocente.PermitidoProgramar == true">
+                                                <b>Semanal </b>
+                                                <input type="checkbox" class="semana" id="semana{{$index + 1}}" value="1"
+                                                    data-ng-click="cambdocente.seleccionarTodos($index + 1, $event)">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <table class="table table-hover" id="tablaHorario">
+                                            <thead>
+                                                <th>#</th>
+                                                <th>Subgrupo</th>
+                                                <th>Dia</th>
+                                                <th>Hora</th>
+                                                <th>Fecha</th>
+                                                <th>Identificacion</th>
+                                                <th>Nombre</th>
+                                                <th>Apellido</th>
+                                                <th title="Cursos cargados en la vinculación de este docente.">Cur.
+                                                    Docente</th>
+                                                <th>Unidad Programada</th>
+                                                <th>
+                                                    <span title="Individual">Indiv.</span>
+                                                </th>
+                                                <th>
+                                                    <span title="Grupo Dia - Hora">Grp.</span>
+                                                </th>
+                                            </thead>
+                                            <tbody>
+                                                <tr ng-repeat="row in semana track by $index"
+                                                    class="trCheck fila{{row.EsoCodigo}} semana{{outerIndex + 1}}"
+                                                    style="cursor: pointer"
+                                                    data-ng-click="cambdocente.seleccionarHorario(row.EsoCodigo, $event, 'fila')">
+                                                    <td class="text-nowrap">{{$index + 1}}
+                                                        <span data-ng-if=" row.TipoEspacio == 'Historico' "
+                                                            class="badge bg-warning"
+                                                            title="Esta hora es antigua y ya se encuentra almacenada en el historico, de igual forma se modificara en el historico.">H</span>
+                                                    </td>
+                                                    <td>{{row.EsoSubGrupo}}</td>
+                                                    <td>{{row.DiaNombre}}</td>
+                                                    <td>{{row.HoraCodigo}}</td>
+                                                    <td>{{row.EsoFecha}}</td>
+                                                    <td>{{row.PerIdentificacion}}</td>
+                                                    <td>{{row.PerNombre}}</td>
+                                                    <td>{{row.PerApellido}}</td>
+                                                    <td>{{row.Carga}}</td>
+                                                    <td>{{row.UaaCodigoNombre}}</td>
+                                                    <td data-ng-if="cambdocente.PermitidoProgramar == true">
+                                                        <input type="checkbox" name="chkHorario[]"
+                                                            value="{{row.EsoCodigo}}" TipoEspacio="{{row.TipoEspacio}}"
+                                                            horacodigo="{{row.HoraCodigo}}"
+                                                            diacodigo="{{row.DiaCodigo}}" UaaCodigo="{{row.UaaCodigo}}"
+                                                            EsoFecha="{{row.EsoFecha}}"
+                                                            data-ng-click="cambdocente.seleccionarHorario(row.EsoCodigo, $event, 'individual')"
+                                                            class="individual horario{{row.EsoCodigo}} semana{{outerIndex + 1}}">
+                                                    </td>
+                                                    <td data-ng-if="cambdocente.PermitidoProgramar == true">
+                                                        <input type="checkbox" name="chkHorario[]"
+                                                            value="{{row.EsoCodigo}}" TipoEspacio="{{row.TipoEspacio}}"
+                                                            horacodigo="{{row.HoraCodigo}}"
+                                                            diacodigo="{{row.DiaCodigo}}" UaaCodigo="{{row.UaaCodigo}}"
+                                                            EsoFecha="{{row.EsoFecha}}"
+                                                            data-ng-click="cambdocente.seleccionarHorario(row.EsoCodigo, $event, 'grupo')"
+                                                            class="grupo horario{{row.EsoCodigo}} semana{{outerIndex + 1}}">
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="row">
+                            <button type="submit" data-ng-click="cambdocente.mostrarSweetAlertDisabled('eliminar_horario','')"
+                                class="btn btn-danger btn-sm mt-3">Eliminar Horas Seleccionadas</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de horario del docente -->
+
+    </div>
+
+    <!--------- Modal para vinculaciones docentes ------>
+    <div class="modal fade" id="modalVinculacionesDocente" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content" style="margin-top: 0%;">
+                <div class="modal-body">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <h3 class="card-title">Lista vinculaciones docente</h3>
+                            <div class="card-tools">
+                                <div class="input-group input-group-sm">
+                                    <span>Buscar: <input type="text" placeholder="Ingrese el nombre..."
+                                            class="input input-sm" data-ng-model="cambdocente.filter.Docentes"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body table-responsive p-0" style="max-height: 400px;">
+                            <table id="tbl" class="table table-hover table-sm table-head-fixed">
+                                <thead>
+                                    <th>#</th>
+                                    <th>Codigo</th>
+                                    <th>Carga</th>
+                                    <th>Identificación</th>
+                                    <th>Nombre</th>
+                                    <th>Vinculación</th>
+                                    <th>Dedicación</th>
+                                    <th>Fecha Inicio</th>
+                                    <th>Fecha Fin</th>
+                                    <th>Unidad</th>
+                                    <th></th>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-repeat="row in cambdocente.vinculacionesDocente | toArray | filter:cambdocente.filter.Docentes">
+                                        <td>{{$index + 1}}</td>
+                                        <td>{{row.UapCodigo}} </td>
+                                        <td><b>{{row.UapCarga}}</b></td>
+                                        <td>{{row.PerIdentificacion}}</td>
+                                        <td>{{row.PerNombreApellido}}</td>
+                                        <td>{{row.VinNombre}}</td>
+                                        <td>{{row.DedNombre}}</td>
+                                        <td><b>{{row.UapFechaInicio}}</b></td>
+                                        <td><b>{{row.UapFechaFin}}</b></td>
+                                        <td>{{row.UaaCodigo + '.'}} {{row.UaaNombreCorto}}</td>
+                                        <td><button class="btn btn-danger btn-sm"
+                                                data-ng-click="cambdocente.seleccionarDocente(row, 'Propio');">Seleccionar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inicio modal agenda docente -->
+    <div class="modal fade" id="modalAgendaDocente" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content" style="margin-top: 0%">
+                <div class="modal-header modal-header-danger">
+                    <h5 class="modal-title" id="myModalLabel">
+                        AGENDA DOCENTE:
+                        <div class="font-weight-bold">{{cambdocente.docenteSeleccionado.PerNombreApellido}}</div>
+                        <div class="small text-muted">{{cambdocente.docenteSeleccionado.VinNombre}} - {{cambdocente.docenteSeleccionado.DedNombre}}</div>
+                        <div class="small text-muted">
+                            Fecha inicio: {{cambdocente.fechasAgendaDocente.fechaInicio}}
+                            <span class="mx-1">|</span>
+                            Fecha fin: {{cambdocente.fechasAgendaDocente.fechaFin}}
+                        </div>
+                        <div class="small text-muted">Sede: {{cambdocente.docenteSeleccionado.SedNombre || cambdocente.cargaDocente.sedNombre}}</div>
+                    </h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-4 align-items-stretch">
+                        <div class="col-12">
+                            <div class="card border-0 shadow-sm h-100">
+                                <div class="card-body p-4">
+                                    <div class="row text-center">
+                                        <div class="col-md-3 border-right">
+                                            <p class="text-muted text-uppercase small font-weight-bold mb-1">Docencia</p>
+                                            <h3 class="font-weight-bold text-dark">{{cambdocente.cargaDocente.horasDocencia}}</h3>
+                                            <span class="badge badge-pill badge-light">{{cambdocente.cargaDocente.horasDocenciaSemanal}} hrs/semana</span>
+                                        </div>
+                                        <div class="col-md-3 border-right">
+                                            <p class="text-muted text-uppercase small font-weight-bold mb-1">Investigación</p>
+                                            <h3 class="font-weight-bold text-dark">{{cambdocente.cargaDocente.horasInvestigacion}}</h3>
+                                            <span class="badge badge-pill badge-light">{{cambdocente.cargaDocente.horasInvestigacionSemanal}} hrs/semana</span>
+                                        </div>
+                                        <div class="col-md-3 border-right">
+                                            <p class="text-muted text-uppercase small font-weight-bold mb-1">Proyección Social</p>
+                                            <h3 class="font-weight-bold text-dark">{{cambdocente.cargaDocente.horasProyeccion}}</h3>
+                                            <span class="badge badge-pill badge-light">{{cambdocente.cargaDocente.horasProyeccionSemanal}} hrs/semana</span>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <p class="text-muted text-uppercase small font-weight-bold mb-1">Gestión Admin.</p>
+                                            <h3 class="font-weight-bold text-dark">{{cambdocente.cargaDocente.horasGestion}}</h3>
+                                            <span class="badge badge-pill badge-light">{{cambdocente.cargaDocente.horasGestionSemanal}} hrs/semana</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mt-3">
+                            <div class="card bg-light text-dark border shadow-sm overflow-hidden h-100" style="min-height: 190px;">
+                                <div class="card-body p-4 position-relative d-flex flex-column">
+                                    <div style="opacity: 0.08; position: absolute; right: -20px; top: -20px; font-size: 7rem;">
+                                        <i class="fas fa-calendar-week"></i>
+                                    </div>
+                                    <p class="text-uppercase small font-weight-bold mb-1" style="opacity: 0.8;">Total Pico</p>
+                                    <h2 class="display-4 font-weight-bold mb-0">{{cambdocente.cargaDocente.totalSemanal}}</h2>
+                                    <p class="mb-1 text-muted">Horas por Semana</p>
+                                    <div class="mt-auto" data-ng-if="cambdocente.cargaDocente.topeSemanal != null">
+                                        <span class="badge badge-pill badge-light">Tope semanal: {{cambdocente.cargaDocente.topeSemanal}}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mt-3">
+                            <div class="card bg-light text-dark border shadow-sm overflow-hidden h-100" style="min-height: 190px;">
+                                <div class="card-body p-4 position-relative d-flex flex-column">
+                                    <div style="opacity: 0.08; position: absolute; right: -20px; top: -20px; font-size: 7rem;">
+                                        <i class="fas fa-history"></i>
+                                    </div>
+                                    <p class="text-uppercase small font-weight-bold mb-1" style="opacity: 0.8;">Total Acumulado</p>
+                                    <h2 class="display-4 font-weight-bold mb-0">{{cambdocente.cargaDocente.totalSemestre}}</h2>
+                                    <p class="mb-1 text-muted">Horas por Semestre</p>
+                                    <div class="mt-auto" data-ng-if="cambdocente.cargaDocente.topeSemestral != null">
+                                        <span class="badge badge-pill badge-light">Tope semestral: {{cambdocente.cargaDocente.topeSemestral}}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <td><b>Hora</b></td>
+                                <td class="text-center" width="380px"><b>Lunes</b></td>
+                                <td class="text-center" width="380px"><b>Martes</b></td>
+                                <td class="text-center" width="380px"><b>Miercoles</b></td>
+                                <td class="text-center" width="380px"><b>Jueves</b></td>
+                                <td class="text-center" width="380px"><b>Viernes</b></td>
+                                <td class="text-center" width="380px"><b>Sabado</b></td>
+                                <td class="text-center" width="380px"><b>Domingo</b></td>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-repeat="agenda in cambdocente.agendaDocente">
+                                <td class="align-middle text-center"><b>{{$index + 1}}</b></td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[1].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[1].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[1].CurCodigo}} -
+                                                {{agenda[1].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[1].AsiNombre + ' '
+                                                +agenda[1].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[1].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[1].EspCodigo + '. '}}
+                                                {{agenda[1].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[1].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[1]}}</span><br>
+                                            <span>Libre</span>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[2].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[2].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[2].CurCodigo}} -
+                                                {{agenda[2].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[2].AsiNombre + ' '
+                                                +agenda[2].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[2].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[2].EspCodigo + '. '}}
+                                                {{agenda[2].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[2].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[2]}}</span><br>
+                                            <span>Libre</span><br>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[3].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[3].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[3].CurCodigo}} -
+                                                {{agenda[3].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[3].AsiNombre + ' '
+                                                +agenda[3].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[3].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[3].EspCodigo + '. '}}
+                                                {{agenda[3].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[3].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[3]}}</span><br>
+                                            <span>Libre</span><br>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[4].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[4].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[4].CurCodigo}} -
+                                                {{agenda[4].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[4].AsiNombre + ' '
+                                                +agenda[4].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[4].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[4].EspCodigo + '. '}}
+                                                {{agenda[4].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[4].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[4]}}</span><br>
+                                            <span>Libre</span><br>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[5].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[5].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[5].CurCodigo}} -
+                                                {{agenda[5].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[5].AsiNombre + ' '
+                                                +agenda[5].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[5].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[5].EspCodigo + '. '}}
+                                                {{agenda[5].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[5].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[5]}}</span><br>
+                                            <span>Libre</span><br>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[6].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[6].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[6].CurCodigo}} -
+                                                {{agenda[6].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[6].AsiNombre + ' '
+                                                +agenda[6].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[6].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[6].EspCodigo + '. '}}
+                                                {{agenda[6].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[6].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[6]}}</span><br>
+                                            <span>Libre</span><br>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td class="align-middle text-center">
+                                    <div class="alert alert-danger" style="padding:5px"
+                                        data-ng-if="agenda[7].CurCodigo">
+                                        <small>
+                                            <span class="text-nowrap"><b>Calendario</b>:
+                                                {{agenda[7].CalNombre}}</span><br>
+                                            <span class="text-nowrap"><b>Curso</b>: {{agenda[7].CurCodigo}} -
+                                                {{agenda[7].EsoSubgrupo}}</span><br>
+                                            <span><b>Asignatura</b>: {{agenda[7].AsiNombre + ' '
+                                                +agenda[7].AsiNombreCorto}}</span><br>
+                                            <span><b>Unidad</b>: {{agenda[7].UaaNombreCorto}}</span><br>
+                                            <span><b>Espacio</b>: {{agenda[7].EspCodigo + '. '}}
+                                                {{agenda[7].EspNombreCorto}}</span><br>
+                                        </small>
+                                    </div>
+                                    <div class="alert alert-success" style="padding:5px"
+                                        data-ng-if="!agenda[7].CurCodigo">
+                                        <small>
+                                            <span>{{agenda[7]}}</span><br>
+                                            <span>Libre</span><br>
+                                        </small>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Fin modal agenda docente -->
+
+    <!-- Inicio modal lista Docentes Prestados ============================================================ -->
+    <div class="modal fade" id="modalDocentesPrestados" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content" style="margin-top: 0%;">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="myModalLabel">Lista de Docentes Prestados</h4>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <span>Buscar: <input type="text" placeholder="Ingrese la busqueda..." class="input input-sm"
+                                    data-ng-model="cambdocente.filter.Docentes"></span>
+                        </div>
+                        <br>
+                        <div class="col-md-12"><br>
+                            <span>Rango de busquedas entre fechas de vinculacion:
+                                <b>{{cambdocente.listaDocentesPrestados['FechaInicio']}} -
+                                    {{cambdocente.listaDocentesPrestados['FechaFin']}}</b></span><br>
+                            <span class="text-danger"><b>Nota: </b>Si no se encuentra el docente por favor verifique las
+                                fechas de vinculación, en caso de necesitar docentes NN o vincular un docente recuerde
+                                que
+                                debe <b>solicitarlos a talento humano con anticipación.</b></span>
+                        </div>
+                    </div>
+                    <br>
+                    <div class="row" style="height: 600px;overflow: auto;">
+                        <div class="col-md-12 m-0"
+                            data-ng-repeat="docente in cambdocente.listaDocentesPrestados['Docentes'] | toArray | filter:cambdocente.filter.Docentes">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <span><b>SOLICITUD:</b> {{docente.SpdCodigo}}</span> <br>
+                                    <span><b>DOCENTE:</b> {{docente.UapCodigo}}. {{docente.PerNombreApellido}}</span>
+                                    <br>
+                                    <span><b>VINCULACIÓN:</b> {{docente.VinNombre}} {{docente.DedNombre}}</span> <br>
+                                    <span><b>FECHAS VINCULACIÓN:</b> {{docente.UapFechaInicio}}
+                                        {{docente.UapFechaFin}}</span> <br>
+                                    <span><b>CARGA ACADÉMICA:</b> {{docente.UapCarga}}</span><br>
+                                    <span><b>ASIGNATURA:</b> {{docente.AsiNombre}} {{docente.AsiNombreCorto}}</span><br>
+                                    <span><b>UNIDAD DIRIGIDA:</b> {{docente.UaaNombreDpto}}</span><br>
+                                    <span><b>UNIDAD SOLICITA:</b> {{docente.UaaNombreSolicita}}</span><br>
+                                    <span><b>SEDE:</b> {{docente.SedCodigo}}. {{docente.SedNombre}}</span><br>
+                                </div>
+                                <div class="col-md-4">
+                                    <span><b>HORARIO PERMITIDO:</b> </span>
+                                    <div data-ng-repeat="horario in docente.Horario">
+                                        <span class="badge bg-success">{{horario.DiaCodigo}}. {{horario.DiaNombre}}
+                                            {{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <p data-ng-if="cambdocente.cursoSeleccionado[0].AsiCodigo != docente.AsiCodigo && cambdocente.cursoSeleccionado[0].SedCodigo == docente.SedCodigo"
+                                        class="text-danger"><b>La asignatura del curso
+                                            ({{cambdocente.cursoSeleccionado[0].AsiNombre + ' - ' +
+                                            cambdocente.cursoSeleccionado[0].AsiNombreCorto}}) es diferente a la
+                                            aprobada al docente.</b></p>
+                                    <p data-ng-if="cambdocente.cursoSeleccionado[0].AsiCodigo == docente.AsiCodigo && cambdocente.cursoSeleccionado[0].SedCodigo != docente.SedCodigo"
+                                        class="text-danger"><b>La sede del curso es diferente a la aprobada al
+                                            docente ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                    <p data-ng-if="cambdocente.cursoSeleccionado[0].AsiCodigo != docente.AsiCodigo && cambdocente.cursoSeleccionado[0].SedCodigo != docente.SedCodigo"
+                                        class="text-danger"><b>La asignatura del curso
+                                            ({{cambdocente.cursoSeleccionado[0].AsiNombre + ' - ' +
+                                            cambdocente.cursoSeleccionado[0].AsiNombreCorto}}) y la sede son
+                                            diferentes a las aprobadas al docente
+                                            ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                    <button type="button" class="btn btn-danger btn-sm mt-2" data-dismiss="modal"
+                                        data-ng-if="cambdocente.cursoSeleccionado[0].AsiCodigo == docente.AsiCodigo && cambdocente.cursoSeleccionado[0].SedCodigo == docente.SedCodigo"
+                                        data-ng-click="cambdocente.seleccionarDocente(docente, 'Prestado')">Seleccionar</button>
+                                </div>
+                            </div>
+                            <hr>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Fin modal lista Docentes Prestados =============================================================== -->
+
+    <!-- Fin Zona de modals! -->
+
+    </div>
+</section>

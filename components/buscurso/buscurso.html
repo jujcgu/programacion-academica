@@ -1,0 +1,2860 @@
+<div class="content-header" data-ng-if="buscurso.administrador == 0">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-auto">
+                <h4><b>Esta sección solo es permitida para los administradores.</b></h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="content-header" data-ng-if="buscurso.administrador == 1">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Buscar curso</h1>
+            </div>
+            <div class="col-auto">
+                <!-- <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="buscurso.CurCodigo"> -->
+                <select class="form-control form-control-sm" data-ng-model="buscurso.periodoSeleccionado"
+                    data-ng-change="buscurso.consultarCalendarios()">
+                    <option value="" disabled>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in buscurso.listaPeriodos | limitTo:10"
+                        value="{{periodo.PerCodigo}}">{{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <!-- <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="buscurso.CurCodigo"> -->
+                <select class="form-control form-control-sm" data-ng-model="buscurso.calendarioSeleccionado">
+                    <option value="" disabled>Seleccionar calendario.</option>
+                    <option data-ng-repeat="calendario in buscurso.listaCalendarios | limitTo:10"
+                        value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="buscurso.consultarCursos()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content" data-ng-if="buscurso.administrador == 1">
+    <div class="container-fluid">
+
+        <div class="row">
+            <!-- Inicio lista de cursos -->
+            <div class="col-md-4" data-ng-if="buscurso.listadoCursos == 1">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row">
+                            <div class="col-auto">
+                                <h4>Lista de cursos ({{buscurso.obtenerCursosFiltrados().length}})</h4>
+                            </div>
+                            <div class="col">
+                                <button type="button" class="btn btn-sm btn-success"
+                                    data-ng-click="buscurso.formularioCrearCurso()">Crear</button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-auto">
+                                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                                    data-ng-model="buscurso.filter.Curso">
+                            </div>
+                            <div class="col-auto">
+                                <select class="form-conntrol form-control-sm" data-ng-model="buscurso.filter.Estado">
+                                    <option value="" selected disabled>Estado</option>
+                                    <option value="">Todos</option>
+                                    <option value="1">Activos</option>
+                                    <option value="0">Eliminados</option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <select class="form-conntrol form-control-sm" data-ng-model="buscurso.filter.Horario">
+                                    <option value="" selected disabled>Horario</option>
+                                    <option value="">Todos</option>
+                                    <option value="1">Con horario</option>
+                                    <option value="0">Sin horario</option>
+                                    <option value="2">Horario incompleto</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body" style="overflow: auto;max-height:700px">
+                        <span data-ng-if="buscurso.obtenerCursosFiltrados().length <= 0"
+                            style="color: #c2c2c2;">No se encontraron cursos.</span>
+                        <div class="card seleccionable" data-ng-click="buscurso.consultarDetalleCurso(curso);"
+                            data-ng-class="{
+                                'alert-danger': curso.CurEstado == 0, 
+                                'alert-warning': curso.TotalHorario == 0,
+                                'alert-info': buscurso.esHorarioIncompleto(curso) && curso.TotalHorario != 0
+                            }"
+                            data-ng-repeat="curso in buscurso.obtenerCursosFiltrados()">
+                            <!-- 'alert-warning': curso.TotalMatriculados <= 40,  -->
+                            <div class="card-header">
+                                <span>
+                                    <b>Código:</b> {{curso.CurCodigo}}
+                                    <b>Sede: </b>{{curso.SedNombre}}
+                                    <b>Grupo:</b> {{curso.CurGrupo}}
+                                    <b>Núcleo: </b>{{curso.NucNombre}}
+                                    <b>Modalidad: </b>{{curso.TicNombre}}
+                                </span><br>
+                                <span><b>Asignatura:</b> {{curso.AsiNombre}} {{curso.AsiNombreCorto}}</span><br>
+                                <span><b>Unidad:</b> {{curso.UaaCodigo}}. {{curso.UaaNombreCorto}}</span><br>
+                                <span><b>Link: </b>
+                                    <span data-ng-if="curso.CurUrl != ''">{{curso.CurUrl}}</span>
+                                    <span data-ng-if="curso.CurUrl == ''">Sin asignar.</span>
+                                </span><br>
+                                <span data-ng-if="curso.CurEstado == 0"><b>Estado:</b> Eliminado<br></span>
+                                <span data-ng-if="curso.TotalHorario == 0"><b>SIN HORARIO</b><br></span>
+                                <span data-ng-if="buscurso.esHorarioIncompleto(curso) && curso.TotalHorario != 0"><b>HORARIO INCOMPLETO</b><br></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin lista de cursos -->
+
+            <div class="col-md-8">
+                <div class="row">
+                    <!-- Inicio informacion de curso -->
+                    <div class="col-md-12" data-ng-if="buscurso.informacionCursos == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between">
+                                    <div class="col-auto">
+                                        <h4>Información del curso {{buscurso.cursoDetalle[0].CurCodigo}}</h4>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-sm btn-warning" type="button"
+                                            data-ng-click="buscurso.formularioEditarCurso(buscurso.cursoDetalle[0])">
+                                            Editar curso
+                                        </button>
+                                        <button class="btn btn-info btn-sm"
+                                            data-ng-click="buscurso.mostrarInformacion()">
+                                            Mostrar / ocultar info.
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="informacion-curso" style="display: none;">
+                                <div class="card-body">
+                                    <div class="row"
+                                        data-ng-if="buscurso.Calendario.PeriodoPersonalizado && buscurso.Calendario.PeriodoPersonalizado != ''">
+                                        <div class="col">
+                                            <h5><b><span class="text-danger">Periodo fecha especial:
+                                                        {{buscurso.Calendario.PeriodoPersonalizado}}</span></b>
+                                            </h5>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <hr>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Código curso</label>
+                                                <p class="form-control form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CurCodigo}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Calendario</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CalNombre}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Sede</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].SedNombre}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Notas parciales</label>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].CurNotaParcial == 'S' "
+                                                    class="form-control  form-control-sm">Si</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].CurNotaParcial == 'N' "
+                                                    class="form-control  form-control-sm">No</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].CurNotaParcial == '' "
+                                                    class="form-control  form-control-sm">Sin definir</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].CurNotaParcial == NULL "
+                                                    class="form-control  form-control-sm">Sin definir</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Modalidad</label>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].TicCodigo == 1"
+                                                    class="form-control  form-control-sm">
+                                                    Presencial</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].TicCodigo == 2"
+                                                    class="form-control  form-control-sm">Apoyo
+                                                    virtual (b-Learning)</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].TicCodigo == 3"
+                                                    class="form-control  form-control-sm">Mixto
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Calificación</label>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].TesCodigo == 1 "
+                                                    class="form-control  form-control-sm">
+                                                    Númerico (0-5)</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].TesCodigo == 2 "
+                                                    class="form-control  form-control-sm">
+                                                    Aprobado/Reprobado</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].TesCodigo == 3 "
+                                                    class="form-control  form-control-sm">Tres
+                                                    Niveles</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Total matriculados</label>
+                                                <p data-ng-class="{'bg-warning bg-opacity-25': buscurso.cursoDetalle[0].TotalMatriculados <= 40}"
+                                                    class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].TotalMatriculados}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Tipo curso</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CutNombre}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Estado</label>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].CurEstado == 1 "
+                                                    class="form-control  form-control-sm">
+                                                    Activo</p>
+                                                <p data-ng-if="buscurso.cursoDetalle[0].CurEstado == 0 "
+                                                    class="form-control  form-control-sm">
+                                                    Eliminado</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col">
+                                            <hr>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="form-group">
+                                                <label>Nombre asignatura</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].AsiNombreCorto}} -
+                                                    {{buscurso.cursoDetalle[0].AsiNombre}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <div class="form-group">
+                                                <label>Propietario de la asignatura</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].UaaCodigo}}.
+                                                    {{buscurso.cursoDetalle[0].UaaNombreCorto}}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Carácter</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CarCodigo}}.
+                                                    {{buscurso.cursoDetalle[0].CarNombre}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Plan académico</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].PlaNombre}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Créditos Totales</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].AsiCreditos}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Créditos Teoria</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].AsiCreditosTeoria}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Créditos Practica</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].AsiCreditosPractica}}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Horas Semanales Teoria</label>
+                                                <p class="form-control  form-control-sm bg-gray">
+                                                    {{buscurso.cursoDetalle[0].AsiHorasSemanalesTeorico}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Horas Semanales Practica</label>
+                                                <p class="form-control  form-control-sm bg-gray">
+                                                    {{buscurso.cursoDetalle[0].AsiHorasSemanalesPractica}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Horas Semanales Teorico Practica</label>
+                                                <p class="form-control  form-control-sm bg-gray">
+                                                    {{buscurso.cursoDetalle[0].AsiHorasSemanalesTeoricoPractico}}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col">
+                                            <hr>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Grupo</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CurGrupo}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Cupo total</label>
+                                                <p class="form-control  form-control-sm" name="InfoCurCupo"
+                                                    id="InfoCurCupo">
+                                                    {{buscurso.cursoDetalle[0].CurCupo}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Cupo reservado</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CurAmpliacionCupo}}</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <div class="form-group">
+                                                <label>Semanas</label>
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].CurSemanas}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="form-group">
+                                                <label>Exclusivo</label>
+                                                <div class="input-group">
+                                                    <p class="form-control  form-control-sm"
+                                                        data-ng-if="buscurso.cursoDetalle[0].CurExclusivo == 1">Si</p>
+                                                    <p class="form-control  form-control-sm"
+                                                        data-ng-if="buscurso.cursoDetalle[0].CurExclusivo == 0">No</p>
+                                                    <div class="input-group-append">
+                                                        <button class="btn btn-danger btn-sm"
+                                                            data-ng-click="buscurso.consultarPlanExclusivo()"
+                                                            title="Ver los planes de estudios exclusivos del curso.">Plan
+                                                            estudios</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <label>Docente coordinador</label>
+                                            <div class="input-group">
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.cursoDetalle[0].PerNombreApellido}} -
+                                                    {{buscurso.cursoDetalle[0].VinNombre}}</p>
+                                                <!-- <div class="input-group-append">
+                                            <button class="btn btn-success btn-sm"
+                                                data-ng-click="buscurso.consultarAgendaDocente()"
+                                                title="Ver la agenda docente del coordinador.">Agenda</button>
+                                        </div> -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <label>Link meet</label>
+                                            <p class="form-control  form-control-sm"><a
+                                                    href="{{buscurso.cursoDetalle[0].CurUrl}}"
+                                                    target="_blank">{{buscurso.cursoDetalle[0].CurUrl}}</a> </p>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <label>Observaciones</label>
+                                            <textarea class="form-control  form-control-sm" readonly
+                                                style="resize: none;"
+                                                rows="5">{{buscurso.cursoDetalle[0].CurObservaciones}}</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                    <!-- Fin informacion de curso -->
+
+                    <!-- Inicio formulario creacion de horario -->
+                    <div class="col-md-12" data-ng-if="buscurso.creacionHorario == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between">
+                                    <div class="col-auto">
+                                        <h4>Programar horario curso {{buscurso.cursoDetalle[0].CurCodigo}}
+                                        </h4>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row"
+                                    data-ng-if="buscurso.Calendario.PeriodoPersonalizado && buscurso.Calendario.PeriodoPersonalizado != ''">
+                                    <div class="col">
+                                        <h5><b><span class="text-danger">Periodo fecha especial:
+                                                    {{buscurso.Calendario.PeriodoPersonalizado}}</span></b>
+                                        </h5>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <hr>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Asignatura</label>
+                                            <input type="text" class="form-control form-control-sm" readonly
+                                                value="{{buscurso.cursoDetalle[0].AsiNombreCorto}} {{buscurso.cursoDetalle[0].AsiNombre}}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Carácter</label>
+                                            <input type="text" class="form-control form-control-sm" readonly
+                                                value="{{buscurso.cursoDetalle[0].CarCodigo}} {{buscurso.cursoDetalle[0].CarNombre}}">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Unidad</label>
+                                            <input type="text" class="form-control form-control-sm"
+                                                style="cursor: pointer;" readonly placeholder="Seleccione la unidad..."
+                                                data-ng-click="buscurso.consultarUnidades()"
+                                                data-ng-model="buscurso.crearHorario.Uaa.UaaCodigoNombre">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Semanas Curso</label>
+                                            <input type="text" class="form-control form-control-sm" readonly
+                                                value="{{buscurso.cursoDetalle[0].CurSemanas}}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Fecha Inicio</label>
+                                            <input type="text" class="form-control form-control-sm" datepicker
+                                                placeholder="aaaa-mm-dd" data-ng-change="buscurso.calcularFechaFinal()"
+                                                data-ng-model="buscurso.crearHorario.FechaInicio">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Fecha Fin</label>
+                                            <input type="text" class="form-control form-control-sm" readonly
+                                                placeholder="aaaa-mm-dd" data-ng-model="buscurso.crearHorario.FechaFin">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Docente curso</label>
+                                        <div class="input-group">
+                                            <p class="form-control  form-control-sm">
+                                                {{buscurso.crearHorario.PerNombreApellido}} -
+                                                {{buscurso.crearHorario.VinNombre}}</p>
+                                            <div class="input-group-append">
+                                                <button class="btn btn-success btn-sm"
+                                                    data-ng-click="buscurso.consultarAgendaDocenteHorario()"
+                                                    title="Ver la agenda docente del coordinador.">Agenda</button>
+                                                <button class="btn btn-danger btn-sm"
+                                                    data-ng-click="buscurso.consultarDocentes()"
+                                                    title="Ver los docentes disponibles para las unidades.">Docentes</button>
+                                                <button class="btn btn-danger btn-sm"
+                                                    data-ng-click="buscurso.consultarDocentesPrestados()"
+                                                    title="Ver los docentes aprobados para la unidad y asignatura.">Asignados</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <br>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Modalidad</label>
+                                            <span data-ng-if="buscurso.cursoDetalle[0].TicCodigo == 1"
+                                                class="form-control  form-control-sm" readonly>
+                                                Presencial</span>
+                                            <span data-ng-if="buscurso.cursoDetalle[0].TicCodigo == 2"
+                                                class="form-control  form-control-sm" readonly>Apoyo
+                                                virtual (b-Learning)</span>
+                                            <span data-ng-if="buscurso.cursoDetalle[0].TicCodigo == 3"
+                                                class="form-control  form-control-sm" readonly>Mixto
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Subgrupo</label>
+                                            <input type="text" class="form-control form-control-sm"
+                                                placeholder="00, 01, 02, 03"
+                                                data-ng-model="buscurso.crearHorario.SubGrupo"
+                                                data-ng-change="buscurso.crearHorario.CupoSubgrupo = ((buscurso.crearHorario.SubGrupo == '00' || buscurso.crearHorario.SubGrupo == '0') ? buscurso.cursoDetalle[0].CurCupo : '')">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="col-auto col-form-label">Cupo Subgrupo</label>
+                                            <input type="text" class="form-control form-control-sm" placeholder="0"
+                                                data-ng-disabled="buscurso.crearHorario.SubGrupo == '00' || buscurso.crearHorario.SubGrupo == '0'"
+                                                data-ng-model="buscurso.crearHorario.CupoSubgrupo">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <hr>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label>Espacio</label>
+                                            <div class="input-group">
+                                                <p class="form-control  form-control-sm">
+                                                    <span
+                                                        data-ng-if="buscurso.crearHorario.EspCodigo">{{buscurso.crearHorario.EspCodigo}}.
+                                                        {{buscurso.crearHorario.EspNombre}} -
+                                                        {{buscurso.crearHorario.EspNombreCorto}}</span>
+                                                    <span style="color: #acb2b7"
+                                                        data-ng-if="!buscurso.crearHorario.EspCodigo">Seleccione
+                                                        un espacio asignado o virtual.</span>
+                                                </p>
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-success btn-sm"
+                                                        data-ng-click="buscurso.consultarEspaciosAsignados()"
+                                                        title="Ver los espacios asignados a la unidad seleccionada.">Asignados</button>
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.consultarEspaciosVirtuales()"
+                                                        title="Ver los espacios virtuales disponibles">Virtuales</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row"
+                                    data-ng-if="buscurso.crearHorario.EspCodigo && buscurso.crearHorario.EspCodigo != ''">
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>Día</label>
+                                            <span class="form-control form-control-sm"
+                                                readonly>{{buscurso.crearHorario.DiaCodigo}}.
+                                                {{buscurso.crearHorario.DiaNombre}}</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label>Horas</label>
+                                            <select multiple="multiple" size="7" class="form-control form-control-sm"
+                                                data-ng-model="buscurso.crearHorario.HorasSeleccionadas">
+                                                <option value=""
+                                                    data-ng-if="buscurso.listaHoras ==  null || buscurso.listaHoras.length == 0"
+                                                    disabled>No se encontraron horas disponibles</option>
+                                                <option value="{{hora.HraCodigo}}"
+                                                    data-ng-repeat="hora in buscurso.listaHoras">{{hora.HraNombre}}.
+                                                    {{hora.HraInicio}} - {{hora.HraFin}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-sm btn-danger"
+                                    data-ng-click="buscurso.mostrarSweetAlertDisabled('crear_horario','')">Programar</button>
+                                <button class="btn btn-sm btn-default"
+                                    data-ng-click="buscurso.creacionHorario = 0; buscurso.crearHorario = []; buscurso.listaHoras = []">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin formulario creacion de horario -->
+
+                    <!-- Inicio formulario creacion de curso -->
+                    <div class="col-md-12" data-ng-if="buscurso.formularioCreacionCursos == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between">
+                                    <div class="col-auto">
+                                        <h4>Formulario creación de curso</h4>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="buscurso.abrirModal('modalBusquedaAsignatura');">
+                                            Buscar asignatura
+                                        </button>
+                                        <button class="btn btn-default btn-sm"
+                                            data-ng-click="buscurso.cancelarCrearCurso();">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Calendario</label>
+                                            <select class="form-control-sm form-control"
+                                                data-ng-model="buscurso.CursoCrear.CalCodigo">
+                                                <option value="" disabled>Seleccionar calendario.</option>
+                                                <option
+                                                    data-ng-repeat="calendario in buscurso.listaCalendarios | limitTo:10"
+                                                    value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Sede</label>
+                                            <select class="form-control form-control-sm" id="slcSede"
+                                                data-ng-model="buscurso.CursoCrear.SedCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option data-ng-repeat="sede in buscurso.listaSedes"
+                                                    value="{{sede.SedCodigo}}">
+                                                    {{sede.SedNombre}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Notas parciales</label>
+                                            <select class="form-control form-control-sm" id="slcNotas"
+                                                data-ng-model="buscurso.CursoCrear.CurNotaParcial">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="S">Si</option>
+                                                <option value="N">No</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Modalidad</label>
+                                            <select class="form-control form-control-sm" id="slcModalidad"
+                                                data-ng-model="buscurso.CursoCrear.TicCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="1">Presencial</option>
+                                                <option value="2">Apoyo virtual (b-Learning)</option>
+                                                <option value="3">Mixto</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Tipo curso</label>
+                                            <select class="form-control form-control-sm" id="slcTipoCurso"
+                                                data-ng-model="buscurso.CursoCrear.CutCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="{{tipocurso.CutCodigo}}"
+                                                    data-ng-repeat="tipocurso in buscurso.listaTipoCurso">
+                                                    {{tipocurso.CutNombre}}
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Calificación</label>
+                                            <select class="form-control form-control-sm" id="slcCalificacion"
+                                                data-ng-model="buscurso.CursoCrear.TesCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="1">Númerico (0-5)</option>
+                                                <option value="2">Aprobado/Reprobado</option>
+                                                <option value="3">Tres Niveles</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col">
+                                        <hr>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label>Nombre asignatura</label>
+                                            <div class="input-group">
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.CursoCrear.AsiNombreCorto}} -
+                                                    {{buscurso.CursoCrear.AsiNombre}}</p>
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.consultarPlanesAcademicos()"
+                                                        title="Ver los planes academicos.">Plan academico</button>
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.modalAsignaturasEquivalentes()"
+                                                        title="Ver la lista de asignaturas permitidas.">Equivalencias</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label>Propietario de la asignatura</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.UaaCodigo}}.
+                                                {{buscurso.CursoCrear.UaaNombreCorto}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Carácter</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.CarCodigo}}.
+                                                {{buscurso.CursoCrear.CarNombre}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Plan académico</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.PlaNombre}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Créditos Totales</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.AsiCreditos}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Créditos Teoria</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.AsiCreditosTeoria}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Créditos Practica</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.AsiCreditosPractica}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Horas Semanales Teoria</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.AsiHorasSemanalesTeorico}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Horas Semanales Practica</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.AsiHorasSemanalesPractica}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Horas Semanales Teorico Practica</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.AsiHorasSemanalesTeoricoPractico}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col">
+                                        <hr>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Grupo</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoCrear.CurGrupo}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Cupo total</label>
+                                            <input type="text" class="form-control form-control-sm" name="EditCurCupo"
+                                                id="EditCurCupo" ng-model="buscurso.CursoCrear.CurCupo">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Cupo reservado</label>
+                                            <input type="text" class="form-control form-control-sm"
+                                                data-ng-model="buscurso.CursoCrear.CurAmpliacionCupo">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Semanas</label>
+                                            <input type="text" class="form-control form-control-sm"
+                                                data-ng-model="buscurso.CursoCrear.CurSemanas">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Exclusivo</label>
+                                            <div class="input-group">
+                                                <select class="form-control form-control-sm" id="slcExclusivo"
+                                                    data-ng-model="buscurso.CursoCrear.CurExclusivo">
+                                                    <option value="" selected disabled>Seleccione...</option>
+                                                    <option value="1">Si</option>
+                                                    <option value="0">No</option>
+                                                </select>
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.consultarPlanExclusivoCreacion()"
+                                                        title="Ver los planes de estudios exclusivos del curso.">Plan
+                                                        estudios</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Docente coordinador</label>
+                                        <div class="input-group">
+                                            <p class="form-control  form-control-sm">
+                                                {{buscurso.CursoCrear.PerNombreApellido}} -
+                                                {{buscurso.CursoCrear.VinNombre}}</p>
+                                            <div class="input-group-append">
+                                                <button class="btn btn-success btn-sm"
+                                                    data-ng-click="buscurso.consultarAgendaDocente()"
+                                                    title="Ver la agenda docente del coordinador.">Agenda</button>
+                                                <button class="btn btn-danger btn-sm"
+                                                    data-ng-click="buscurso.consultarDocentes()"
+                                                    title="Ver los docentes disponibles para las unidades.">Docentes</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Link meet</label>
+                                        <input type="url" class="form-control form-control-sm"
+                                            data-ng-model="buscurso.CursoCrear.CurUrl">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Observaciones</label>
+                                        <textarea class="form-control  form-control-sm" style="resize: none;"
+                                            data-ng-model="buscurso.CursoCrear.CurObservaciones"
+                                            rows="5">{{buscurso.CursoCrear.CurObservaciones}}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-sm btn-danger"
+                                    data-ng-click="buscurso.mostrarSweetAlertDisabled('crear_curso','')">Crear</button>
+                                <button class="btn btn-sm btn-default"
+                                    data-ng-click="buscurso.cancelarCrearCurso()">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin formulario creacion de curso -->
+
+                    <!-- Inicio formulario edicion de curso -->
+                    <div class="col-md-12" data-ng-if="buscurso.formularioEdicionCursos == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between">
+                                    <div class="col-auto">
+                                        <h4>Formulario edición del curso {{buscurso.cursoDetalle[0].CurCodigo}}</h4>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="buscurso.abrirModal('modalBusquedaAsignatura');">
+                                            Buscar asignatura
+                                        </button>
+                                        <button class="btn btn-default btn-sm"
+                                            data-ng-click="buscurso.cancelarEditarCurso()">
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Código curso</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.CurCodigo}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Calendario</label>
+                                            <!-- <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.CalNombre}}</p> -->
+                                            <select class="form-control form-control-sm"
+                                                data-ng-model="buscurso.CursoActualizar.CalCodigo">
+                                                <option data-ng-repeat="calendario in buscurso.listaCalendarios"
+                                                    value="{{calendario.CalCodigo}}">{{calendario.CalNombre}}</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Sede</label>
+                                            <select class="form-control form-control-sm" id="slcSede"
+                                                data-ng-model="buscurso.CursoActualizar.SedCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option data-ng-repeat="sede in buscurso.listaSedes"
+                                                    value="{{sede.SedCodigo}}">
+                                                    {{sede.SedNombre}}</option>
+                                            </select>
+                                            <!-- <p class="form-control">{{buscurso.CursoActualizar.SedNombre}}</p> -->
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Notas parciales</label>
+                                            <select class="form-control form-control-sm" id="slcNotas"
+                                                data-ng-model="buscurso.CursoActualizar.CurNotaParcial">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="S">Si</option>
+                                                <option value="N">No</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Modalidad </label>
+                                            <p class="form-control  form-control-sm bg-gray"
+                                                data-ng-if="buscurso.tieneHorarioProgramado() && buscurso.CursoActualizar.TicCodigo == '1'">
+                                                Presencial</p>
+                                            <p class="form-control  form-control-sm bg-gray"
+                                                data-ng-if="buscurso.tieneHorarioProgramado() && buscurso.CursoActualizar.TicCodigo == '2'">
+                                                Apoyo virtual (b-Learning)</p>
+                                            <p class="form-control  form-control-sm bg-gray"
+                                                data-ng-if="buscurso.tieneHorarioProgramado() && buscurso.CursoActualizar.TicCodigo == '3'">
+                                                Mixto</p>
+                                            <select class="form-control form-control-sm" id="slcModalidad"
+                                                data-ng-if="!buscurso.tieneHorarioProgramado()"
+                                                data-ng-model="buscurso.CursoActualizar.TicCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="1">Presencial</option>
+                                                <option value="2">Apoyo virtual (b-Learning)</option>
+                                                <option value="3">Mixto</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Calificación</label>
+                                            <select class="form-control form-control-sm" id="slcCalificacion"
+                                                data-ng-model="buscurso.CursoActualizar.TesCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="1">Númerico (0-5)</option>
+                                                <option value="2">Aprobado/Reprobado</option>
+                                                <option value="3">Tres Niveles</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Total matriculados</label>
+                                            <p data-ng-class="{'bg-warning bg-opacity-25': buscurso.cursoDetalle[0].TotalMatriculados <= 40}"
+                                                class="form-control  form-control-sm">
+                                                {{buscurso.CursoActualizar.TotalMatriculados}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Tipo curso</label>
+                                            <select class="form-control form-control-sm" id="slcTipoCurso"
+                                                data-ng-model="buscurso.CursoActualizar.CutCodigo">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="{{tipocurso.CutCodigo}}"
+                                                    data-ng-repeat="tipocurso in buscurso.listaTipoCurso">
+                                                    {{tipocurso.CutNombre}}
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Estado</label>
+                                            <select class="form-control form-control-sm" id="slcEstado"
+                                                data-ng-model="buscurso.CursoActualizar.CurEstado">
+                                                <option value="" selected disabled>Seleccione...</option>
+                                                <option value="1">Activo</option>
+                                                <option value="0">Eliminado</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col">
+                                        <hr>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label>Nombre asignatura</label>
+                                            <div class="input-group">
+                                                <p class="form-control  form-control-sm">
+                                                    {{buscurso.CursoActualizar.AsiNombreCorto}} -
+                                                    {{buscurso.CursoActualizar.AsiNombre}}</p>
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.consultarPlanesAcademicos()"
+                                                        title="Ver los planes academicos.">Plan academico</button>
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.modalAsignaturasEquivalentes()"
+                                                        title="Ver la lista de asignaturas permitidas.">Equivalencias</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label>Propietario de la asignatura</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.UaaCodigo}}.
+                                                {{buscurso.CursoActualizar.UaaNombreCorto}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Carácter</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.CarCodigo}}.
+                                                {{buscurso.CursoActualizar.CarNombre}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Plan académico</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.PlaNombre}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Créditos Totales</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.AsiCreditos}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Créditos Teoria</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.AsiCreditosTeoria}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Créditos Practica</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.AsiCreditosPractica}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Horas Semanales Teoria</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.AsiHorasSemanalesTeorico}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Horas Semanales Practica</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.AsiHorasSemanalesPractica}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Horas Semanales Teorico Practica</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.AsiHorasSemanalesTeoricoPractico}}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col">
+                                        <hr>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Grupo</label>
+                                            <p class="form-control  form-control-sm bg-gray">
+                                                {{buscurso.CursoActualizar.CurGrupo}}</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Cupo total</label>
+                                            <input type="text" class="form-control form-control-sm" name="EditCurCupo"
+                                                id="EditCurCupo" ng-model="buscurso.CursoActualizar.CurCupo">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Cupo reservado</label>
+                                            <input type="text" class="form-control form-control-sm"
+                                                data-ng-model="buscurso.CursoActualizar.CurAmpliacionCupo">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <div class="form-group">
+                                            <label>Semanas</label>
+                                            <input type="text" class="form-control form-control-sm"
+                                                data-ng-model="buscurso.CursoActualizar.CurSemanas">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label>Exclusivo</label>
+                                            <div class="input-group">
+                                                <select class="form-control form-control-sm" id="slcExclusivo"
+                                                    data-ng-model="buscurso.CursoActualizar.CurExclusivo">
+                                                    <option value="" selected disabled>Seleccione...</option>
+                                                    <option value="1">Si</option>
+                                                    <option value="0">No</option>
+                                                </select>
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.consultarPlanExclusivoCurso()"
+                                                        title="Ver los planes de estudios exclusivos del curso.">Plan
+                                                        estudios</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Docente coordinador</label>
+                                        <div class="input-group">
+                                            <p class="form-control  form-control-sm">
+                                                {{buscurso.CursoActualizar.PerNombreApellido}} -
+                                                {{buscurso.CursoActualizar.VinNombre}}</p>
+                                            <div class="input-group-append">
+                                                <button class="btn btn-success btn-sm"
+                                                    data-ng-click="buscurso.consultarAgendaDocente()"
+                                                    title="Ver la agenda docente del coordinador.">Agenda</button>
+                                                <button class="btn btn-danger btn-sm"
+                                                    data-ng-click="buscurso.consultarDocentes()"
+                                                    title="Ver los docentes disponibles para las unidades.">Docentes</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Link meet</label>
+                                        <input type="url" class="form-control form-control-sm"
+                                            data-ng-model="buscurso.CursoActualizar.CurUrl">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <label>Observaciones</label>
+                                        <textarea class="form-control  form-control-sm" style="resize: none;"
+                                            data-ng-model="buscurso.CursoActualizar.CurObservaciones"
+                                            rows="5">{{buscurso.CursoActualizar.CurObservaciones}}</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-sm btn-danger"
+                                    data-ng-click="buscurso.mostrarSweetAlertDisabled('actualizar_curso', buscurso.cursoDetalle[0].CurCodigo)">Actualizar</button>
+                                <button class="btn btn-sm btn-default"
+                                    data-ng-click="buscurso.cancelarEditarCurso()">Cancelar</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin formulario edicion de curso -->
+
+                    <!-- Inicio lista de horario -->
+                    <div class="col-md-12" data-ng-if="buscurso.informacionCursos == 1">
+                        <div class="card card-danger">
+                            <div class="card-header">
+                                <div class="row justify-content-between">
+                                    <div class="col">
+                                        <h4>Programación académica del curso {{buscurso.cursoDetalle[0].CurCodigo}}
+                                        </h4>
+                                    </div>
+                                    <div class="col-auto">
+                                        <input type="text" name="txtFiltroHorario" class="form-control form-control-sm"
+                                            data-ng-model="buscurso.filter.Horario2" placeholder="Buscar...">
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-sm btn-success" title="Programar horario."
+                                            ng-click="buscurso.mostrarFormularioCrearHorario()">Programar horario</button>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-sm btn-primary"
+                                            title="Actualizar agenda de curso."
+                                            ng-click="buscurso.actualizarAgenda(buscurso.cursoDetalle[0].CurCodigo)">Actualizar
+                                            Agenda</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-warning" role="alert">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            Hrs. semanales T: <b>{{buscurso.cursoDetalle[0].AsiHorasSemanalesTeorico}}</b>
+                                        </div>
+                                        <div class="col-md-4">
+                                            Hrs. Semanales P: <b>{{buscurso.cursoDetalle[0].AsiHorasSemanalesPractica}}</b>
+                                        </div>
+                                        <div class="col-md-4">
+                                            Hrs. Semanales TP: <b>{{buscurso.cursoDetalle[0].AsiHorasSemanalesTeoricoPractico}}</b>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body" data-ng-if="buscurso.cursoHorario.length > 0">
+                                <div class="alert alert-info" role="alert"
+                                    ng-bind-html="buscurso.mensajeVerificarHorasCaracter | trustedHtml"
+                                    data-ng-if="buscurso.verificarHorasCaracter(buscurso.cursoDetalle[0].CarCodigo.trim() || '')">
+                                    {{buscurso.mensajeVerificarHorasCaracter || 'Validando...'}}
+                                </div>
+                            </div>
+                            <div class="card-body table-responsive p-0" style="overflow: auto;max-height:700px">
+                                <div class="row" data-ng-if="buscurso.cursoHorario.length == null ">
+                                    <div class="card-body">
+                                        <div class="row justify-content-between align-items-center">
+                                            <div class="col-auto align-middle">
+                                                <span class="text-gray">No se encontro horario para el curso
+                                                    seleccionado.</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row" data-ng-if="buscurso.cursoHorario.length != null">
+                                    <div class="col-md-12">
+                                        <table
+                                            class="table table-striped table-bordered table-hover table-sm table-head-fixed">
+                                            <thead>
+                                                <th>#</th>
+                                                <th>
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="buscurso.mostrarSweetAlertDisabled('eliminar_horario_grupo')">Eliminar
+                                                        Seleccionados</button>
+                                                </th>
+                                                <th>Subgrupo</th>
+                                                <th>Docente</th>
+                                                <th>Semana</th>
+                                                <th>Fecha Inicial</th>
+                                                <th>Fecha Final</th>
+                                                <th>Día</th>
+                                                <th>Hora</th>
+                                                <th>Espacio</th>
+                                                <th>Vinculación</th>
+                                                <th>Dedicación</th>
+                                                <th>Unidad Programada</th>
+                                            </thead>
+                                            <tbody>
+                                                <tr class="trCheck fila{{horario.EsoSubGrupo + horario.DiaCodigo + horario.HraCodigo + horario.EspCodigo + horario.UaaCodigo + horario.UapCodigo}}"
+                                                    obj="{{horario}}" style="cursor: pointer"
+                                                    data-ng-click="buscurso.seleccionarHorario(horario)"
+                                                    data-ng-repeat="horario in buscurso.cursoHorario | toArray | filter:buscurso.filter.Horario2">
+                                                    <td class="align-middle"><b>{{$index + 1}}</b></td>
+                                                    <td class="align-middle">
+                                                        <div class="row">
+                                                            <div class="col">
+                                                                <button
+                                                                    data-ng-click="buscurso.mostrarSweetAlertDisabled('eliminar_horario',horario)"
+                                                                    class="btn btn-danger btn-sm">Eliminar</button>
+                                                            </div>
+                                                            <div class="col">
+                                                                <input type="checkbox" name="chkHorario[]"
+                                                                    value="{{horario.EsoSubGrupo + horario.DiaCodigo + horario.HraCodigo + horario.EspCodigo + horario.UaaCodigo + horario.UapCodigo}}"
+                                                                    obj="{{horario}}"
+                                                                    data-ng-click="buscurso.seleccionarHorario(horario)"
+                                                                    class="horario{{horario.EsoSubGrupo + horario.DiaCodigo + horario.HraCodigo + horario.EspCodigo + horario.UaaCodigo + horario.UapCodigo}}">
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td class="align-middle">{{horario.EsoSubGrupo}}</td>
+                                                    <td class="align-middle">{{horario.NombreApellidoDocente}}</td>
+                                                    <td class="align-middle">{{horario.EsoSemanas}}</td>
+                                                    <td class="align-middle">{{horario.EsoFechaInicio}}</td>
+                                                    <td class="align-middle">{{horario.EsoFechaFin}}</td>
+                                                    <td class="align-middle">{{horario.DiaNombre}}</td>
+                                                    <td class="align-middle">{{horario.EsoHora}}</td>
+                                                    <td class="align-middle">{{horario.EspNombreCorto}}</td>
+                                                    <td class="align-middle">{{horario.VinNombre}}</td>
+                                                    <td class="align-middle">{{horario.DedNombre}}</td>
+                                                    <td class="align-middle">{{horario.UaaCodigo}}.
+                                                        {{horario.UaaNombreCorto}}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Fin lista de horario -->
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Inicio seccion de modals -->
+
+<!-- Inicia modal lista de busqueda de asignatura -->
+<div class="modal fade" id="modalBusquedaAsignatura" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Busqueda de asignatura</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre o código alfanumerico"
+                                class="input input-sm" data-ng-model="buscurso.filtroAsignatura"></span>
+                    </div>
+                    <div class="col-auto">
+                        <select class="form-control form-control-sm" data-ng-model="buscurso.filter.AsignaturaEstado">
+                            <option value="">ESTADO</option>
+                            <option value="ACTIVO">ACTIVO</option>
+                            <option value="DESACTIVADA">INACTIVO</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-danger btn-sm"
+                            data-ng-click="buscurso.buscarAsignatura()">Buscar</button>
+                    </div>
+                </div>
+                <br>
+                <div class="row">
+                    <div class="col-md-12">
+                        <table class="table table-sm table-hover table-bordered table-striped">
+                            <thead>
+                                <th>#</th>
+                                <th>ESTADO</th>
+                                <th>CÓDIGO</th>
+                                <th>ASIGNATURA</th>
+                                <th>NÚCLEO</th>
+                                <th>CARÁCTER</th>
+                                <th>CREDITOS</th>
+                                <th>CREDITOS TEORIA</th>
+                                <th>CREDITOS PRACTICA</th>
+                                <th>PROPIETARIO</th>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    data-ng-if="buscurso.busquedaAsignatura.length <= 0 || buscurso.busquedaAsignatura == null">
+                                    <td colspan="9">
+                                        No se encontraron asignaturas con el nombre o código
+                                        '{{buscurso.filtroAsignatura}}'
+                                    </td>
+                                </tr>
+                                <tr
+                                    data-ng-repeat="asignatura in buscurso.busquedaAsignatura | toArray | filter:{AsiEstado: buscurso.filter.AsignaturaEstado}">
+                                    <td>{{$index + 1}}</td>
+                                    <td>
+                                        <p data-ng-if="asignatura.AsiEstado == 'ACTIVO' " class="badge bg-success">
+                                            {{asignatura.AsiEstado}}</p>
+                                        <p data-ng-if="asignatura.AsiEstado == 'DESACTIVADA' " class="badge bg-danger">
+                                            {{asignatura.AsiEstado}}</p>
+                                    </td>
+                                    <td>{{asignatura.AsiNombreCorto}}</td>
+                                    <td>{{asignatura.AsiNombre}}</td>
+                                    <td>{{asignatura.NucNombre}}</td>
+                                    <td>{{asignatura.CarNombre}}</td>
+                                    <td>{{asignatura.AsiCreditos}}</td>
+                                    <td>{{asignatura.AsiCreditosTeoria}}</td>
+                                    <td>{{asignatura.AsiCreditosPractica}}</td>
+                                    <td>{{asignatura.UaaCodigoNombre}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista de busqueda de asignatura -->
+
+<!-- Inicio modal lista solo los planes exclusivos del curso para creacion ============================================================ -->
+<div class="modal fade" id="modalPlanExclusivoCrear" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Planes academicos</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="buscurso.filter.PlanAcademico"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 30vh; overflow: auto;">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table tablaLista table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>PLAN ACADEMICO</th>
+                                        <th>UNIDAD</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-if="buscurso.listaPlanExclusivo.length <= 0 || buscurso.listaPlanExclusivo == null">
+                                        <td colspan="2">
+                                            No tiene exclusividad ni se encontro algun plan academico.
+                                        </td>
+                                    </tr>
+                                    <tr data-ng-if="buscurso.listaPlanExclusivo.length >= 0"
+                                        data-ng-repeat="plan_exclusivo in buscurso.listaPlanExclusivo | toArray | filter:buscurso.filter.PlanAcademico">
+                                        <td>{{plan_exclusivo.PlaNombre}}</td>
+                                        <td>{{plan_exclusivo.UaaNombreCorto}}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger"
+                                                data-ng-if="!buscurso.CursoCrear.PlanesExclusivos.includes(plan_exclusivo.PlaCodigo)"
+                                                data-ng-click="buscurso.seleccionarPlanAcademico(plan_exclusivo.PlaCodigo)">Seleccionar</button>
+                                            <button class="btn btn-sm btn-default"
+                                                data-ng-if="buscurso.CursoCrear.PlanesExclusivos.includes(plan_exclusivo.PlaCodigo)"
+                                                data-ng-click="buscurso.deseleccionarPlanAcademico(plan_exclusivo.PlaCodigo)">Eliminar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista solo los planes exclusivos del curso para creacion =============================================================== -->
+
+<!-- Inicio modal lista solo los planes exclusivos del curso ============================================================ -->
+<div class="modal fade" id="modalPlanExclusivoEditar" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Planes exclusivos del curso
+                    <b>{{buscurso.cursoDetalle[0].CurCodigo}}</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="buscurso.filter.PlanAcademico"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 30vh; overflow: auto;">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table tablaLista table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>PLAN ACADEMICO</th>
+                                        <th>UNIDAD</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-if="buscurso.listaPlanExclusivo.length <= 0 || buscurso.listaPlanExclusivo == null">
+                                        <td colspan="2">
+                                            No tiene exclusividad ni se encontro algun plan academico.
+                                        </td>
+                                    </tr>
+                                    <tr data-ng-if="buscurso.listaPlanExclusivo.length >= 0"
+                                        data-ng-repeat="plan_exclusivo in buscurso.listaPlanExclusivo | toArray | filter:buscurso.filter.PlanAcademico">
+                                        <td>{{plan_exclusivo.PlaNombre}}</td>
+                                        <td>{{plan_exclusivo.UaaNombreCorto}}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger"
+                                                data-ng-click="buscurso.ponerComoExclusivo(plan_exclusivo.PlaCodigo)"
+                                                data-ng-if="plan_exclusivo.Exclusivo == 'NoExclusivo'">Seleccionar</button>
+                                            <button class="btn btn-sm btn-default"
+                                                data-ng-click="buscurso.quitarExclusividad(plan_exclusivo.CupCodigo)"
+                                                data-ng-if="plan_exclusivo.Exclusivo == 'Exclusivo'">Eliminar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista solo los planes exclusivos del curso =============================================================== -->
+
+<!-- Inicio modal lista Asignaturas ============================================================ -->
+<div class="modal fade" id="modalAsignaturas" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Asignaturas</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="row">
+                            <div class="col-md-2">
+                                <span>Buscar unidad: </span>
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" placeholder="Código, programa, etc" class="input input-sm"
+                                    data-ng-model="buscurso.filter.Unidad">
+                            </div>
+                            <div class="col">
+                                <select class="form-control form-control-sm"
+                                    data-ng-model="buscurso.unidadSeleccionada">
+                                    <option value="" selected disabled>Seleccione...</option>
+                                    <option
+                                        data-ng-repeat="unidad in buscurso.listaUnidades | toArray | filter:buscurso.filter.Unidad"
+                                        value="{{unidad.UaaCodigo}}">
+                                        {{unidad.UaaCodigoNombre}}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-sm btn-danger"
+                                    data-ng-click="buscurso.consultarAsignaturasEquivalentes()">Buscar</button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <span>Buscar asignatura: </span>
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" placeholder="Código, programa, etc" class="input input-sm"
+                                    data-ng-model="buscurso.filter.Asignatura">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <br>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm table-head-fixed">
+                                <thead>
+                                    <tr>
+                                        <th width="100px">CÓDIGO</th>
+                                        <th>NOMBRE</th>
+                                        <th></th>
+                                        <th width="100px">CÓDIGO</th>
+                                        <th>NOMBRE</th>
+                                        <th width="100px" class="text-center"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-repeat="asignatura in buscurso.listaAsignaturas | toArray | filter:buscurso.filter.Asignatura">
+                                        <td><b>{{asignatura.AsiBNombreCorto}}</b></td>
+                                        <td>
+                                            <b>{{asignatura.AsiBNombre}}</b> <br>
+                                            {{asignatura.NucBNombre}} <br>
+                                            {{asignatura.CarNombre}} <br>
+                                            {{asignatura.UaaBCodigo}}. {{asignatura.UaaBNombreCorto}} <br>
+                                            Teorico: {{asignatura.AsiBCreditosTeoria}} - Practico:
+                                            {{asignatura.AsiBCreditosPractica}} <br>
+                                            Total: {{asignatura.AsiBCreditos}}
+                                        </td>
+
+                                        <td width="100px">
+                                            <h3><i class="fas fa-arrow-right text-success"></i></h3>
+                                        </td>
+
+                                        <td><b>{{asignatura.AsiNombreCorto}}</b></td>
+                                        <td>
+                                            <b>{{asignatura.AsiNombre}} </b><br>
+                                            {{asignatura.NucNombre}} <br>
+                                            {{asignatura.CarNombre}} <br>
+                                            {{asignatura.UaaCodigo}}. {{asignatura.UaaNombreCorto}} <br>
+                                            Teorico: {{asignatura.AsiCreditosTeoria}} - Practico:
+                                            {{asignatura.AsiCreditosPractica}} <br>
+                                            Total: {{asignatura.AsiCreditos}}
+                                        </td>
+
+                                        <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                                data-dismiss="modal"
+                                                data-ng-click="buscurso.actualizarAsignatura(asignatura)">Seleccionar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Asignaturas =============================================================== -->
+
+<!-- Inicio modal lista Asignaturas Plan Academico ============================================================ -->
+<div class="modal fade" id="modalPlanAcademico" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de planes académicos
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="row">
+                            <div class="col-auto">
+                                <span>Buscar plan académico: </span>
+                            </div>
+                            <div class="col-md-2">
+                                <input type="text" placeholder="Código, programa, etc" class="input input-sm"
+                                    data-ng-model="buscurso.filter.PlanAcademico">
+                            </div>
+                            <div class="col">
+                                <select class="form-control form-control-sm"
+                                    data-ng-model="buscurso.planAcademicoSeleccionado">
+                                    <option value="" selected disabled>Seleccione...</option>
+                                    <option
+                                        data-ng-repeat="plan in buscurso.listaPlanesAcademicos | toArray | filter:buscurso.filter.PlanAcademico"
+                                        value="{{plan.PlaCodigo}}">
+                                        {{plan.PlaNombre}} - {{plan.UaaCodigoNombre}}
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-sm btn-danger"
+                                    data-ng-click="buscurso.consultarAsignaturasPlan()">Buscar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row" data-ng-if="buscurso.asignaturasPlan.length > 0">
+                    <div class="col-auto">
+                        Buscar asignatura:
+                    </div>
+                    <div class="col-md-2">
+                        <input placeholder="Código alfanumerico, nombre, etc" class="input input-sm"
+                            data-ng-model="buscurso.filter.Asignatura">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <table class="table table-hover table-sm table-head-fixed table-bordered">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" width="100px">SEMESTRE</th>
+                                    <th rowspan="2" width="100px">CÓDIGO</th>
+                                    <th rowspan="2">NOMBRE</th>
+                                    <th rowspan="2">NÚCLEO</th>
+                                    <th rowspan="2">CARÁCTER</th>
+                                    <th rowspan="2">PROPIETARIO</th>
+                                    <th colspan="3" class="text-center align-middle bg-info-creditos" title="CREDITOS TOTAL">CREDITOS</th>
+                                    <th colspan="3" class="text-center align-middle bg-info-horas-semana" title="MAXIMO HORAS SEMANALES PERMITIDAS">H. SEMANA</th>
+                                    <th rowspan="2" width="100px" class="text-center align-middle" title="OPCIONES"></th>
+                                </tr>
+                                <tr>
+                                    <th class="bg-info-creditos">TOTAL</th>
+                                    <th width="30px" class="text-center align-middle bg-info-creditos" title="CREDITOS TEORIA">T</th>
+                                    <th width="30px" class="text-center align-middle bg-info-creditos" title="CREDITOS PRACTICA">P</th>
+
+                                    <th width="30px" class="text-center align-middle bg-info-horas-semana" title="HORAS TEORIA">T</th>
+                                    <th width="30px" class="text-center align-middle bg-info-horas-semana" title="HORAS PRACTICA">P</th>
+                                    <th width="30px" class="text-center align-middle bg-info-horas-semana" title="HORAS TEORICO PRACTICA">TP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    data-ng-if="buscurso.asignaturasPlan.length <= 0 || buscurso.asignaturasPlan === null">
+                                    <td colspan="10">No se encontraron asignaturas.</td>
+                                </tr>
+                                <tr data-ng-if="(asignatura.AsiNombreCorto >= 0) === false"
+                                    data-ng-repeat="asignatura in buscurso.asignaturasPlan  | toArray | filter:buscurso.filter.Asignatura">
+                                    <td class="align-middle">{{asignatura.PaaSemestre}}</td>
+                                    <td class="align-middle">{{asignatura.AsiNombreCorto}}</td>
+                                    <td class="align-middle">{{asignatura.AsiNombre}}</td>
+                                    <td class="align-middle">{{asignatura.NucNombre}}</td>
+                                    <td class="align-middle">{{asignatura.CarNombre}}</td>
+                                    <td class="align-middle" data-ng-if="asignatura.UaaCodigo != ''">{{asignatura.UaaCodigo}}.
+                                        {{asignatura.UaaNombreCorto}}</td>
+                                    <td class="align-middle" data-ng-if="asignatura.UaaCodigo == ''">No se encontro</td>
+
+                                    <td class="text-center align-middle bg-info-creditos" title="CREDITOS TOTAL">{{asignatura.AsiCreditos}}</td>
+                                    <td class="text-center align-middle bg-info-creditos" title="CREDITOS TEORIA">{{asignatura.AsiCreditosTeoria}}</td>
+                                    <td class="text-center align-middle bg-info-creditos" title="CREDITOS PRACTICA">{{asignatura.AsiCreditosPractica}}</td>
+                                    
+                                    <td class="text-center align-middle bg-info-horas-semana" title="HORAS SEMANALES TEORIA">{{asignatura.AsiHorasSemanalesTeorico || 0}}</td>
+                                    <td class="text-center align-middle bg-info-horas-semana" title="HORAS SEMANALES PRACTICA">{{asignatura.AsiHorasSemanalesPractica || 0}}</td>
+                                    <td class="text-center align-middle bg-info-horas-semana" title="HORAS SEMANALES TEORICO PRACTICA">{{asignatura.AsiHorasSemanalesTeoricoPractico || 0}}</td>
+
+                                    <td class="text-center align-middle">
+                                        <p data-ng-if="asignatura.AsiNombreCorto >= 0"><b>Es antigua</b></p>
+                                        <button type="button" class="btn btn-danger btn-sm" data-dismiss="modal"
+                                            data-ng-if="(asignatura.AsiNombreCorto >= 0) === false"
+                                            data-ng-click="buscurso.actualizarAsignaturaPlan(asignatura)">Seleccionar</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Asignaturas Plan Academico =============================================================== -->
+
+<!-- Inicio modal espacios =============================================================== -->
+<div class="modal fade" id="modalEspacios" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Espacios</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-5">
+                        <div class="input-group input-group-sm">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text">Buscar</span>
+                            </div>
+                            <input type="text" placeholder="Nombre, codigo, sede o unidad" class="form-control"
+                                data-ng-model="buscurso.filter.Espacios">
+                        </div>
+                    </div>
+                    <div class="col-md-7 text-md-right mt-2 mt-md-0"
+                        data-ng-if="buscurso.tipoListaEspacios == 'asignados' && buscurso.listaEspacios.length > 0">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-success"
+                                data-ng-click="buscurso.consultarDisponibilidadTodosEspacios()">
+                                Consultar disponibilidad
+                            </button>
+                            <button type="button" class="btn"
+                                data-ng-class="buscurso.filtroDisponibilidadEspacios == 'disponibles' ? 'btn-success' : 'btn-outline-success'"
+                                data-ng-click="buscurso.cambiarFiltroDisponibilidadEspacios('disponibles')">
+                                Disponibles ({{buscurso.resumenEspacios.disponibles}})
+                            </button>
+                            <button type="button" class="btn"
+                                data-ng-class="buscurso.filtroDisponibilidadEspacios == 'sin_disponibilidad' ? 'btn-secondary' : 'btn-outline-secondary'"
+                                data-ng-click="buscurso.cambiarFiltroDisponibilidadEspacios('sin_disponibilidad')">
+                                Sin horas ({{buscurso.resumenEspacios.sinDisponibilidad}})
+                            </button>
+                            <button type="button" class="btn"
+                                data-ng-class="buscurso.filtroDisponibilidadEspacios == 'sin_consultar' ? 'btn-warning' : 'btn-outline-warning'"
+                                data-ng-click="buscurso.cambiarFiltroDisponibilidadEspacios('sin_consultar')">
+                                Sin consultar ({{buscurso.resumenEspacios.sinConsultar}})
+                            </button>
+                            <button type="button" class="btn"
+                                data-ng-class="buscurso.filtroDisponibilidadEspacios == 'todos' ? 'btn-info' : 'btn-outline-info'"
+                                data-ng-click="buscurso.cambiarFiltroDisponibilidadEspacios('todos')">
+                                Todos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-2"
+                    data-ng-if="buscurso.tipoListaEspacios == 'asignados' && buscurso.listaEspacios.length > 0">
+                    <div class="col-md-12">
+                        <small class="text-muted">
+                            {{buscurso.crearHorario.FechaInicio}} - {{buscurso.crearHorario.FechaFin}} |
+                            {{buscurso.crearHorario.PerNombreApellido}} |
+                            {{buscurso.crearHorario.Uaa.UaaCodigo}}. {{buscurso.crearHorario.Uaa.UaaNombreCorto}}
+                        </small>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 70vh;overflow: auto;">
+                    <div class="col">
+                        <!-- Inicio lista de espacios asignados ================================================= -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table
+                                        class="table table-hover table-sm table-head-fixed table-bordered table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th width=" 100px" title="Código del espacio">CÓDIGO</th>
+                                                <th>SEDE</th>
+                                                <th>NOMBRE</th>
+                                                <th>NOMBRE CORTO</th>
+                                                <th>CAPACIDAD</th>
+                                                <th title="PROGRAMADO DESDE">PROGR. DESDE</th>
+                                                <th title="PROGRAMADO HASTA">PROGR. HASTA</th>
+                                                <th>UNIDAD ASIGNADA</th>
+                                                <th width="140px" class="text-center">DISPONIBILIDAD</th>
+                                                <th width="90px" class="text-center">HORAS</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody data-ng-if="buscurso.tipoListaEspacios == 'asignados'">
+                                            <tr>
+                                                <td colspan="11" data-ng-if="buscurso.listaEspacios.length == 0">No
+                                                    se
+                                                    encontraron espacios asignados.</td>
+                                            </tr>
+                                            <tr
+                                                data-ng-if="(buscurso.listaEspacios | toArray | filter:buscurso.filter.Espacios | filter:buscurso.filtrarEspacioPorDisponibilidad).length == 0 && buscurso.listaEspacios.length > 0">
+                                                <td colspan="11">No se encontraron espacios para el filtro seleccionado.</td>
+                                            </tr>
+                                            <tr
+                                                data-ng-repeat-start="espacio in buscurso.listaEspacios | toArray | filter:buscurso.filter.Espacios | filter:buscurso.filtrarEspacioPorDisponibilidad">
+                                                <td title="Código de espacio">{{espacio.EspCodigo}}</td>
+                                                <td>{{espacio.SedNombre}}</td>
+                                                <td>{{espacio.EspNombre}}</td>
+                                                <td>{{espacio.EspNombreCorto}}</td>
+                                                <td>{{espacio.EspCapacidad}}</td>
+                                                <td>{{espacio.FechaMin}}</td>
+                                                <td>{{espacio.FechaMax}}</td>
+                                                <td>{{espacio.UaaCodigo}}. {{espacio.UaaNombreCorto}}</td>
+                                                <td class="text-center">
+                                                    <span class="badge badge-success"
+                                                        data-ng-if="espacio.TotalHorasDisponibles > 0">
+                                                        {{espacio.TotalHorasDisponibles}} horas
+                                                    </span>
+                                                    <span class="badge badge-secondary"
+                                                        data-ng-if="espacio.TotalHorasDisponibles !== undefined && espacio.TotalHorasDisponibles <= 0">
+                                                        Sin disponibilidad
+                                                    </span>
+                                                    <span class="badge badge-info"
+                                                        data-ng-if="espacio.TotalHorasDisponibles === undefined && !espacio.ConsultandoDisponibilidad">
+                                                        Sin consultar
+                                                    </span>
+                                                    <span class="badge badge-warning"
+                                                        data-ng-if="espacio.ConsultandoDisponibilidad">
+                                                        Consultando...
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-default btn-sm"
+                                                        data-ng-disabled="espacio.TotalHorasDisponibles === undefined"
+                                                        data-ng-click="buscurso.alternarDetalleEspacio(espacio)">
+                                                        <i class="fas"
+                                                            data-ng-class="espacio.MostrarHoras ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                                    </button>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-danger btn-sm"
+                                                        data-ng-if="espacio.TotalHorasDisponibles > 0"
+                                                        data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarEspacio(espacio)">Seleccionar</button>
+                                                    <button type="button" class="btn btn-success btn-sm"
+                                                        data-ng-if="espacio.TotalHorasDisponibles === undefined"
+                                                        data-ng-disabled="espacio.ConsultandoDisponibilidad"
+                                                        data-ng-click="buscurso.consultarDisponibilidadEspacio(espacio)">Consultar</button>
+                                                    <button type="button" class="btn btn-secondary btn-sm"
+                                                        data-ng-if="espacio.TotalHorasDisponibles !== undefined && espacio.TotalHorasDisponibles <= 0"
+                                                        disabled>Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                            <tr data-ng-repeat-end data-ng-if="espacio.MostrarHoras">
+                                                <td colspan="11" class="bg-light">
+                                                    <div data-ng-if="espacio.TotalHorasDisponibles > 0">
+                                                        <span class="badge badge-light border mr-1 mb-1"
+                                                            data-ng-repeat="hora in espacio.HorasDisponibles">
+                                                            {{hora.HraNombre}}. {{hora.HraInicio}} - {{hora.HraFin}}
+                                                        </span>
+                                                    </div>
+                                                    <span class="text-muted"
+                                                        data-ng-if="espacio.TotalHorasDisponibles <= 0">
+                                                        No hay horas libres para este espacio en el día y rango de
+                                                        fechas seleccionados.
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+
+                                        <tbody data-ng-if="buscurso.tipoListaEspacios == 'virtuales'">
+                                            <tr>
+                                                <td colspan="11" data-ng-if="buscurso.listaEspaciosVirtuales.length == 0">
+                                                    No
+                                                    se
+                                                    encontraron espacios virtuales disponibles.</td>
+                                            </tr>
+                                            <tr
+                                                data-ng-repeat="espacio in buscurso.listaEspaciosVirtuales | toArray | filter:buscurso.filter.Espacios">
+                                                <td title="Código de espacio">{{espacio.EspCodigo}}</td>
+                                                <td> - </td>
+                                                <td>{{espacio.EspNombre}}</td>
+                                                <td>{{espacio.EspNombreCorto}}</td>
+                                                <td> - </td>
+                                                <td> - </td>
+                                                <td> - </td>
+                                                <td> - </td>
+                                                <td class="text-center"><span class="badge badge-info">Virtual</span></td>
+                                                <td class="text-center"> - </td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarEspacio(espacio)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de espacios asignados ================================================= -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal espacios =============================================================== -->
+
+<!-- Inicio modal lista solo los planes exclusivos del curso ============================================================ -->
+<div class="modal fade" id="modalPlanExclusivo" tabindex="-1" role="dialog" aria-hidden="true"
+    data-ng-if="buscurso.administrador == 1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Planes exclusivos del curso
+                    <b>{{buscurso.cursoDetalle[0].CurCodigo}}</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm">
+                        <thead>
+                            <tr>
+                                <th>PLAN ACADEMICO</th>
+                                <th>UNIDAD</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-if="buscurso.listaPlanExclusivo.length <= 0 || buscurso.listaPlanExclusivo == null">
+                                <td colspan="2">
+                                    No tiene exclusividad con ningun plan academico.
+                                </td>
+                            </tr>
+                            <tr data-ng-if="buscurso.listaPlanExclusivo.length >= 0"
+                                data-ng-repeat="plan_exclusivo in buscurso.listaPlanExclusivo">
+                                <td>{{plan_exclusivo.PlaNombre}}</td>
+                                <td>{{plan_exclusivo.UaaNombreCorto}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista solo los planes exclusivos del curso =============================================================== -->
+
+<!-- Inicio modal agenda docente -->
+<div class="modal fade" id="modalAgendaDocente" tabindex="-1" role="dialog" aria-hidden="true"
+    data-ng-if="buscurso.administrador == 1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%">
+            <div class="modal-header modal-header-danger">
+                <h5 class="modal-title" id="myModalLabel">
+                    AGENDA DOCENTE:
+                    <div class="font-weight-bold">{{buscurso.cursoDetalle[0].PerNombreApellido}}</div>
+                    <div class="small text-muted">{{buscurso.cursoDetalle[0].VinNombre}} - {{buscurso.cursoDetalle[0].DedNombre}}</div>
+                    <div class="small text-muted">
+                        Fecha inicio: {{buscurso.agendaDocenteFechas.inicio}}
+                        <span class="mx-1">|</span>
+                        Fecha fin: {{buscurso.agendaDocenteFechas.fin}}
+                    </div>
+                    <div class="small text-muted">Sede: {{buscurso.cargaDocente.sedNombre || buscurso.cursoDetalle[0].SedNombre}}</div>
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-4 align-items-stretch">
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body p-4">
+                                <div class="row text-center">
+                                    <div class="col-md-3 border-right">
+                                        <p class="text-muted text-uppercase small font-weight-bold mb-1">Docencia</p>
+                                        <h3 class="font-weight-bold text-dark">{{buscurso.cargaDocente.horasDocencia}}</h3>
+                                        <span class="badge badge-pill badge-light">{{buscurso.cargaDocente.horasDocenciaSemanal}} hrs/semana</span>
+                                    </div>
+                                    <div class="col-md-3 border-right">
+                                        <p class="text-muted text-uppercase small font-weight-bold mb-1">Investigación</p>
+                                        <h3 class="font-weight-bold text-dark">{{buscurso.cargaDocente.horasInvestigacion}}</h3>
+                                        <span class="badge badge-pill badge-light">{{buscurso.cargaDocente.horasInvestigacionSemanal}} hrs/semana</span>
+                                    </div>
+                                    <div class="col-md-3 border-right">
+                                        <p class="text-muted text-uppercase small font-weight-bold mb-1">Proyección Social</p>
+                                        <h3 class="font-weight-bold text-dark">{{buscurso.cargaDocente.horasProyeccion}}</h3>
+                                        <span class="badge badge-pill badge-light">{{buscurso.cargaDocente.horasProyeccionSemanal}} hrs/semana</span>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <p class="text-muted text-uppercase small font-weight-bold mb-1">Gestión Admin.</p>
+                                        <h3 class="font-weight-bold text-dark">{{buscurso.cargaDocente.horasGestion}}</h3>
+                                        <span class="badge badge-pill badge-light">{{buscurso.cargaDocente.horasGestionSemanal}} hrs/semana</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mt-3">
+                        <div class="card bg-light text-dark border shadow-sm overflow-hidden h-100" style="min-height: 190px;">
+                            <div class="card-body p-4 position-relative d-flex flex-column">
+                                <div style="opacity: 0.08; position: absolute; right: -20px; top: -20px; font-size: 7rem;">
+                                    <i class="fas fa-calendar-week"></i>
+                                </div>
+                                <p class="text-uppercase small font-weight-bold mb-1" style="opacity: 0.8;">Total Pico</p>
+                                <h2 class="display-4 font-weight-bold mb-0">{{buscurso.cargaDocente.totalSemanal}}</h2>
+                                <p class="mb-1 text-muted">Horas por Semana</p>
+                                <div class="mt-auto" data-ng-if="buscurso.cargaDocente.topeSemanal != null">
+                                    <span class="badge badge-pill badge-light">Tope semanal: {{buscurso.cargaDocente.topeSemanal}}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mt-3">
+                        <div class="card bg-light text-dark border shadow-sm overflow-hidden h-100" style="min-height: 190px;">
+                            <div class="card-body p-4 position-relative d-flex flex-column">
+                                <div style="opacity: 0.08; position: absolute; right: -20px; top: -20px; font-size: 7rem;">
+                                    <i class="fas fa-history"></i>
+                                </div>
+                                <p class="text-uppercase small font-weight-bold mb-1" style="opacity: 0.8;">Total Acumulado</p>
+                                <h2 class="display-4 font-weight-bold mb-0">{{buscurso.cargaDocente.totalSemestre}}</h2>
+                                <p class="mb-1 text-muted">Horas por Semestre</p>
+                                <div class="mt-auto" data-ng-if="buscurso.cargaDocente.topeSemestral != null">
+                                    <span class="badge badge-pill badge-light">Tope semestral: {{buscurso.cargaDocente.topeSemestral}}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <td><b>Hora</b></td>
+                            <td class="text-center" width="380px"><b>Lunes</b></td>
+                            <td class="text-center" width="380px"><b>Martes</b></td>
+                            <td class="text-center" width="380px"><b>Miercoles</b></td>
+                            <td class="text-center" width="380px"><b>Jueves</b></td>
+                            <td class="text-center" width="380px"><b>Viernes</b></td>
+                            <td class="text-center" width="380px"><b>Sabado</b></td>
+                            <td class="text-center" width="380px"><b>Domingo</b></td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-ng-repeat="agenda in buscurso.agendaDocente">
+                            <td class="align-middle text-center"><b>{{$index + 1}}</b></td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[1].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[1].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[1].AsiNombre + ' '
+                                            +agenda[1].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[1].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[1].EspCodigo + '. '}}
+                                            {{agenda[1].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[1].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[1]}}</span><br>
+                                        <span>Libre</span>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[2].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[2].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[2].AsiNombre + ' '
+                                            +agenda[2].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[2].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[2].EspCodigo + '. '}}
+                                            {{agenda[2].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[2].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[2]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[3].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[3].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[3].AsiNombre + ' '
+                                            +agenda[3].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[3].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[3].EspCodigo + '. '}}
+                                            {{agenda[3].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[3].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[3]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[4].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[4].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[4].AsiNombre + ' '
+                                            +agenda[4].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[4].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[4].EspCodigo + '. '}}
+                                            {{agenda[4].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[4].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[4]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[5].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[5].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[5].AsiNombre + ' '
+                                            +agenda[5].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[5].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[5].EspCodigo + '. '}}
+                                            {{agenda[5].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[5].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[5]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[6].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[6].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[6].AsiNombre + ' '
+                                            +agenda[6].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[6].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[6].EspCodigo + '. '}}
+                                            {{agenda[6].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[6].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[6]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[7].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[7].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[7].AsiNombre + ' '
+                                            +agenda[7].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[7].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[7].EspCodigo + '. '}}
+                                            {{agenda[7].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[7].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[7]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal agenda docente -->
+
+<!-- Inicio modal lista Uaa ============================================================ -->
+<div class="modal fade" id="modalUnidades" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Unidades</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="buscurso.filter.Unidad"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm table-hover table-striped table-bordered table-head-fixed">
+                        <thead>
+                            <tr>
+                                <th width="100px">CÓDIGO</th>
+                                <th>NOMBRE</th>
+                                <th width="100px" class="text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-repeat="unidad in buscurso.listaUnidades | toArray | filter:buscurso.filter.Unidad">
+                                <td>{{unidad.UaaCodigo}}</td>
+                                <td>{{unidad.UaaNombreCorto}}</td>
+                                <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                        data-dismiss="modal"
+                                        data-ng-click="buscurso.crearHorario.Uaa = unidad;">Seleccionar</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Uaa =============================================================== -->
+
+<!-- Inicio modal lista Docentes ============================================================ -->
+<div class="modal fade" id="modalDocentes" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Docentes</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="buscurso.filter.Docentes"></span>
+                    </div>
+                    <br>
+                    <div class="col-md-12"><br>
+                        <span>Rango de busquedas entre fechas de vinculacion:
+                            <b>{{buscurso.vinculacionDocenteFechas.inicio}} -
+                                {{buscurso.vinculacionDocenteFechas.fin}}</b></span><br>
+                        <span class="text-danger"><b>Nota: </b>Si no se encuentra el docente por favor verifique las
+                            fechas de vinculación, en caso de necesitar docentes NN o vincular un docente recuerde que
+                            debe <b>solicitarlos a talento humano con anticipación.</b></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 70vh;overflow: auto;">
+                    <div class="col">
+                        <!-- Inicio lista de docentes de planta. -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesPlanta" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE PLANTA
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesPlanta'] ==  null ">No
+                                                    se
+                                                    encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesPlanta"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesPlanta'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de planta. -->
+
+                        <!-- Inicio lista de docentes de planta con fecha fin.-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesPlantaFechaFin" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE PLANTA CON FECHA FIN
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesPlantaFechaFin'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesPlantaFechaFin"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesPlantaFechaFin'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de planta con fecha fin.-->
+
+                        <!-- Inicio lista de docentes de catedra-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesCatedra" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE CATEDRA
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesCatedra'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesCatedra"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesCatedra'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de catedra-->
+
+                        <!-- Inicio lista de docentes de nombramiento ocacional-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNombramientoOcacional" style="cursor: pointer;"
+                                                    colspan="9" class="text-center bg-danger">
+                                                    DOCENTES DE NOMBRAMIENTO OCASIONAL
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesNombramientoOcacional']  ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNombramientoOcacional"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesNombramientoOcacional'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de nombramiento ocacional-->
+
+                        <!-- Inicio lista de docentes de nombramiento ocacional posterior al periodo -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNombramientoOcacionalPosterior" style="cursor: pointer;"
+                                                    colspan="9" class="text-center bg-danger">
+                                                    DOCENTES DE NOMBRAMIENTO OCASIONAL POSTERIOR AL PERIODO SELECCIONADO
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesNombramientoOcacionalPosterior'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNombramientoOcacionalPosterior"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesNombramientoOcacionalPosterior'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de nombramiento ocacional posterior al periodo -->
+
+                        <!-- Inicio lista de docentes otros -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesOtros" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES OTROS
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesOtros'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesOtros"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesOtros'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes otros -->
+
+                        <!-- Inicio lista de docentes NN -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNN" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES NN
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CÓDIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="buscurso.listaDocentes['DocentesNN'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNN"
+                                                data-ng-repeat="docente in buscurso.listaDocentes['DocentesNN'] | toArray | filter:buscurso.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="buscurso.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes NN -->
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Docentes =============================================================== -->
+
+
+<!-- Fin seccion de modals -->
+
+
+<!-- Inicio modal lista Docentes Prestados -->
+<div class="modal fade" id="modalDocentesPrestados" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title">Lista de Docentes Asignados</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese la búsqueda..." class="input input-sm"
+                                data-ng-model="buscurso.filter.Docentes"></span>
+                    </div>
+                    <div class="col-md-12"><br>
+                        <span>Rango de búsqueda entre fechas de vinculación:
+                            <b>{{buscurso.listaDocentesPrestados['FechaInicio']}} -
+                                {{buscurso.listaDocentesPrestados['FechaFin']}}</b></span><br>
+                        <span class="text-danger"><b>Nota: </b>Solo se puede seleccionar una solicitud aprobada
+                            para la asignatura y sede del curso.</span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 600px;overflow: auto;">
+                    <div class="col-md-12 m-0"
+                        data-ng-repeat="docente in buscurso.listaDocentesPrestados['Docentes'] | toArray | filter:buscurso.filter.Docentes">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <span><b>SOLICITUD:</b> {{docente.SpdCodigo}}</span><br>
+                                <span><b>DOCENTE:</b> <span data-ng-if="docente.UapCodigo">{{docente.UapCodigo}}.
+                                    </span>{{docente.PerNombre}} {{docente.PerApellido}}</span><br>
+                                <div data-ng-if="docente.UapCodigo">
+                                    <span><b>VINCULACIÓN:</b> {{docente.VinNombre}} {{docente.DedNombre}}</span><br>
+                                    <span><b>FECHAS VINCULACIÓN:</b> {{docente.UapFechaInicio}} -
+                                        {{docente.UapFechaFin}}</span><br>
+                                    <span><b>CARGA ACADÉMICA:</b> {{docente.UapCarga}}</span><br>
+                                </div>
+                                <span><b>ASIGNATURA:</b> {{docente.AsiNombre}} -
+                                    {{docente.AsiNombreCorto}}</span><br>
+                                <span><b>UNIDAD DIRIGIDA:</b> {{docente.UaaNombreDpto}}</span><br>
+                                <span><b>UNIDAD SOLICITA:</b> {{docente.UaaNombreSolicita}}</span><br>
+                                <span><b>SEDE:</b> {{docente.SedCodigo}}. {{docente.SedNombre}}</span><br>
+                            </div>
+                            <div class="col-md-4">
+                                <span><b>HORARIO PERMITIDO:</b></span>
+                                <div data-ng-repeat="horario in docente.Horario">
+                                    <span class="badge bg-success">{{horario.DiaCodigo}}. {{horario.DiaNombre}}
+                                        {{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</span>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <p data-ng-if="!docente.UapCodigo" class="text-danger mb-0">
+                                    <b>El docente no cuenta con una vinculación activa entre las fechas consultadas.</b>
+                                </p>
+                                <p data-ng-if="buscurso.cursoDetalle[0].AsiCodigo != docente.AsiCodigo || buscurso.cursoDetalle[0].SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura o la sede aprobada en la solicitud no
+                                        coincide con el curso.</b></p>
+                                <button type="button" class="btn btn-danger btn-sm mt-2" data-dismiss="modal"
+                                    data-ng-if="docente.UapCodigo && buscurso.cursoDetalle[0].AsiCodigo == docente.AsiCodigo && buscurso.cursoDetalle[0].SedCodigo == docente.SedCodigo"
+                                    data-ng-click="buscurso.seleccionarDocente(docente, 'Prestado')">Seleccionar</button>
+                            </div>
+                        </div>
+                        <hr>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Docentes Prestados -->
+
+<script>
+    $("#DocentesPlanta").click(function () {
+        $(".DocentesPlanta").toggle();
+    });
+    $("#DocentesPlantaFechaFin").click(function () {
+        $(".DocentesPlantaFechaFin").toggle();
+    });
+    $("#DocentesCatedra").click(function () {
+        $(".DocentesCatedra").toggle();
+    });
+    $("#DocentesNombramientoOcacional").click(function () {
+        $(".DocentesNombramientoOcacional").toggle();
+    });
+    $("#DocentesNombramientoOcacionalPosterior").click(function () {
+        $(".DocentesNombramientoOcacionalPosterior").toggle();
+    });
+    $("#DocentesOtros").click(function () {
+        $(".DocentesOtros").toggle();
+    });
+    $("#DocentesNN").click(function () {
+        $(".DocentesNN").toggle();
+    });
+</script>
+
+<style>
+    .seleccionable:hover {
+        cursor: pointer;
+        background-color: #c2c2c2;
+    }
+</style>

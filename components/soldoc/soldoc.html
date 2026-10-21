@@ -1,0 +1,1366 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Solicitud de Docentes</h1>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-model="soldoc.periodoSeleccionado">
+                    <option value="" disabled selected>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in soldoc.listaPeriodos" value="{{periodo.PerCodigo}}">
+                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <button class="btn btn-danger btn-sm" ng-click="soldoc.consultarSolicitudesPeriodo()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<hr>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col">
+            <div class="alert alert-warning text-justify">
+                <b>IMPORTANTE: </b>Este Módulo es para realizar las solicitudes de docentes de las <b>asignaturas que
+                    programan
+                    ustedes</b>, y el docente
+                <b>pertenece a otro Programa o Departamento.</b> <br>
+
+                Las solicitudes de las asignaturas que <b>no programen ustedes</b>, ni el <b>docente que lo orienta es
+                    suyo</b>, por
+                ejemplo:
+                Constitución Política, Comunicación Lingüística, Deporte Formativo, Ética, Medio Ambiente, entre otras, deben hacerse en
+                el Formato:
+                <a target="_blank"
+                    href="https://www.usco.edu.co/contenido/SGC-USCO/documentos/06.MI-FOR-FORMACION/MI-FOR-FO-23%20CREACION%20DE%20CURSOS%20O%20SUBGRUPOS.docx">MI-FOR-FO-23
+                    CREACIÓN DE CURSOS O SUBGRUPOS.</a>
+                o buscarlo en la documentación del sistema de gestión <a target="_blank"
+                    href="https://www.usco.edu.co/contenido/SGC-USCO/#06.MI-FOR-FORMACION">Click</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid" data-ng-if="soldoc.menu == 1">
+    <div class="row">
+        <div class="col-auto">
+            <button class="btn btn-sm btn-danger" data-ng-click="soldoc.abrirFormulario(2);">Solicitudes
+                Realizadas (
+                {{ soldoc.listaSolicitudesPeriodo.realizadas.length > 0 ?
+                soldoc.listaSolicitudesPeriodo.realizadas.length : '0' }}
+                )</button>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-sm btn-danger" data-ng-click="soldoc.abrirFormulario(1);">Solicitudes
+                Recibidas (
+                {{ soldoc.listaSolicitudesPeriodo.dirigidas.length > 0 ? soldoc.listaSolicitudesPeriodo.dirigidas.length
+                : '0' }}
+                )</button>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-sm btn-danger" data-ng-click="soldoc.abrirFormulario(3);">Solicitudes
+                Realizadas Programadas</button>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-sm btn-danger" data-ng-click="soldoc.abrirFormulario(5);">Solicitudes
+                Recibidas Programadas</button>
+        </div>
+        <div class="col-auto" data-ng-if="usuario.codPerfil == roles.ADMINISTRADOR">
+            <button class="btn btn-sm btn-danger" data-ng-click="soldoc.abrirFormulario(4);">Solicitudes
+                Eliminadas</button>
+        </div>
+    </div>
+    <br>
+</div>
+
+<!-- Seccion lista de solicitudes eliminadas -->
+<div class="container-fluid" data-ng-if="soldoc.seccionListaSolicitudes == 4">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Solicitudes Eliminadas</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudCodigo" placeholder="Busqueda Codigo">
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudesEliminadas" placeholder="Busqueda General">
+                        </div>
+                        <div class="col text-right mr-1 pt-1">
+                            <button class="btn btn-default btn-sm"
+                                onclick="copiarTabla('tableDataEliminadas')">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row" data-ng-if="soldoc.listaSolicitudesEliminadas.length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de solicitudes realizadas:
+                                    {{soldoc.listaSolicitudesEliminadas.length}}</small></span><br>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm"
+                        id="tableDataEliminadas">
+                        <thead>
+                            <th>#</th>
+                            <th>CÓDIGO</th>
+                            <th>ESTADO SOLICITUD</th>
+                            <th>SEDE</th>
+                            <th>PERIODO</th>
+                            <th>UNIDAD SOLICITANTE</th>
+                            <th>ASIGNATURA</th>
+                            <th>UNIDAD DIRIGIDA</th>
+                            <th>HORARIO</th>
+                            <th>DOCENTE ASIGNADO</th>
+                            <th></th>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-if="soldoc.listaSolicitudesEliminadas.length < 1 || soldoc.listaSolicitudesEliminadas === null ">
+                                <td colspan="9">No se encontraron solicitudes dirigidas.</td>
+                            </tr>
+                            <tr
+                                data-ng-repeat="solicitud in soldoc.listaSolicitudesEliminadas | toArray | filter:{SpdCodigo: soldoc.filter.SolicitudCodigo, $: soldoc.filter.SolicitudesEliminadas}">
+                                <td>{{$index + 1}}</td>
+                                <td>{{solicitud.SpdCodigo}}</td>
+                                <td>
+                                    <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 3">RECHAZADO</span>
+                                    <span class="badge bg-success" data-ng-if="solicitud.SpdEstado == 2">APROBADO</span>
+                                    <span class="badge bg-warning"
+                                        data-ng-if="solicitud.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                                    <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 0">ELIMINADO</span>
+                                </td>
+                                <td>{{solicitud.SedCodigo}}. {{solicitud.SedNombre}}</td>
+                                <td>{{solicitud.PeriodoNombre}}</td>
+                                <td>{{solicitud.UaaSolicitaCodigo}}. {{solicitud.UaaSolicitaNombre}}</td>
+                                <td>{{solicitud.AsiNombreCorto}} - {{solicitud.AsiNombre}}</td>
+                                <td>{{solicitud.UaaDirigidaCodigo}}. {{solicitud.UaaDirigidaNombre}}</td>
+                                <td class="py-0">
+                                    <div class="my-0" style="max-height: 150px; overflow-y: auto;">
+                                        <span class="mb-1"><small><b>Total Horas {{solicitud.Horario.length ||
+                                                    0}}</b></small></span>
+                                        <span class="my-0 text-nowrap d-flex flex-column"
+                                            data-ng-repeat="horario in solicitud.Horario"><small>{{horario.DiaCodigo}}.
+                                                {{horario.DiaNombre}} {{horario.HraCodigo}}. {{horario.HraInicio}} -
+                                                {{horario.HraFin}}</small></span>
+                                    </div>
+                                </td>
+                                <td>{{solicitud.PersonaNombreApellido}}</td>
+                                <td>
+                                    <button class="m-1 btn btn-sm btn-info"
+                                        data-ng-click="soldoc.consultaComentariosSolicitud(solicitud)">Comentarios</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Secccion de reporte de solicitudes programadas o no. -->
+<div class="container-fluid" data-ng-if="soldoc.seccionListaSolicitudes == 3 || soldoc.seccionListaSolicitudes == 5">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>{{soldoc.tituloSolicitudesProgramadas}}</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudCodigo" placeholder="Busqueda Codigo">
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.ReporteAprobadasProgramadas" placeholder="Busqueda General">
+                        </div>
+                        <!-- <div class="col text-right mr-1 pt-1">
+                            <button class="btn btn-default btn-sm"
+                                onclick="copiarTabla('tableDataRecibidas')">Copiar</button>
+                        </div> -->
+                    </div>
+                    <div class="row" data-ng-if="soldoc.listaSolicitudesProgramadas.length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de solicitudes aprobadas:
+                                    {{soldoc.listaSolicitudesProgramadas.length}}</small></span><br>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card"
+                data-ng-repeat="solicitud in soldoc.listaSolicitudesProgramadas | toArray | filter:{SpdCodigo: soldoc.filter.SolicitudCodigo, $: soldoc.filter.ReporteAprobadasProgramadas}">
+                <div class="card-body">
+                    <!-- data-ng-class="{'bg-warning bg-opacity-50': !solicitud.Programacion || solicitud.Programacion.length <= 0}" -->
+                    <div class="row">
+                        <!-- Informacion de la solicitud -->
+                        <div class="col">
+                            <p><b>Información Solicitud</b></p>
+                            <p class="my-0"><b>Codigo:</b> {{solicitud.SpdCodigo}} -
+                                <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 3">RECHAZADO</span>
+                                <span class="badge bg-success" data-ng-if="solicitud.SpdEstado == 2">APROBADO</span>
+                                <span class="badge bg-warning" data-ng-if="solicitud.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                                <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 0">ELIMINADO</span>
+                            </p>
+                            <p class="my-0"><b>Asignatura:</b> {{solicitud.AsiCodigo}}. {{solicitud.AsiNombre}} -
+                                {{solicitud.AsiNombreCorto}}</p>
+                            <p class="my-0"><b>Unidad Solicitante:</b> {{solicitud.UaaSolicitaCodigo}}.
+                                {{solicitud.UaaSolicitaNombre}}</p>
+                            <p class="my-0"><b>Departamento Dirigido:</b> {{solicitud.UaaDirigidaCodigo}}.
+                                {{solicitud.UaaDirigidaNombre}}</p>
+                            <p class="my-0"><b>Sede:</b> {{solicitud.SedCodigo}}. {{solicitud.SedNombre}}</p>
+                            <p class="my-0"><b>Docente Asignado:</b> {{solicitud.PersonaNombreApellido}} -
+                                {{solicitud.PersonaIdentificacion}}</p>
+
+                        </div>
+                        <!-- Horario aprobado -->
+                        <div class="col">
+                            <p><b>Horario Aprobado</b></p>
+                            <p class="my-0 text-bold" data-ng-repeat="horario in solicitud.Horario" data-ng-class="{
+                                'text-success': horario.Programado == true,
+                                'text-danger': horario.Programado == false
+                            }">
+                                {{horario.DiaCodigo}}. {{horario.DiaNombre}} {{horario.HraCodigo}}.
+                                {{horario.HraInicio}} - {{horario.HraFin}}
+                            </p>
+                        </div>
+                        <!-- Cursos programados -->
+                        <div class="col">
+                            <p><b>Curso - Horario Programado</b></p>
+                            <p class="text-danger"
+                                data-ng-if="!solicitud.Programacion || solicitud.Programacion.length <= 0"><b>No se
+                                    encontro curso programado.</b></p>
+                            <div class="row" data-ng-repeat="curso in solicitud.Programacion">
+                                <div class="col-auto">
+                                    <p class="my-0">
+                                        {{curso.CurCodigo}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <div class="card">
+                                        <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                                            <p class="my-0 text-bold text-nowrap" data-ng-repeat="horarioC in curso.Horario" data-ng-class="{
+                                                'text-success': horarioC.Programado == true,
+                                                'text-danger': horarioC.Programado == 'false'
+                                            }">
+                                                {{horarioC.EsoSubgrupo}} <b title="Matriculados">(Matr: {{horarioC.Matriculados}})</b> - {{horarioC.DiaCodigo}}. {{horarioC.DiaNombre}}
+                                                {{horarioC.HraCodigo}}. {{horarioC.HraInicio}} - {{horarioC.HraFin}} 
+                                                <small>{{horarioC.UapCodigo}}. {{horarioC.PerNombreApellido}}</small>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-12" data-ng-if="solicitud.Programacion.length > 0">
+                                    <hr>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Seccion lista de solicitudes dirigidas -->
+<div class="container-fluid" data-ng-if="soldoc.seccionListaSolicitudes == 1">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Solicitudes Recibidas</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudCodigo" placeholder="Busqueda Codigo">
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudesDirigidas" placeholder="Busqueda General">
+                        </div>
+                        <div class="col-auto pt-1">
+                            <select class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SpdEstado">
+                                <option value="">Todos</option>
+                                <option value="1">PENDIENTE</option>
+                                <option value="2">APROBADO</option>
+                                <option value="3">RECHAZADO</option>
+                            </select>
+                        </div>
+                        <div class="col text-right mr-1 pt-1">
+                            <button class="btn btn-default btn-sm"
+                                onclick="copiarTabla('tableDataRecibidas')">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row"
+                        data-ng-if="(soldoc.listaSolicitudesPeriodo.dirigidas | toArray | filter:{SpdCodigo: soldoc.filter.SolicitudCodigo, $: soldoc.filter.SolicitudesDirigidas, SpdEstado: soldoc.filter.SpdEstado}).length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de solicitudes recibidas:
+                                {{ (soldoc.listaSolicitudesPeriodo.dirigidas | toArray | filter:{SpdCodigo: soldoc.filter.SolicitudCodigo, $: soldoc.filter.SolicitudesDirigidas, SpdEstado: soldoc.filter.SpdEstado}).length }}</small></span><br>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm"
+                        id="tableDataRecibidas">
+                        <thead>
+                            <th>#</th>
+                            <th>CÓDIGO</th>
+                            <th>ESTADO SOLICITUD</th>
+                            <th>SEDE</th>
+                            <th>PERIODO</th>
+                            <th>UNIDAD SOLICITANTE</th>
+                            <th>ASIGNATURA</th>
+                            <th>UNIDAD DIRIGIDA</th>
+                            <th>HORARIO</th>
+                            <th>DOCENTE ASIGNADO</th>
+                            <th></th>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-if="(soldoc.listaSolicitudesPeriodo.dirigidas| toArray| filter:{
+                                                    SpdCodigo: soldoc.filter.SolicitudCodigo,
+                                                    $: soldoc.filter.SolicitudesDirigidas,
+                                                    SpdEstado: soldoc.filter.SpdEstado
+                                                }).length == 0">
+                                <td colspan="11" class="text-center">
+                                    No se encontraron registros en el periodo con los filtros seleccionados.
+                                </td>
+                            </tr>
+                            <tr
+                                data-ng-repeat="solicitud in soldoc.listaSolicitudesPeriodo.dirigidas | toArray | filter:{SpdCodigo: soldoc.filter.SolicitudCodigo, $: soldoc.filter.SolicitudesDirigidas, SpdEstado: soldoc.filter.SpdEstado}">
+                                <td>{{$index + 1}}</td>
+                                <td>{{solicitud.SpdCodigo}}</td>
+                                <td>
+                                    <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 3">RECHAZADO</span>
+                                    <span class="badge bg-success" data-ng-if="solicitud.SpdEstado == 2">APROBADO</span>
+                                    <span class="badge bg-warning"
+                                        data-ng-if="solicitud.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                                    <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 0">ELIMINADO</span>
+                                </td>
+                                <td>{{solicitud.SedCodigo}}. {{solicitud.SedNombre}}</td>
+                                <td>{{solicitud.PeriodoNombre}}</td>
+                                <td>{{solicitud.UaaSolicitaCodigo}}. {{solicitud.UaaSolicitaNombre}}</td>
+                                <td>{{solicitud.AsiNombreCorto}} - {{solicitud.AsiNombre}}</td>
+                                <td>{{solicitud.UaaDirigidaCodigo}}. {{solicitud.UaaDirigidaNombre}}</td>
+                                <td class="py-0">
+                                    <div class="my-0" style="max-height: 150px; overflow-y: auto;">
+                                        <span class="mb-1"><small><b>Total Horas {{solicitud.Horario.length ||
+                                                    0}}</b></small></span>
+                                        <span class="my-0 text-nowrap d-flex flex-column"
+                                            data-ng-repeat="horario in solicitud.Horario"><small>{{horario.DiaCodigo}}.
+                                                {{horario.DiaNombre}} {{horario.HraCodigo}}. {{horario.HraInicio}} -
+                                                {{horario.HraFin}}</small></span>
+                                    </div>
+                                </td>
+                                <td>{{solicitud.PersonaNombreApellido}}</td>
+                                <td>
+                                    <div class="btn-group-vertical w-100" role="group">
+                                    <!-- Se comenta este botón debido a que en la tabla ya están los mismos datos que trae el botón.
+                                    <button class="m-1 btn btn-sm btn-info"
+                                        data-ng-click="soldoc.consultaHorarioSolicitud(solicitud, 0)">Horario</button> -->
+                                        <button class="m-1 btn btn-sm btn-info"
+                                        data-ng-click="soldoc.consultaComentariosSolicitud(solicitud)">Comentarios</button>
+                                    <button class="m-1 btn btn-sm btn-success"
+                                        data-ng-if="solicitud.SpdEstado == 1"
+                                        data-ng-click="soldoc.modalAsignarDocente(solicitud, 'Asignado')">Asignar
+                                        docente</button>
+                                    <button class="m-1 btn btn-sm btn-warning"
+                                        data-ng-if="solicitud.SpdEstado == 2"
+                                        data-ng-click="soldoc.modalAsignarDocente(solicitud, 'ReAsignado')">Cambiar
+                                        docente</button>
+                                    <button class="m-1 btn btn-sm btn-danger"
+                                        data-ng-if="solicitud.SpdEstado != 3"
+                                        data-ng-click="soldoc.modalRechazarSolicitud(solicitud)">Rechazar</button>
+                                    </div>
+
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Seccion lista de solicitudes realizadas -->
+<div class="container-fluid" data-ng-if="soldoc.seccionListaSolicitudes == 2">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-auto">
+                            <h3>Solicitudes Realizadas</h3>
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudCodigo" placeholder="Busqueda Codigo">
+                        </div>
+                        <div class="col-auto pt-1">
+                            <input type="text" class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SolicitudesRealizadas" placeholder="Busqueda General">
+                        </div>
+
+                        <div class="col-auto pt-1">
+                            <select class="form-control form-control-sm"
+                                data-ng-model="soldoc.filter.SpdEstado">
+                                <option value="">Todos</option>
+                                <option value="1">PENDIENTE</option>
+                                <option value="2">APROBADO</option>
+                                <option value="3">RECHAZADO</option>
+                            </select>
+                        </div>
+
+                        <div class="col-auto pt-1">
+                            <button class="btn btn-sm btn-success"
+                                data-ng-if="soldoc.periodoHabilitado(soldoc.periodoBuscado) || usuario.codPerfil == roles.ADMINISTRADOR"
+                                data-ng-click="soldoc.formularioCrearSolicitud()">Crear Solicitud</button>
+                        </div>
+                        <div class="col text-right mr-1 pt-1">
+                            <button class="btn btn-default btn-sm"
+                                onclick="copiarTabla('tableDataRealizadas')">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row"
+                        data-ng-if="(soldoc.listaSolicitudesPeriodo.realizadas| toArray| filter:{
+                                            SpdCodigo: soldoc.filter.SolicitudCodigo,
+                                            $: soldoc.filter.SolicitudesRealizadas,
+                                            SpdEstado: soldoc.filter.SpdEstado
+                                        }).length > 0">
+                        <div class="col-auto">
+                            <span><small>Total de solicitudes realizadas: 
+                            {{ (soldoc.listaSolicitudesPeriodo.realizadas
+                                    | toArray
+                                    | filter:{
+                                        SpdCodigo: soldoc.filter.SolicitudCodigo,
+                                        $: soldoc.filter.SolicitudesRealizadas,
+                                        SpdEstado: soldoc.filter.SpdEstado
+                                    }).length }}
+                            </small></span><br>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
+                            <small data-ng-if="soldoc.periodoBuscado != '' && soldoc.periodoHabilitado(soldoc.periodoBuscado) && usuario.codPerfil != roles.ADMINISTRADOR">
+                                {{soldoc.mensajeDisponibilidadPeriodo(soldoc.periodoBuscado)}}
+                            </small>
+                            <small data-ng-if="soldoc.periodoBuscado != '' && soldoc.periodoHabilitado(soldoc.periodoBuscado) && usuario.codPerfil == roles.ADMINISTRADOR">
+                                {{soldoc.mensajeDisponibilidadPeriodo(soldoc.periodoBuscado)}} ({{soldoc.cantidadProgramasPeriodo(soldoc.periodoBuscado)}} programa(s) con apertura activa).
+                            </small>
+                            <small data-ng-if="soldoc.periodoBuscado != '' && !soldoc.periodoHabilitado(soldoc.periodoBuscado)">
+                                El periodo consultado no está habilitado para crear nuevas solicitudes.
+                            </small>
+                            <small data-ng-if="usuario.codPerfil == roles.ADMINISTRADOR && soldoc.periodoBuscado != '' && !soldoc.periodoHabilitado(soldoc.periodoBuscado)">
+                                Como administrador puede crear solicitudes en cualquier periodo, aunque no haya apertura activa.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm"
+                        id="tableDataRealizadas">
+                        <thead>
+                            <th>#</th>
+                            <th>CÓDIGO</th>
+                            <th>ESTADO SOLICITUD</th>
+                            <th>SEDE</th>
+                            <th>PERIODO</th>
+                            <th>UNIDAD SOLICITANTE</th>
+                            <th>ASIGNATURA</th>
+                            <th>UNIDAD DIRIGIDA</th>
+                            <th>HORARIO</th>
+                            <th>DOCENTE ASIGNADO</th>
+                            <th></th>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-if="(soldoc.listaSolicitudesPeriodo.realizadas| toArray| filter:{
+                                                    SpdCodigo: soldoc.filter.SolicitudCodigo,
+                                                    $: soldoc.filter.SolicitudesDirigidas,
+                                                    SpdEstado: soldoc.filter.SpdEstado
+                                                }).length == 0">
+                                <td colspan="11" class="text-center">
+                                    No se encontraron registros en el periodo con los filtros seleccionados.
+                                </td>
+                            </tr>
+                            <tr data-ng-repeat="solicitud in soldoc.listaSolicitudesPeriodo.realizadas | toArray| filter:{
+                                            SpdCodigo: soldoc.filter.SolicitudCodigo,
+                                            $: soldoc.filter.SolicitudesRealizadas,
+                                            SpdEstado: soldoc.filter.SpdEstado
+                                            }">
+                                <td>{{$index + 1}}</td>
+                                <td>{{solicitud.SpdCodigo}}</td>
+                                <td>
+                                    <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 3">RECHAZADO</span>
+                                    <span class="badge bg-success" data-ng-if="solicitud.SpdEstado == 2">APROBADO</span>
+                                    <span class="badge bg-warning"
+                                        data-ng-if="solicitud.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                                    <span class="badge bg-danger" data-ng-if="solicitud.SpdEstado == 0">ELIMINADO</span>
+                                </td>
+                                <td>{{solicitud.SedCodigo}}. {{solicitud.SedNombre}}</td>
+                                <td>{{solicitud.PeriodoNombre}}</td>
+                                <td>{{solicitud.UaaSolicitaCodigo}}. {{solicitud.UaaSolicitaNombre}}</td>
+                                <td>{{solicitud.AsiNombreCorto}} - {{solicitud.AsiNombre}}</td>
+                                <td>{{solicitud.UaaDirigidaCodigo}}. {{solicitud.UaaDirigidaNombre}}</td>
+                                <td class="py-0">
+                                    <div class="my-0" style="max-height: 150px; overflow-y: auto;">
+                                        <span class="mb-1"><small><b>Total Horas {{solicitud.Horario.length ||
+                                                    0}}</b></small></span>
+                                        <span class="my-0 text-nowrap d-flex flex-column"
+                                            data-ng-repeat="horario in solicitud.Horario"><small>{{horario.DiaCodigo}}.
+                                                {{horario.DiaNombre}} {{horario.HraCodigo}}. {{horario.HraInicio}} -
+                                                {{horario.HraFin}}</small></span>
+                                    </div>
+                                </td>
+                                <td>{{solicitud.PersonaNombreApellido}}</td>
+                                <td>
+                                    <div class="btn-group-vertical w-100" role="group">
+                                    <!-- Se comenta este botón debido a que en la tabla ya están los mismos datos que trae el botón.
+                                    <button class="m-1 btn btn-sm btn-info"
+                                        data-ng-click="soldoc.consultaHorarioSolicitud(solicitud, 1)">Horario</button> -->
+                                        <button class="m-1 btn btn-sm btn-info"
+                                        data-ng-click="soldoc.consultaComentariosSolicitud(solicitud)">Comentarios</button>
+                                    <button class="m-1 btn btn-sm btn-warning" data-ng-if="solicitud.SpdEstado == 3"
+                                        data-ng-click="soldoc.fomularioEditarSolicitud(solicitud)">Editar</button>
+                                    <button class="m-1 btn btn-sm btn-danger"
+                                        data-ng-click="soldoc.mostrarSweetAlertDisabled('eliminar_solicitud',solicitud)"
+                                        data-ng-if="solicitud.SpdEstado == 1 || solicitud.SpdEstado == 3">Eliminar</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Seccion formulario creacion solicitud -->
+<div class="container-fluid" data-ng-if="soldoc.seccionFormularioCreacionSolicitud == 1">
+    <div class="card card-danger">
+        <div class="card-header">
+            <div class="row justify-content-between">
+                <div class="col-auto">
+                    <h4>Formulario creación solicitud préstamo de docente</h4>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Periodo</label>
+                                <select class="form-control form-control-sm"
+                                    data-ng-model="soldoc.creacionSolicitud.PeriodoCodigo" disabled>
+                                    <option value="" disabled selected>Seleccionar periodo.</option>
+                                    <option data-ng-repeat="periodo in soldoc.listaPeriodos | limitTo:10"
+                                        value="{{periodo.PerCodigo}}">
+                                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Asignatura</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{soldoc.creacionSolicitud.AsiNombreCorto}} -
+                                        {{soldoc.creacionSolicitud.AsiNombre}}</p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="soldoc.abrirModal('modalBusquedaAsignatura');">Buscar
+                                            Asignatura</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Unidad Solicitante</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{soldoc.creacionSolicitud.UaaCodigoSolicitada}}.
+                                        {{soldoc.creacionSolicitud.UaaNombreCortoSolicitada}}
+                                    </p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="soldoc.consultarUnidades('Solicita')">Buscar Unidad</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Departamento Dirigido</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{soldoc.creacionSolicitud.UaaCodigoDirigida}}.
+                                        {{soldoc.creacionSolicitud.UaaNombreCortoDirigida}}
+                                    </p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="soldoc.consultarUnidades('Dirigida')">Buscar Unidad</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Sede Curso</label>
+                                <div class="input-group">
+                                    <select class="form-control form-control-sm"
+                                        data-ng-model="soldoc.creacionSolicitud.SedCodigo">
+                                        <option value="" disabled selected>Seleccione una sede</option>
+                                        <option value="{{sede.SedCodigo}}" data-ng-repeat="sede in soldoc.listaSedes">
+                                            {{sede.SedCodigo}} - {{sede.SedNombre}}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Dia</label>
+                                <select class="form-control form-control-sm" data-ng-model="soldoc.diaSeleccionado"
+                                    data-ng-change="soldoc.seleccionarDia()">
+                                    <option value="" disabled selected>Seleccionar dia.</option>
+                                    <option data-ng-repeat="dia in soldoc.listaDias"
+                                        value="{{dia.DiaCodigo}}${{dia.DiaNombre}}">
+                                        {{dia.DiaCodigo}}. {{dia.DiaNombre}}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Hora</label>
+                                <select multiple="multiple" size="7" class="form-control form-control-sm"
+                                    data-ng-model="soldoc.horaSeleccionada">
+                                    <option value="" disabled selected>Seleccionar hora.</option>
+                                    <option data-ng-repeat="hora in soldoc.listaHoras"
+                                        value="{{hora.HraCodigo}}${{hora.HraInicio}}${{hora.HraFin}}">
+                                        {{hora.HraCodigo}}. {{hora.HraInicio}} - {{hora.HraFin}}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col" style="padding-top: 2rem !important;">
+                            <button class="btn btn-sm btn-success" data-ng-click="soldoc.agregarHorario()">Agregar
+                                Horario</button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <table class="table">
+                                <tbody>
+                                    <tr
+                                        data-ng-repeat="horario in soldoc.creacionHorarioSolicitud | orderBy:['DiaCodigo', 'HraCodigo']">
+                                        <td>{{horario.DiaCodigo}}. {{horario.DiaNombre}}</td>
+                                        <td>{{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</td>
+                                        <td><button class="btn btn-sm btn-danger"
+                                                data-ng-click="soldoc.quitarHorario(horario)">Eliminar</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button class="btn btn-danger btn-sm" data-ng-click="soldoc.crearSolicitud()">Crear</button>
+            <button class="btn btn-default btn-sm" data-ng-click="soldoc.cancelarCrearSolicitud()">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Seccion formulario edicion solicitud -->
+<div class="container-fluid" data-ng-if="soldoc.seccionFormularioEdicionSolicitud == 1">
+    <div class="card card-danger">
+        <div class="card-header">
+            <div class="row justify-content-between">
+                <div class="col-auto">
+                    <h4>Formulario Edicion solicitud préstamo de docente</h4>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Periodo</label>
+                                <select class="form-control form-control-sm"
+                                    data-ng-model="soldoc.edicionSolicitud.PeriodoCodigo" disabled>
+                                    <option value="" disabled selected>Seleccionar periodo.</option>
+                                    <option data-ng-repeat="periodo in soldoc.listaPeriodos | limitTo:10"
+                                        value="{{periodo.PerCodigo}}">
+                                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Asignatura</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{soldoc.edicionSolicitud.AsiNombreCorto}} -
+                                        {{soldoc.edicionSolicitud.AsiNombre}}</p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="soldoc.abrirModal('modalBusquedaAsignatura');">Buscar
+                                            Asignatura</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Unidad Solicitante</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{soldoc.edicionSolicitud.UaaSolicitaCodigo}}.
+                                        {{soldoc.edicionSolicitud.UaaSolicitaNombre}}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Departamento Dirigido</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{soldoc.edicionSolicitud.UaaDirigidaCodigo}}.
+                                        {{soldoc.edicionSolicitud.UaaDirigidaNombre}}
+                                    </p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="soldoc.consultarUnidades('Dirigida')">Buscar Unidad</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Sede Curso</label>
+                                <div class="input-group">
+                                    <select class="form-control form-control-sm"
+                                        data-ng-model="soldoc.edicionSolicitud.SedCodigo">
+                                        <option value="" disabled selected>Seleccione una sede</option>
+                                        <option value="{{sede.SedCodigo}}" data-ng-repeat="sede in soldoc.listaSedes">
+                                            {{sede.SedCodigo}} - {{sede.SedNombre}}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Dia</label>
+                                <select class="form-control form-control-sm"
+                                    data-ng-model="soldoc.edicionSolicitud.DiaSeleccionado">
+                                    <option value="" disabled selected>Seleccionar dia.</option>
+                                    <option data-ng-repeat="dia in soldoc.listaDias" value="{{dia.DiaCodigo}}">
+                                        {{dia.DiaCodigo}}. {{dia.DiaNombre}}</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label>Hora</label>
+                                <select multiple="multiple" size="7" class="form-control form-control-sm"
+                                    data-ng-model="soldoc.edicionSolicitud.HorasSeleccionadas">
+                                    <option value="" disabled selected>Seleccionar hora.</option>
+                                    <option data-ng-repeat="hora in soldoc.listaHoras" value="{{hora.HraCodigo}}">
+                                        {{hora.HraCodigo}}. {{hora.HraInicio}} - {{hora.HraFin}}</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col" style="padding-top: 2rem !important;">
+                            <button class="btn btn-sm btn-success"
+                                data-ng-click="soldoc.agregarHorarioSolicitud()">Agregar
+                                Horario</button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="table-responsive">
+                                <table
+                                    class="table tablaLista table-sm table-hover table-striped table-bordered table-head-fixed">
+                                    <thead>
+                                        <tr>
+                                            <th width="100px">DIA</th>
+                                            <th>HORA</th>
+                                            <th width="100px" class="text-center"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-repeat="horario in soldoc.listaHorario">
+                                            <td>{{horario.DiaCodigo}}. {{horario.DiaNombre}}</td>
+                                            <td>{{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-danger btn-sm"
+                                                    data-ng-click="soldoc.eliminarHorarioSeleccionado(horario);">Eliminar</button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <button class="btn btn-danger btn-sm" data-ng-click="soldoc.reEnviarSolicitud()">Re activar</button>
+            <button class="btn btn-default btn-sm" data-ng-click="soldoc.cancelarEditarSolicitud()">
+                Cancelar
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+
+<!-- Inicia modal lista de busqueda de asignatura -->
+<div class="modal fade" id="modalBusquedaAsignatura" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Busqueda de asignatura</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" style="overflow: auto; max-height: 700px;">
+                <div class="row">
+                    <div class="col-auto">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre o codigo alfanumerico"
+                                class="input input-sm" data-ng-model="soldoc.filtroAsignatura"></span>
+                    </div>
+                    <div class="col-auto">
+                        <select class="form-control form-control-sm" data-ng-model="soldoc.filter.AsignaturaEstado">
+                            <option value="">ESTADO</option>
+                            <option value="ACTIVO">ACTIVO</option>
+                            <option value="DESACTIVADA">INACTIVO</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-danger btn-sm" data-ng-click="soldoc.buscarAsignatura()">Buscar</button>
+                    </div>
+                </div>
+                <br>
+                <div class="row">
+                    <div class="col-md-12">
+                        <table class="table table-sm table-hover table-bordered table-striped">
+                            <thead>
+                                <th>#</th>
+                                <th></th>
+                                <th>ESTADO</th>
+                                <th>CÓDIGO</th>
+                                <th>ASIGNATURA</th>
+                                <th>NUCLEO</th>
+                                <th>CARACTER</th>
+                                <th>CREDITOS</th>
+                                <th>CREDITOS TEORIA</th>
+                                <th>CREDITOS PRACTICA</th>
+                                <th>PROPIETARIO</th>
+                            </thead>
+                            <tbody>
+                                <tr data-ng-if="soldoc.listaAsignaturas.length <= 0 || soldoc.listaAsignaturas == null">
+                                    <td colspan="11">
+                                        No se encontraron asignaturas con el nombre o codigo
+                                        '{{soldoc.filtroAsignatura}}'
+                                    </td>
+                                </tr>
+                                <tr
+                                    data-ng-repeat="asignatura in soldoc.listaAsignaturas | toArray | filter:{AsiEstado: soldoc.filter.AsignaturaEstado}">
+                                    <td>{{$index + 1}}</td>
+                                    <td><button data-ng-if="asignatura.AsiEstado == 'ACTIVO' "
+                                            data-ng-click="soldoc.seleccionarAsignatura(asignatura)"
+                                            class="btn btn-sm btn-danger">Seleccionar</button></td>
+                                    <td>
+                                        <p data-ng-if="asignatura.AsiEstado == 'ACTIVO' " class="badge bg-success">
+                                            {{asignatura.AsiEstado}}</p>
+                                        <p data-ng-if="asignatura.AsiEstado == 'DESACTIVADA' " class="badge bg-danger">
+                                            {{asignatura.AsiEstado}}</p>
+                                    </td>
+                                    <td>{{asignatura.AsiCodigo}}</td>
+                                    <td>{{asignatura.AsiNombre}} - {{asignatura.AsiNombreCorto}}</td>
+                                    <td>{{asignatura.NucNombre}}</td>
+                                    <td>{{asignatura.CarNombre}}</td>
+                                    <td>{{asignatura.AsiCreditos}}</td>
+                                    <td>{{asignatura.AsiCreditosTeoria}}</td>
+                                    <td>{{asignatura.AsiCreditosPractica}}</td>
+                                    <td>{{asignatura.UaaCodigoNombre}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal de lista unidades unidades dirigidas -->
+<div class="modal fade" id="modalUnidades" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Unidades</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="soldoc.filter.Unidad"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm table-hover table-striped table-bordered table-head-fixed">
+                        <thead>
+                            <tr>
+                                <th width="100px">CODIGO</th>
+                                <th>NOMBRE</th>
+                                <th>SEDE</th>
+                                <th width="100px" class="text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-if="(soldoc.tipoUnidadesBuscadas == 1) || (soldoc.tipoUnidadesBuscadas == 2 && unidad.UatCodigo != 1)"
+                                data-ng-repeat="unidad in soldoc.listaUnidades | toArray | filter:soldoc.filter.Unidad">
+                                <td>{{unidad.UaaCodigo}}</td>
+                                <td>{{unidad.UaaNombreCorto}}</td>
+                                <td>{{unidad.SedNombre}}</td>
+                                <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                        data-dismiss="modal"
+                                        data-ng-click="soldoc.seleccionarUnidadDirigida(unidad);">Seleccionar</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal de horario de solicitud -->
+<div class="modal fade" id="modalHorarioSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de horario de solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p><b>Periodo</b>: {{soldoc.solicitudSeleccionada.PeriodoNombre}}</p>
+                        <p><b>Asignatura</b>: {{soldoc.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{soldoc.solicitudSeleccionada.AsiNombre}}</p>
+                        <p><b>Sede Curso</b>: {{soldoc.solicitudSeleccionada.SedCodigo}}.
+                            {{soldoc.solicitudSeleccionada.SedNombre}}</p>
+                        <p><b>Estado</b>: <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 3">RECHAZADO</span>
+                            <span class="badge bg-success"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 2">APROBADO</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 0">ELIMINADO</span>
+                        </p>
+                    </div>
+                    <div class="col-auto">
+                        <p><b>Unidad Dirigida</b>: {{soldoc.solicitudSeleccionada.UaaDirigidaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaDirigidaNombre}}</p>
+                        <p><b>Unidad Solicitante</b>: {{soldoc.solicitudSeleccionada.UaaSolicitaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaSolicitaNombre}}</p>
+                        <p><b>Docente</b>: {{soldoc.solicitudSeleccionada.PersonaNombreApellido}}</p>
+                    </div>
+                </div>
+                <br>
+                <p><b>Total Horas {{soldoc.listaHorario.length || 0}}</b></p>
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm table-hover table-striped table-bordered table-head-fixed">
+                        <thead>
+                            <tr>
+                                <th width="100px">DIA</th>
+                                <th>HORA</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-repeat="horario in soldoc.listaHorario">
+                                <td>{{horario.DiaCodigo}}. {{horario.DiaNombre}}</td>
+                                <td>{{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal de comentarios de solicitud -->
+<div class="modal fade" id="modalComentariosSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de comentarios de la solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p><b>Periodo</b>: {{soldoc.solicitudSeleccionada.PeriodoNombre}}</p>
+                        <p><b>Asignatura</b>: {{soldoc.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{soldoc.solicitudSeleccionada.AsiNombre}}</p>
+                        <p><b>Sede Curso</b>: {{soldoc.solicitudSeleccionada.SedCodigo}}.
+                            {{soldoc.solicitudSeleccionada.SedNombre}}</p>
+                        <p><b>Estado</b>: <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 3">RECHAZADO</span>
+                            <span class="badge bg-success"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 2">APROBADO</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 0">ELIMINADO</span>
+                        </p>
+                    </div>
+                    <div class="col-auto">
+                        <p><b>Código solicitud</b>: {{soldoc.solicitudSeleccionada.SpdCodigo}}</p>
+                        <p><b>Unidad Dirigida</b>: {{soldoc.solicitudSeleccionada.UaaDirigidaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaDirigidaNombre}}</p>
+                        <p><b>Unidad Solicitante</b>: {{soldoc.solicitudSeleccionada.UaaSolicitaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaSolicitaNombre}}</p>
+                        <p><b>Docente</b>: {{soldoc.solicitudSeleccionada.PersonaNombreApellido}}</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="row" data-ng-if="soldoc.solicitudSeleccionada.SpdEstado != 0">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Comentario</label>
+                            <textarea class="form-control" rows="3" maxlength="250"
+                                data-ng-model="soldoc.mensajeComentario"> {{soldoc.mensajeComentario}}</textarea>
+                            <small>{{soldoc.mensajeComentario ? soldoc.mensajeComentario.length : 0}}/250</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <button class="btn btn-sm btn-danger" data-ng-click="soldoc.agregarComentario()">Agregar
+                            comentario</button>
+                    </div>
+                    <div class="col-md-12">
+                        <hr>
+                    </div>
+                </div>
+                <p><small class="p-4">Total de comentarios: {{soldoc.listaComentarios ? soldoc.listaComentarios.length :
+                        0}}</small></p>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div style="height: 500px; overflow: auto">
+                            <div class="timeline">
+                                <div data-ng-repeat="comentario in soldoc.listaComentarios">
+                                    <i class="fas bg-danger"
+                                        style="font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';"><span>{{
+                                            soldoc.getUserInitials(comentario.PerNombreApellido) }}</span></i>
+                                    <div class="timeline-item">
+                                        <span class="time"><i
+                                                class="fas fa-clock"></i>{{comentario.SpdcFechaCreacion}}</span>
+                                        <h3 class="timeline-header no-border">{{comentario.PerNombreApellido}}</h3>
+                                        <p class="p-2">{{comentario.SpdcMensaje}}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal de docente de solicitud -->
+<div class="modal fade" id="modalDocenteSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de comentarios de la solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p><b>Periodo</b>: {{soldoc.solicitudSeleccionada.PeriodoNombre}}</p>
+                        <p><b>Asignatura</b>: {{soldoc.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{soldoc.solicitudSeleccionada.AsiNombre}}</p>
+                        <p><b>Sede Curso</b>: {{soldoc.solicitudSeleccionada.SedCodigo}}.
+                            {{soldoc.solicitudSeleccionada.SedNombre}}</p>
+                        <p><b>Estado</b>: <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 3">RECHAZADO</span>
+                            <span class="badge bg-success"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 2">APROBADO</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 0">ELIMINADO</span>
+                        </p>
+                    </div>
+                    <div class="col-auto">
+                        <p><b>Código solicitud</b>: {{soldoc.solicitudSeleccionada.SpdCodigo}}</p>
+                        <p><b>Unidad Dirigida</b>: {{soldoc.solicitudSeleccionada.UaaDirigidaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaDirigidaNombre}}</p>
+                        <p><b>Unidad Solicitante</b>: {{soldoc.solicitudSeleccionada.UaaSolicitaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaSolicitaNombre}}</p>
+                        <p><b>Docente</b>: {{soldoc.solicitudSeleccionada.PersonaNombreApellido}}</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <div class="row">
+                                <div class="col-auto">
+                                    <label>Docente asignado </label>
+                                </div>
+                                <div class="col-auto mb-2">
+                                    <input type="text" class="form-control form-control-sm"
+                                        data-ng-model="soldoc.filter.Docente" placeholder="Buscar docente">
+                                </div>
+                                <div class="col-md-12 table-responsive p-0" style="height: 300px; ">
+                                    <table class="table table-head-fixed table-hover table-sm">
+                                        <thead>
+                                            <th>IDENTIFICACION</th>
+                                            <th>NOMBRE</th>
+                                            <th>ULTIMA VINCULACIÓN</th>
+                                            <th>SEDE</th>
+                                            <th></th>
+                                        </thead>
+                                        <tbody>
+                                            <tr data-ng-class="{
+                                                    'bg-warning': docentes.SedCodigo != soldoc.solicitudSeleccionada.SedCodigo
+                                                }"
+                                                data-ng-repeat="docentes in soldoc.listaDocentes | toArray | filter:soldoc.filter.Docente">
+                                                <td>{{docentes.PerIdentificacion}}</td>
+                                                <td>{{docentes.PerNombreApellido}}</td>
+                                                <td>{{docentes.VinNombre}} - {{docentes.DedNombre}}</td>
+                                                <td>{{docentes.SedCodigo}}. {{docentes.SedNombre}}</td>
+                                                <td><button class="btn btn-sm btn-danger"
+                                                        data-ng-click="soldoc.seleccionarDocente(docentes)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row my-2">
+                    <div class="col p-2" data-ng-if="soldoc.asignacionDocente.PerCodigo">
+                        <p><b>Docente seleccionado</b></p>
+                        <p class="m-0">Identificacion: {{soldoc.asignacionDocente.PerIdentificacion}}</p>
+                        <p class="m-0">Nombre: {{soldoc.asignacionDocente.PerNombreApellido}}</p>
+                        <p class="m-0">Ultima Vinculación: {{soldoc.asignacionDocente.VinNombre}} -
+                            {{soldoc.asignacionDocente.DedNombre}}</p>
+                        <p>Sede: {{soldoc.asignacionDocente.SedCodigo}}.
+                            {{soldoc.asignacionDocente.SedNombre}}</p>
+
+                        <p class="m-0">Horas actuales aprobadas del docente: <b>{{soldoc.listaHorarioPersona.length ||
+                                0}}</b></p>
+                        <p class="m-0">Horas adicionadas con la solicitud actual: <b>{{soldoc.listaHorario.length ||
+                                0}}</b></p>
+                        <p class="m-0">Horas resultado total: <b>{{soldoc.listaHorarioPersona.length +
+                                soldoc.listaHorario.length
+                                }}</b></p>
+                        <div
+                            data-ng-if="(soldoc.asignacionDocente.VinCodigo == 14 || soldoc.asignacionDocente.VinCodigo == 24) && soldoc.asignacionDocente.DedCodigo == 6">
+                            <p>
+                                Tope Horas por Sede:
+                                <b><span data-ng-if="soldoc.asignacionDocente.SedCodigo == 1">16</span>
+                                    <span data-ng-if="soldoc.asignacionDocente.SedCodigo != 1">19</span></b>
+                            </p>
+
+                            <p data-ng-if="soldoc.asignacionDocente.SedCodigo == 1 && soldoc.listaHorarioPersona.length + soldoc.listaHorario.length > 16"
+                                class="text-danger"><b>Se pasa de horas permitidas para la sede Neiva.</b></p>
+                            <p data-ng-if="soldoc.asignacionDocente.SedCodigo != 1 && soldoc.listaHorarioPersona.length + soldoc.listaHorario.length > 19"
+                                class="text-danger"><b>Se pasa de horas permitidas para las sedes.</b></p>
+                        </div>
+                    </div>
+                    <div class="col p-2 bg-success mx-1" data-ng-if="soldoc.asignacionDocente.PerCodigo">
+                        <p><b>Cantidad horas semanales: {{soldoc.listaHorarioPersona.length || 0}}</b></p>
+                        <p class="my-1" data-ng-repeat="horario in soldoc.listaHorarioPersona"> {{horario.DiaCodigo}}.
+                            {{horario.DiaNombre}} {{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</p>
+                    </div>
+                    <div class="col p-2 bg-warning" data-ng-if="soldoc.asignacionDocente.PerCodigo">
+                        <p><b>Horario solicitud : {{soldoc.listaHorario.length || 0}}</b></p>
+                        <p class="my-1" data-ng-repeat="horario in soldoc.listaHorario">
+                            {{horario.DiaCodigo}}. {{horario.DiaNombre}} {{horario.HraCodigo}}. {{horario.HraInicio}} -
+                            {{horario.HraFin}}
+                        </p>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Justificacion</label>
+                            <textarea class="form-control" rows="3" maxlength="250"
+                                data-ng-model="soldoc.asignacionDocente.Mensaje"> {{soldoc.asignacionDocente.Mensaje}}</textarea>
+                            <small>{{soldoc.asignacionDocente.Mensaje ? soldoc.asignacionDocente.Mensaje.length :
+                                0}}/250</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="row">
+                        <div class="col">
+                            <button class="btn btn-sm btn-danger" ng-disabled="soldoc.validarHorasSede()"
+                                data-ng-click="soldoc.asignarDocente()">Asignar
+                                docente</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal de rechazar de solicitud -->
+<div class="modal fade" id="modalRechazarSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Rechazo de la solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p><b>Periodo</b>: {{soldoc.solicitudSeleccionada.PeriodoNombre}}</p>
+                        <p><b>Asignatura</b>: {{soldoc.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{soldoc.solicitudSeleccionada.AsiNombre}}</p>
+                        <p><b>Sede Curso</b>: {{soldoc.solicitudSeleccionada.SedCodigo}}.
+                            {{soldoc.solicitudSeleccionada.SedNombre}}</p>
+                        <p><b>Estado</b>: <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 3">RECHAZADO</span>
+                            <span class="badge bg-success"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 2">APROBADO</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 1">PENDIENTE VERIFICACIÓN</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="soldoc.solicitudSeleccionada.SpdEstado == 0">ELIMINADO</span>
+                        </p>
+                    </div>
+                    <div class="col-auto">
+                        <p><b>Unidad Dirigida</b>: {{soldoc.solicitudSeleccionada.UaaDirigidaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaDirigidaNombre}}</p>
+                        <p><b>Unidad Solicitante</b>: {{soldoc.solicitudSeleccionada.UaaSolicitaCodigo}}.
+                            {{soldoc.solicitudSeleccionada.UaaSolicitaNombre}}</p>
+                        <p><b>Docente</b>: {{soldoc.solicitudSeleccionada.PersonaNombreApellido}}</p>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Justificacion</label>
+                            <textarea class="form-control" rows="3" maxlength="250"
+                                data-ng-model="soldoc.mensajeComentario"> {{soldoc.mensajeComentario}}</textarea>
+                            <small>{{soldoc.mensajeComentario ? soldoc.mensajeComentario.length : 0}}/250</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <button class="btn btn-sm btn-danger" data-ng-click="soldoc.rechazarSolicitud()">Rechazar
+                            Soliciitud</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<script>
+    function copiarTabla(NombreTabla) {
+        // Get the text field
+        let el = document.getElementById(NombreTabla)
+        var body = document.body, range, sel;
+        if (document.createRange && window.getSelection) {
+            range = document.createRange();
+            sel = window.getSelection();
+            sel.removeAllRanges();
+            try {
+                range.selectNodeContents(el);
+                sel.addRange(range);
+            } catch (e) {
+                range.selectNode(el);
+                sel.addRange(range);
+            }
+        } else if (body.createTextRange) {
+            range = body.createTextRange();
+            range.moveToElementText(el);
+            range.select();
+        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        if (document.execCommand('copy')) {
+            Toast.fire({
+                icon: 'success',
+                title: 'Información copiada correctamente.'
+            });
+        } else {
+            Toast.fire({
+                icon: 'error',
+                title: 'No se pudo copiar la información.'
+            });
+        }
+    }
+</script>

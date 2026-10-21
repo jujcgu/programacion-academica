@@ -1,0 +1,191 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cupo Personalizado</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="cupoper.curCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="cupoper.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="cupoper.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{cupoper.cursoSeleccionado[0].CurCodigo}}</b>
+                        <br>
+                        <span style="color:red; " ng-if="cupoper.PermitidoEditar == false">
+                            EL CALENDARIO DEL CURSO NO SE ENCUENTRA ACTIVO PARA CAMBIOS.
+                        </span>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{cupoper.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{cupoper.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{cupoper.cursoSeleccionado[0].NucNombre}}<br>
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{cupoper.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{cupoper.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{cupoper.creadorCurso}}<br>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <div class="row justify-content-center align-items-left"
+            ng-if="cupoper.cursoSeleccionado.length > 0 && cupoper.PermitidoEditar == true">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <div class="row">
+                        <div class="col-auto">
+                            <input type="text" class="form-control form-control-sm" placeholder="Código del estudiante"
+                                data-ng-model="cupoper.estCodigo">
+                        </div>
+                        <div class="col-auto">
+                            <button type="button" class="btn btn-danger btn-sm"
+                                data-ng-click="cupoper.validarCodigoEstudiante()">
+                                Buscar
+                            </button>
+                        </div>
+                    </div>
+                    <hr ng-if="cupoper.estudianteSeleccionado.darCupoPersonalizado != null">
+                    <div class="row" ng-if="cupoper.cursoSeleccionado.length > 0">
+                        <div class="col" style="padding-top: 14px;"
+                            ng-if="cupoper.estudianteSeleccionado.datosEstudiante != null">
+                            <label>Código:</label> {{cupoper.estudianteSeleccionado.datosEstudiante.EstCodigo}}<br>
+                            <label>Nombre:</label>
+                            {{cupoper.estudianteSeleccionado.datosEstudiante.PerNombreApellido}}<br>
+                            <label>Identificación:</label>
+                            {{cupoper.estudianteSeleccionado.datosEstudiante.PerIdentificacion}}<br>
+                            <label>Programa:</label>
+                            {{cupoper.estudianteSeleccionado.datosEstudiante.UaaNombreCorto}}<br>
+                            <span
+                                data-ng-class="{'text-red': cupoper.estudianteSeleccionado.darCupoPersonalizado == false, 'text-success': cupoper.estudianteSeleccionado.darCupoPersonalizado == true}">
+                                <label>Estado:</label> {{cupoper.estudianteSeleccionado.mensaje}}<br>
+                            </span>
+                        </div>
+                        <div class="col-auto" ng-if="cupoper.estudianteSeleccionado.darCupoPersonalizado == true">
+                            <form class="form-horizontal" id="frmCreacionCupoPersonalizado" method="post">
+                                <div class="card card-danger">
+                                    <div class="card-header">
+                                        <h3 class="card-title">Asignación de cupo personalizado</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Observacion del motivo por el cual se da el cupo personalizado -->
+                                        <div class="form-group row">
+                                            <label class="col-sm-4 col-form-label">Observación (Motivo por el cual se da
+                                                el cupo personalizado) <span style="color:red">*</span></label>
+                                            <div class="col-sm-8">
+                                                <textarea class="form-control form-control-sm" name="txtObservacion"
+                                                    id="txtObservacion" rows="5" data-ng-model="cupoper.cupoObservacion"
+                                                    autocomplete="off""></textarea>
+                                            </div>
+                                        </div>
+    
+                                        <!-- Lista subgrupos del curso seleccionado -->
+                                        <div class=" form-group row">
+                                            <label class="col-sm-4 col-form-label">Subgrupo del curso <span
+                                                    style="color:red">*</span></label>
+                                            <div class="col-sm-8">
+                                                <select id="slcSubGrupo" name="slcSubGrupo" class="form-control form-control-sm"  data-ng-model="cupoper.cupoSubgrupo">
+                                                    <option value="" selected disabled>Seleccionar...</option>
+                                                    <option value="{{subgrupo.SubGrupoNombre}}" data-ng-repeat="subgrupo in cupoper.listadoSubgrupos">
+                                                        {{subgrupo.SubGrupoNombre}}
+                                                    </option>
+                                                </select>
+                                            </div>
+                                        </div>
+    
+                                        <!-- Aviso campos obligatorios -->
+                                        <div class="form-group row">
+                                            <label class="col-sm-auto col-form-label" style="color:red"><small>* Los campos
+                                                    son
+                                                    obligatorios.</small></label>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <button type="submit" data-ng-click="cupoper.validarAsignacionCupoPersonalizado()"
+                                            class="btn btn-danger btn-sm">Asignar</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inicio lista de estudiantes con cupo personalizado -->
+        <div class="row" ng-if="cupoper.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row">
+                            <div class="col-auto">
+                                LISTA DE ESTUDIANTES CON CUPO PERSONALIZADO
+                            </div>
+                            <div class="col-md-2 col-sm-4">
+                                <input type="text" class="form-control form-control-sm" placeholder="Buscar Estudiante"
+                                    ng-model="cupoper.filterEstudiante">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <small style="color:#a9a7a7"
+                            data-ng-if="cupoper.listadoEstudiantesCupoPersonalizados.length <= 0 || cupoper.listadoEstudiantesCupoPersonalizados == null">
+                            Este curso no tiene estudiantes inscritos con cupo personalizado.
+                        </small>
+                        <div class="row" data-ng-repeat="est in cupoper.listadoEstudiantesCupoPersonalizados | toArray | filter:cupoper.filterEstudiante">
+                            <div class="col">
+                                <div class="card itemCard">
+                                    <div class="card-body">
+                                        <div class="row align-items-center">
+                                            <div class="col">
+                                                <span><b>{{$index + 1}}. </b></span>
+                                                <span><b>Código cupo personalizado: </b>{{est.CuaCodigo}}</span><br>
+                                                <span><b>Código estudiante: </b>{{est.CuaEstudiante}}</span>
+                                                <span><b>Nombre estudiante: </b>{{est.PerNombreApellido}}</span><br>
+                                                <span><b>Programa: </b>{{est.UaaNombreCorto}}</span>
+                                                <span><b>Subgrupo: </b>{{est.CuaSubGrupo}}</span><br>
+                                                <span><b>Fecha Agregado: </b>{{est.CuaFechaHora}}</span><br>
+                                                <span><b>Observación: </b>{{est.CuaObservacion}}</span>
+                                            </div>
+                                            <div class="col-auto" ng-if="cupoper.PermitidoEditar == true">
+                                                <button type="button" class="btn btn-sm btn-danger"
+                                                    data-ng-click="cupoper.mostrarSweetAlertDisabled('eliminar_cupo_personalizado', est)">
+                                                    Eliminar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin lista de estudiantes con cupo personalizado -->
+
+    </div>
+    </div>
+</section>
+<style>
+    .itemCard:hover{
+        background-color: #dedede
+    }
+</style>

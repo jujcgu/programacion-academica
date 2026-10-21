@@ -1,0 +1,191 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Sitio Realización Curso</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="sirea.curCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="sirea.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="sirea.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{sirea.cursoSeleccionado[0].CurCodigo}}</b>
+                        <br>
+                        <span style="color:red; " ng-if="sirea.PermitidoEditar == false">
+                            EL CALENDARIO DEL CURSO NO SE ENCUENTRA ACTIVO PARA CAMBIOS.
+                        </span>
+                        <span style="color:red; " ng-if="sirea.cursoSeleccionado[0].CurEstado == 0">
+                            <br>EL CURSO SE ENCUENTRA INACTIVO / ELIMINADO.
+                        </span>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{sirea.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{sirea.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{sirea.cursoSeleccionado[0].NucNombre}}<br>
+                            <label>Calendario:</label> {{sirea.cursoSeleccionado[0].CalNombre}}
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{sirea.cursoSeleccionado[0].UaaCodigo}}. {{sirea.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{sirea.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{sirea.creadorCurso}}<br>
+                            <label>Estado:</label>
+                            <span class="text-warning"
+                                data-ng-if="sirea.cursoSeleccionado[0].CurEstado == 0">Eliminado/Inactivo</span>
+                            <span class="text-success"
+                                data-ng-if="sirea.cursoSeleccionado[0].CurEstado == 1">Activo</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <!-- Inicio seccion del lugar de realizacion -->
+        <div class="row justify-content-center align-items-center" ng-if="sirea.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <div class="row">
+                        <div class="col-auto">
+                            <b>Sitio de realización del curso: </b>
+                            <span data-ng-if="sirea.sitioRealizacion[0].MunNombre">
+                                {{sirea.sitioRealizacion[0].EspNombre}} ({{sirea.sitioRealizacion[0].MunNombre}} -
+                                {{sirea.sitioRealizacion[0].DepNombre}})
+                            </span>
+                            <span data-ng-if="!sirea.sitioRealizacion[0].MunNombre">
+                                Sin definir.
+                            </span>
+                            <br>
+                            <span data-ng-if="sirea.sitioRealizacion[0].MunNombre"
+                                ng-if="sirea.PermitidoEditar == true">
+                                <button type="button" class="btn btn-danger btn-sm"
+                                    data-ng-click="sirea.mostrarSweetAlertDisabled('eliminar_sitio', '00', sirea.sitioRealizacion[0].CieCodigo)">
+                                    Eliminar sitio
+                                </button>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="row" ng-if="sirea.PermitidoEditar == true">
+                        <div class="col-auto" data-ng-if="!sirea.sitioRealizacion[0].MunNombre">
+                            <b>Sitio externo: </b>
+                        </div>
+                        <div class="col-auto" data-ng-if="!sirea.sitioRealizacion[0].MunNombre">
+                            <select class="form-control form-control-sm" id="slcSitiosRea"
+                                data-ng-model="sirea.espCodigo">
+                                <option value="">Seleccione...</option>
+                                <option data-ng-repeat="sitio in sirea.sitiosExternos" value="{{sitio.EspCodigo}}">
+                                    {{sitio.EspCodigo}}. {{sitio.EspNombre}} ({{sitio.DepNombre}} - {{sitio.MunNombre}})
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row" ng-if="sirea.PermitidoEditar == true">
+                        <div class="col-auto" data-ng-if="!sirea.sitioRealizacion[0].MunNombre">
+                            <button type="button" class="btn btn-danger btn-sm"
+                                data-ng-click="sirea.guardarSitioRealizacion('00')">
+                                Guardar sitio
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion del lugar de realizacion -->
+
+        <!-- Inicio seccion subgrupos del curso -->
+        <div class="row" ng-if="sirea.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>LISTA SUBGRUPOS DEL CURSO <b>{{sirea.cursoSeleccionado[0].CurCodigo}}</b></h5>
+                    <hr>
+                    <div style="overflow: auto; height: 500px; max-height: 80vh;">
+                        <small data-ng-if="!sirea.listaSubGrupos || sirea.listaSubGrupos.length == 0">No se encontraron
+                            subgrupos.</small>
+                        <div class="card" data-ng-repeat="subgrupo in sirea.listaSubGrupos">
+                            <div class="card-body">
+                                <div class="row align-items-center">
+                                    <div class="col">
+                                        <p><b>Subgrupo: </b>{{subgrupo.EsoSubGrupo}}</p>
+                                        <p><b>Cantidad matriculados: </b>{{subgrupo.cant_matriculados}}</p>
+                                        <p><b>Sitio realización: </b>
+                                            <span data-ng-if="subgrupo.EspNombre != ''">{{subgrupo.EspNombre}}
+                                                ({{subgrupo.DepNombre}} - {{subgrupo.MunNombre}})</span>
+                                            <span data-ng-if="subgrupo.EspNombre == ''">No se ha definido sitio de
+                                                realización para este subgrupo.</span>
+                                        </p>
+                                    </div>
+                                    <div class="col-md-1" ng-if="sirea.PermitidoEditar == true">
+                                        <button type="button" class="btn btn-danger btn-sm"
+                                            data-ng-if="subgrupo.EspNombre != ''"
+                                            data-ng-click="sirea.mostrarSweetAlertDisabled('eliminar_sitio', subgrupo.EsoSubGrupo, subgrupo.CieCodigo)">
+                                            Eliminar sitio
+                                        </button>
+                                        <button type="button" class="btn btn-default btn-sm"
+                                            data-ng-if="subgrupo.EspNombre == ''"
+                                            data-ng-click="sirea.modalAgregarSitioSubGrupo(subgrupo)">
+                                            Agregar sitio
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion subgrupos del curso -->
+    </div>
+</section>
+
+
+<!-- Sección modales -->
+
+<div class="modal fade" id="ModalAgregarSitioSubGrupo" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-md">
+        <div class="modal-content">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <h5>Agregar sitio realización subgrupo</h5>
+                </div>
+                <div class="card-body">
+                    <p><b>Curso: </b>{{sirea.subgrupoSeleccionado.CurCodigo}}</p>
+                    <p><b>Subgrupo: </b>{{sirea.subgrupoSeleccionado.EsoSubGrupo}}</p>
+                    <p><b>Cantidad matriculados: </b>{{sirea.subgrupoSeleccionado.cant_matriculados}}</p>
+                    <hr>
+                    <p>Sitio de realización:
+                        <span>
+                            <select class="form-control form-control-sm" id="slcSitiosRea"
+                                data-ng-model="sirea.subgrupoSeleccionado.EspCodigo">
+                                <option value="">Seleccione...</option>
+                                <option data-ng-repeat="sitio in sirea.sitiosExternos" value="{{sitio.EspCodigo}}">
+                                    {{sitio.EspCodigo}}. {{sitio.EspNombre}} ({{sitio.DepNombre}} - {{sitio.MunNombre}})
+                                </option>
+                            </select>
+                        </span>
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <button type="button" class="btn btn-danger btn-sm" data-ng-click="sirea.guardarSitioSubgrupo()">
+                        Guardar sitio
+                    </button>
+                    <button type="button" class="btn btn-default btn-sm"
+                        ng-click="sirea.cerrarModal('ModalAgregarSitioSubGrupo')">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

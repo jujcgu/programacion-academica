@@ -1,0 +1,384 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cruce Horario</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="crucehorario.CurCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="crucehorario.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="crucehorario.informacionCurso == 1">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{crucehorario.cursoSeleccionado[0].CurCodigo}}
+                            ({{crucehorario.cursoSeleccionado[0].CalNombre}})</b>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col">
+                            <label>Nombre Asignatura:</label> {{crucehorario.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{crucehorario.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{crucehorario.cursoSeleccionado[0].NucNombre}}<br>
+                            <label>Asignatura Ofrecida por:</label>
+                            {{crucehorario.cursoSeleccionado[0].UaaCodigo}}.
+                            {{crucehorario.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{crucehorario.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{crucehorario.creadorCurso}}<br>
+                        </div>
+                        <div class="col">
+                            <label>Cupo:</label>{{crucehorario.cursoSeleccionado[0].CurCupo}} <br>
+                            <label>Matriculados Curso:</label> {{crucehorario.cursoSeleccionado[0].TotalMatriculados}}
+                            <button class="btn btn-danger btn-sm"
+                                data-ng-click="crucehorario.consultarMatriculadosCurso()">Ver</button><br>
+                            <label>Calendario:</label> {{crucehorario.cursoSeleccionado[0].CalNombre}}<br>
+                            <label>Estado:</label>
+                            <span data-ng-if="crucehorario.cursoSeleccionado[0].CurEstado == 1"
+                                class="text-success"><b>Activo</b></span>
+                            <span data-ng-if="crucehorario.cursoSeleccionado[0].CurEstado == 0"
+                                class="text-danger"><b>Eliminado</b></span>
+                            <br>
+                            <label>Coordinador:</label> {{crucehorario.cursoSeleccionado[0].PerNombreApellido}}<br>
+                            <label>Vinculación:</label> {{crucehorario.cursoSeleccionado[0].VinNombre}} -
+                            {{crucehorario.cursoSeleccionado[0].DedNombre}}<br>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <!-- Inicio seccion de programacion del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="crucehorario.informacionCurso == 1">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>
+                        <div class="row">
+                            <div class="col-auto">
+                                PROGRAMACIÓN DEL CURSO <b>{{crucehorario.cursoSeleccionado[0].CurCodigo}}</b>
+                            </div>
+                            <div class="col-auto">
+                                ({{crucehorario.cursoSeleccionado[0].CalNombre}})
+                            </div>
+                            <div class="col-auto">
+                                <input type="text" class="form-control form-control-sm"
+                                    data-ng-model="crucehorario.filter.Horario">
+                            </div>
+                        </div>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col">
+                            <table class="table table-striped table-bordered table-hover table-sm">
+                                <thead>
+                                    <th>#</th>
+                                    <th>Subgrupo</th>
+                                    <th>Cupo Subgrupo</th>
+                                    <th>Docente</th>
+                                    <th>Semana</th>
+                                    <th>Fecha Inicial</th>
+                                    <th>Fecha Final</th>
+                                    <th>Dia</th>
+                                    <th>Hora</th>
+                                    <th>Espacio</th>
+                                    <th>Vinculación</th>
+                                    <th>Dedicación</th>
+                                    <th>Unidad Programada</th>
+                                </thead>
+                                <tbody>
+                                    <tr data-ng-if="crucehorario.cargandoHorario == 1">
+                                        <td colspan="13" class="text-center">
+                                            <img class="" src="dist/img/precarga-usco.gif">
+                                        </td>
+                                    </tr>
+                                    <tr
+                                        data-ng-repeat="horario in crucehorario.listaHorarioCurso | toArray | filter:crucehorario.filter.Horario">
+                                        <td class="align-middle">{{$index + 1}}</td>
+                                        <td class="align-middle">
+                                            {{horario.EsoSubGrupo}}
+                                        </td>
+                                        <td class="align-middle">{{horario.CupoSubgrupo}}</td>
+                                        <td class="align-middle">{{horario.NombreApellidoDocente}}</td>
+                                        <td class="align-middle">{{horario.EsoSemanas}}</td>
+                                        <td class="align-middle">{{horario.EsoFechaInicio}}</td>
+                                        <td class="align-middle">{{horario.EsoFechaFin}}</td>
+                                        <td class="align-middle">{{horario.DiaNombre}}</td>
+                                        <td class="align-middle">{{horario.EsoHora}}</td>
+                                        <td class="align-middle">{{horario.EspNombreCorto}}</td>
+                                        <td class="align-middle">{{horario.VinNombre}}</td>
+                                        <td class="align-middle">{{horario.DedNombre}}</td>
+                                        <td class="align-middle">{{horario.UaaCodigo}}. {{horario.UaaNombreCorto}}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de programacion del curso -->
+
+        <!-- Inicio seccion de subgrupos del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="crucehorario.informacionCurso == 1">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>
+                        <div class="row">
+                            <div class="col-auto">
+                                SUBGRUPOS DEL CURSO <b>{{crucehorario.cursoSeleccionado[0].CurCodigo}}</b>
+                            </div>
+                            <div class="col-auto">
+                                ({{crucehorario.cursoSeleccionado[0].CalNombre}})
+                            </div>
+                        </div>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col">
+                            <table class="table table-striped table-bordered table-hover table-sm">
+                                <thead>
+                                    <th>#</th>
+                                    <th>Código Curso</th>
+                                    <th>Subgrupo</th>
+                                    <th>Cupo Subgrupo</th>
+                                    <th>Matriculados</th>
+                                </thead>
+                                <tbody>
+                                    <tr data-ng-if="crucehorario.cargandoSubgrupo == 1">
+                                        <td colspan="13" class="text-center">
+                                            <img class="" src="dist/img/precarga-usco.gif">
+                                        </td>
+                                    </tr>
+                                    <tr data-ng-if="crucehorario.listaSubgrupo == null" class="text-center">
+                                        <td colspan="5">No se encontraron subgrupos</td>
+                                    </tr>
+                                    <tr ng-repeat="row in crucehorario.listaSubgrupo">
+                                        <td>{{$index + 1}}</td>
+                                        <td>{{row.CurCodigo}}</td>
+                                        <td>{{row.SubGrupo}}</td>
+                                        <td>{{row.CusCupo}}</td>
+                                        <td class="col-auto">
+                                            <div class="input-group input-group-sm">
+                                                <label class="form-control form-control-sm col-md-2"
+                                                    type="text">{{row.CantMatriculados}} </label>
+                                                <span class="input-group-append">
+                                                    <button type="button"
+                                                        class="btn btn-info btn-danger btn-sm btn-flat"
+                                                        ng-click="crucehorario.consultarMatriculadosCurso(row.SubGrupo);">Ver</button>
+                                                </span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de subgrupos del curso -->
+
+        <!-- Inicio seccion de subgrupos del curso -->
+        <div class="row" ng-if="crucehorario.informacionCurso == 1">
+            <div class="col-md-3">
+                <div class="callout callout-danger">
+                    <h5>
+                        <div class="row">
+                            <div class="col-auto">
+                                NUEVO HORARIO
+                            </div>
+                        </div>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col">
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Cantidad Semanas: </label>
+                                <div class="col-sm-8">
+                                    <input type="text" class="form-control form-control-sm" name="txtSemanas"
+                                        data-ng-change="crucehorario.calcularFechaFinal()" id="txtSemanas"
+                                        ng-model="crucehorario.nuevoHorario.CurSemanas">
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Subgrupo: </label>
+                                <div class="col-sm-8">
+                                    <select name="slcSubgrupo" class="form-control form-control-sm" id="slcSubgrupo"
+                                        data-ng-model="crucehorario.nuevoHorario.CurSubgrupo">
+                                        <option value="" disabled selected>Seleccione...</option>
+                                        <option value="00">00</option>
+                                        <option data-ng-repeat="subgrupo in crucehorario.listaSubgrupo"
+                                            value="{{subgrupo.SubGrupo}}">{{subgrupo.SubGrupo}}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Fecha Inicio:</label>
+                                <div class="col-sm-8">
+                                    <input type="text" class="form-control form-control-sm" datepicker
+                                        placeholder="aaaa-mm-dd" data-ng-change="crucehorario.calcularFechaFinal()"
+                                        data-ng-model="crucehorario.nuevoHorario.FechaInicio">
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Fecha Fin:</label>
+                                <div class="col-sm-8">
+                                    <input type="text" class="form-control form-control-sm" datepicker
+                                        placeholder="aaaa-mm-dd" data-ng-model="crucehorario.nuevoHorario.FechaFin">
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Dia:</label>
+                                <div class="col-sm-8">
+                                    <label type="text" class="form-control form-control-sm" disabled>{{crucehorario.nuevoHorario.DiaNombre}}</label>
+                                </div>
+                            </div>
+                            <div class="form-group row">
+                                <label class="col-sm-4 col-form-label">Horas: </label>
+                                <div class="col-sm-8">
+                                    <select name="slcHoras" id="slcHoras" class="form-control form-control-sm" multiple
+                                        data-ng-model="crucehorario.nuevoHorario.HorasSeleccionadas" size="7">
+                                        <option value="{{hora.HraCodigo}}"
+                                            data-ng-repeat="hora in crucehorario.listaHoras">
+                                            {{hora.HraNombre}}. {{hora.HraInicio}} - {{hora.HraFin}}</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-auto">
+                            <button class="btn btn-danger btn-sm"
+                                data-ng-click="crucehorario.validarFormularioCruce()">Comprobar cruce</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Inicio lista de estudiantes -->
+            <div class="col-md-9">
+                <div class="callout callout-danger">
+                    <h5>
+                        <div class="row">
+                            <div class="col-auto">
+                                ESTUDIANTES CON CRUCE DE HORARIO
+                            </div>
+                        </div>
+                    </h5>
+                    <hr>
+                    <table class="table table-striped table-bordered table-hover table-sm">
+                        <thead>
+                            <th>#</th>
+                            <th>Estudiante</th>
+                            <th>Nombre</th>
+                            <th>Curso</th>
+                            <th>Asignatura</th>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-if="crucehorario.listaEstudiantesCruce.length <= 0"><td colspan="5">No se encontraron estudiantes con cruce de horario.</td></tr>
+                            <tr data-ng-repeat="estudiante in crucehorario.listaEstudiantesCruce">
+                                <td>{{$index + 1}}</td>
+                                <td>{{estudiante.EstCodigo}}</td>
+                                <td>{{estudiante.PerNombreApellido}}</td>
+                                <td>{{estudiante.CurCodigo}}</td>
+                                <td>{{estudiante.AsiNombre}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Fin lista de estudiantes -->
+        </div>
+        <!-- Fin seccion de subgrupos del curso -->
+
+    </div>
+</section>
+
+
+
+
+
+<!-- Inicio modals -->
+
+<!-- Inicio modal matriculados -->
+<div class="modal fade" id="ModalEstudiantesMatriculados" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-body">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">Lista Estudiantes Matriculados</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="input-group">
+                                    <input class="form-control form-control-sm" type="search"
+                                        placeholder="Buscar estudiante" aria-label="Search"
+                                        data-ng-model="crucehorario.filter.Matriculados">
+                                    <div class="input-group-append">
+                                        <button class="btn btn-sm">
+                                            <i class="fas fa-search fa-fw"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <br>
+                            </div>
+                            <div class="col-md-12 table-responsive" style="height: 500px;">
+                                <table id="tbl" class="table table-hover table-sm table-head-fixed">
+                                    <thead>
+                                        <th></th>
+                                    </thead>
+                                    <thead>
+                                        <th>#</th>
+                                        <th>Estado</th>
+                                        <th>Identificación</th>
+                                        <th>Nombre</th>
+                                        <th>Código</th>
+                                        <th>Subgrupo</th>
+                                        <th>Programa</th>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-class="{'bg-danger': row.MaaCodigo == 4, 'bg-warning': row.MaaCodigo == 6}"
+                                            data-ng-repeat="row in crucehorario.listaMatriculados | toArray | filter:crucehorario.filter.Matriculados  | orderBy:'MacGrupo'">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{row.MaaNombre}} <span
+                                                    data-ng-if="row.MaaCodigo == 4 || row.MaaCodigo == 6">{{row.MaaFecha}}</span>
+                                            </td>
+                                            <td>{{row.PerIdentificacion}}</td>
+                                            <td>{{row.PerNombre}}</td>
+                                            <td>{{row.EstCodigo}}</td>
+                                            <td>{{row.MacGrupo}}</td>
+                                            <td>{{row.UaaNombreCorto}}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-12">
+                                <hr>
+                                <b>Total Matriculados:</b> {{crucehorario.listaMatriculados.length}}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="button" class="btn btn-default btn-sm"
+                            ng-click="crucehorario.cerrarModal('ModalEstudiantesMatriculados')">Cerrar</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Inicio modal matriculados -->
+
+<!-- Fin modals -->

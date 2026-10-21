@@ -1,0 +1,2238 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Solicitud Cambio Horario</h1>
+            </div>
+            <div class="col-auto pt-1">
+                <select class="form-control form-control-sm" data-ng-model="solcambh.periodoSeleccionado">
+                    <option value="" disabled selected>Seleccionar periodo.</option>
+                    <option data-ng-repeat="periodo in solcambh.listaPeriodos"
+                        value="{{periodo.PerCodigo}}">
+                        {{periodo.PerAnio}} - {{periodo.PerPeriodo}}</option>
+                </select>
+            </div>
+            <div class="col-auto pt-1">
+                <button class="btn btn-danger btn-sm" ng-click="solcambh.consultarSolicitudesPeriodo()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<hr>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col">
+            <div class="alert alert-warning text-justify">
+                <b>IMPORTANTE: </b>Este Módulo es para realizar las solicitudes de cambio de <b>horario y docente</b> de
+                cursos programados.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Seccion lista de solicitudes realizadas -->
+<div class="container-fluid" data-ng-if="solcambh.secciones.listaSolicitudesGeneral == 1">
+    <div class="row">
+        <div class="col">
+            <div class="card card-danger">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-11 my-auto flex flex-row justify-between items-center">
+                            <h1 class="my-auto">Lista Solicitudes Cambio Horario</h1>
+                            <span>
+                                <small>Total de solicitudes: {{ (solcambh.listaSolicitudesPeriodo | filter:solcambh.filter.Solicitudes | filter:{SchEstado: solcambh.filter.Estado}).length }}</small>
+                            </span>
+                        </div>
+                        <div class="col-auto ml-auto mr-1 pt-1">
+                            <button class="btn btn-default btn-sm"
+                                onclick="copiarTabla('tableDataRealizadas')">Copiar</button>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-2 pt-1" data-ng-if="solcambh.listaSolicitudesPeriodo.length > 0">
+                            <select id="estadoFilter" ng-model="solcambh.filter.Estado" class="form-control" style="height: 100%;">
+                                <option value="">Todos</option>
+                                <option ng-repeat="(key, estado) in solcambh.estadosSolicitud" value="{{key}}">
+                                    {{estado}}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="col-2 pt-1" data-ng-if="solcambh.listaSolicitudesPeriodo.length > 0">
+                            <input type="text" class="form-control form-control-sm" style="height: 100%;"
+                                data-ng-model="solcambh.filter.Solicitudes" placeholder="Busqueda">
+                        </div>
+                        <div class="col-2 pt-1" data-ng-if="solcambh.periodoHabilitado(solcambh.periodoBuscado) || usuario.codPerfil == roles.ADMINISTRADOR">
+                            <button class="btn btn-sm btn-success" style="height: 100%;" 
+                                data-ng-click="solcambh.formularioCrearSolicitud()">Crear Solicitud</button>
+                        </div>
+                    </div>    
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <small data-ng-if="solcambh.periodoBuscado != '' && solcambh.periodoHabilitado(solcambh.periodoBuscado) && usuario.codPerfil != roles.ADMINISTRADOR">
+                                {{solcambh.mensajeDisponibilidadPeriodo(solcambh.periodoBuscado)}}
+                            </small>
+                            <small data-ng-if="solcambh.periodoBuscado != '' && solcambh.periodoHabilitado(solcambh.periodoBuscado) && usuario.codPerfil == roles.ADMINISTRADOR">
+                                {{solcambh.mensajeDisponibilidadPeriodo(solcambh.periodoBuscado)}} ({{solcambh.cantidadProgramasPeriodo(solcambh.periodoBuscado)}} programa(s) con apertura activa).
+                            </small>
+                            <small data-ng-if="solcambh.periodoBuscado != '' && !solcambh.periodoHabilitado(solcambh.periodoBuscado)">
+                                El periodo consultado no está habilitado para crear nuevas solicitudes.
+                            </small>
+                            <small data-ng-if="usuario.codPerfil == roles.ADMINISTRADOR && solcambh.periodoBuscado != '' && !solcambh.periodoHabilitado(solcambh.periodoBuscado)">
+                                Como administrador puede crear solicitudes en cualquier periodo, aunque no haya apertura activa.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-body table-responsive p-0 d-print-table" style="height: 700px;">
+                    <table class="table table-bordered table-striped table-hover table-head-fixed table-sm" id="tableDataRealizadas">
+                        <thead>
+                            <th>#</th>
+                            <th>CÓDIGO</th>
+                            <th>ESTADO</th>
+                            <th>OPCIONES</th>
+                            <th>CURSO</th>
+                            <th>HORARIO</th>
+                            <th></th>
+                        </thead>
+                        <tbody>
+                            <tr data-ng-repeat="solicitud in solcambh.listaSolicitudesPeriodo | filter:solcambh.filter.Solicitudes | filter:{SchEstado: solcambh.filter.Estado} | orderBy:vm.sortColumn:vm.reverseSort">
+                                <td>{{$index + 1}}</td>
+                                <td>{{solicitud.SchCodigo}}</td>
+                                <td width="100px">
+                                    <span ng-class="{
+                                        'badge bg-danger': solicitud.SchEstado == 0 || solicitud.SchEstado == 3 || solicitud.SchEstado == 5 || solicitud.SchEstado == 8,
+                                        'badge bg-warning': solicitud.SchEstado == 1 || solicitud.SchEstado == 7,
+                                        'badge bg-success': solicitud.SchEstado == 2 || solicitud.SchEstado == 4 || solicitud.SchEstado == 6
+                                    }">{{solcambh.estadosSolicitud[solicitud.SchEstado]}}</span>
+                                </td>
+                                <td>
+                                    <p class="my-0"><b>Espacio Deportivo: </b> {{solicitud.EspDeportivo == 1 ? 'Si' : 'No'}}</p>
+                                    <p class="my-0"><b>Cambio Docente: </b> {{solicitud.CambioDocente == 1 ? 'Si' : 'No'}}</p>
+                                    <p class="my-0"><b>Cambio por Semanas: </b> {{solicitud.CambioSemanas == 1 ? 'Si' : 'No'}}</p>
+                                    <p class="my-0"><b>Fecha creación:</b> {{solicitud.SchFechaCreacion}} </p>
+                                </td>
+                                <td>
+                                    <p class="my-1"><b>Código Curso: </b>{{solicitud.CurCodigo}}</p>
+                                    <p class="my-1"><b>Cupo: </b>{{solicitud.CurCupo }}</p>
+                                    <p class="my-1"><b>Matriculados: </b>{{solicitud.TotalMatriculados}} </p>
+                                    <p class="my-1"><b>Modalidad: </b>{{solicitud.TicCodigo == 1 ? 'Presencial' : 'Virtual'}}</p>
+                                    <p class="my-1"><b>Sede:</b> {{solicitud.SedCodigo}}. {{solicitud.SedNombre}}</p>
+                                    <p class="my-1"><b>Asignatura: </b>{{solicitud.AsiCodigo}}. {{solicitud.AsiNombreCorto}} - {{solicitud.AsiNombre}}</p>
+                                    <p class="my-1"><b>Unidad: </b>{{solicitud.UaaCodigo}}. {{solicitud.UaaNombreCorto}}</p>
+                                    <p class="my-1"><b>Solicitud creada: </b>{{solicitud.UsuNombreApellido}}</p>
+                                </td>
+                                <td>
+                                    <div class="row">
+                                        <div class="col">
+                                            <table class="table table-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width: 50%;">ANTIGUO</th>
+                                                        <th style="width: 50%;">NUEVO</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr data-ng-repeat="horario in solicitud.Horario">
+                                                        <!-- ANTIGUO -->
+                                                        <td>
+                                                            <b>{{horario.SchhSubgrupo}}</b> -
+                                                            <b>{{horario.DiaAntCodigo}}.</b> {{horario.DiaAntNombre}}
+                                                            <b>{{horario.HraAntCodigo}}.</b> {{horario.HraAntInicio}} -
+                                                            {{horario.HraAntFin}} 
+                                                            <span class="badge bg-warning text-white" data-ng-if="horario.EspAntCodigo">
+                                                                ({{horario.EspAntCodigo}}. {{horario.EspAntNombreCorto}})
+                                                            </span>
+                                                            <br>
+                                                            <b>{{horario.UapAntCodigo}}.</b> {{horario.PerAntNombre}} {{horario.PerAntApellido}}
+                                                        </td>
+                                                        <!-- NUEVO -->
+                                                        <td>
+                                                            <b>{{horario.DiaNuevoCodigo}}.</b> {{horario.DiaNuevoNombre}}
+                                                            <b>{{horario.HraNuevoCodigo}}.</b> {{horario.HraNuevoInicio}} -
+                                                            {{horario.HraNuevoFin}}
+                                                            <span class="badge bg-success text-white my-auto" data-ng-if="horario.EspNuevoCodigo">
+                                                                ({{horario.EspNuevoCodigo}}. {{horario.EspNombreCorto}})
+                                                            </span>
+                                                            <b data-ng-if="horario.UapNuevoCodigo != ''"><br>{{horario.UapNuevoCodigo}}.</b>
+                                                            {{horario.PerNuevoNombre}} {{horario.PerNuevoApellido}}
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column" style="border-width: 0">
+                                        <button class="btn btn-info btn-sm m-1" data-ng-click="solcambh.consultarComentarios(solicitud)">Comentarios</button>
+                                        
+                                        <button class="btn btn-success btn-sm m-1"
+                                            data-ng-if="usuario.codPerfil == roles.ADMINISTRADOR && (solicitud.SchEstado == 2 || solicitud.SchEstado == 6)"
+                                            data-ng-click="solcambh.modalAprobarSolicitud(solicitud)">Aprobar</button>
+                                        
+                                        <button class="btn btn-success btn-sm m-1"
+                                            data-ng-if="solicitud.SchEstado == 7 && (usuario.codPerfil == roles.JEFE_PROGRAMA || usuario.codPerfil == roles.JEFE_DEPARTAMENTO)"
+                                            data-ng-click="solcambh.modalAprobarSolicitud(solicitud)">Aprobar Solicitud</button>
+                
+                                        <button class="btn btn-danger btn-sm m-1"
+                                            data-ng-if="usuario.codPerfil == roles.ADMINISTRADOR && (solicitud.SchEstado == 2 || solicitud.SchEstado == 6)"
+                                            data-ng-click="solcambh.modalRechazoSolicitud(solicitud)">Rechazar</button>
+                                        
+                                        <button class="btn btn-danger btn-sm m-1"
+                                            data-ng-if="solicitud.SchEstado == 7 && usuario.codPerfil == (roles.JEFE_PROGRAMA || usuario.codPerfil == roles.JEFE_DEPARTAMENTO)"
+                                            data-ng-click="solcambh.modalRechazoSolicitud(solicitud)">Rechazar</button>
+                
+                                        <button class="btn btn-warning btn-sm m-1"
+                                            data-ng-if="solicitud.SchEstado == 3 || solicitud.SchEstado == 5 || solicitud.SchEstado == 8"
+                                            data-ng-click="solcambh.formularioEditarSolicitud(solicitud)">Editar</button>
+                
+                                        <button data-ng-if="solicitud.SchEstado == 3 || solicitud.SchEstado == 5 || solicitud.SchEstado == 8"
+                                            data-ng-click="solcambh.mostrarSweetAlertDisabled('eliminar_solicitud',solicitud)"
+                                            class="btn btn-danger btn-sm m-1">Eliminar</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Seccion formulario edicion solicitud -->
+<div class="container-fluid" data-ng-if="solcambh.secciones.formularioEdicion == 1">
+    <div class="card card-danger">
+        <div class="card-header">
+            <div class="row justify-content-between">
+                <div class="col">
+                    <h4>Formulario edicion solicitud cambio de horario</h4>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-default"
+                        data-ng-click="solcambh.cancelarEdicionSolicitud()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- Informacion de la solicitud -->
+            <div class="row">
+                <div class="col-auto">
+                    <p class="my-0"><b>Codigo Solicitud</b>: {{solcambh.edicionSolicitud.SchCodigo}}</p>
+                    <p class="my-0"><b>Curso</b>: {{solcambh.edicionSolicitud.CurCodigo}} <b>Periodo</b>:
+                        {{solcambh.edicionSolicitud.CalNombre}}</p>
+                    <p class="my-0"><b>Asignatura</b>: {{solcambh.edicionSolicitud.AsiNombreCorto}} -
+                        {{solcambh.edicionSolicitud.AsiNombre}}</p>
+                    <p class="my-0"><b>Fecha creación</b>: {{solcambh.edicionSolicitud.SchFechaCreacion}}
+                    </p>
+                </div>
+                <div class="col-auto">
+                    <p class="my-0"><b>Unidad</b>: {{solcambh.edicionSolicitud.UaaCodigo}}.
+                        {{solcambh.edicionSolicitud.UaaNombreCorto}}</p>
+                    <p class="my-0"><b>Solicitud creada</b>: {{solcambh.edicionSolicitud.UsuNombreApellido}}</p>
+                    <p class="my-0"><b>Estado</b>:
+                        <span ng-class="{
+                            'badge bg-danger': solcambh.edicionSolicitud.SchEstado == 8,
+                            'badge bg-warning': solcambh.edicionSolicitud.SchEstado == 7,
+                            'badge bg-success': solcambh.edicionSolicitud.SchEstado == 6,
+                            'badge bg-danger': solcambh.edicionSolicitud.SchEstado == 5,
+                            'badge bg-success': solcambh.edicionSolicitud.SchEstado == 4,
+                            'badge bg-danger': solcambh.edicionSolicitud.SchEstado == 3, 
+                            'badge bg-success': solcambh.edicionSolicitud.SchEstado == 2,
+                            'badge bg-warning': solcambh.edicionSolicitud.SchEstado == 1,
+                            'badge bg-danger': solcambh.edicionSolicitud.SchEstado == 0
+                        }">{{solcambh.estadosSolicitud[solcambh.edicionSolicitud.SchEstado]}}</span>
+                    </p>
+                    <p class="my-0"><b>Sede:</b> {{solcambh.edicionSolicitud.SedCodigo}}.
+                        {{solcambh.edicionSolicitud.SedNombre}}</p>
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- Horario Curso -->
+            <div class="row">
+                <div class="col">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <div class="row justify-content-between">
+                                <div class="col-auto">
+                                    <h5>Horario Actual:</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <table
+                                class="p-0 table table-sm table-hover table-bordered table-striped table-head-fixed table-sm">
+                                <thead>
+                                    <th>Subgrupo</th>
+                                    <th>Día</th>
+                                    <th>Hora</th>
+                                    <th>Docente</th>
+                                    <th>Espacio</th>
+                                    <th></th>
+                                </thead>
+                                <tbody>
+                                    <tr data-ng-repeat="horario in solcambh.edicionSolicitud.CursoSeleccionado.Horario">
+                                        <td>{{horario.EsoSubGrupo}}</td>
+                                        <td>{{horario.DiaCodigo}}. {{horario.DiaNombre}}</td>
+                                        <td>{{horario.EsoHora}}</td>
+                                        <td>
+                                            {{horario.UapCodigo}}. {{horario.NombreApellidoDocente}}
+                                            {{horario.VinNombre}}
+                                        </td>
+                                        <td>
+                                            {{horario.SedNombre}} - {{horario.SusNombre}} - {{horario.BloNombre}} -
+                                            {{horario.EspCodigo}}. {{horario.EspNombreCorto}}
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-success btn-sm"
+                                                data-ng-click="solcambh.seleccionarHorario(horario)">Seleccionar</button>
+                                        </td>                     
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulario horario nuevo -->
+            <div class="row align-items-center" data-ng-if="solcambh.secciones.formularioEdicionHorario == 1">
+                <!-- Horario Actual Seleccionado -->
+                <div class="col">
+                    <div class="card card-info" style="height: auto">
+                        <div class="card-header">
+                            <b>Horario actual seleccionado</b>
+                        </div>
+                        <div class="card-body">
+                            <p class="m-0"><b>Subgrupo: </b>
+                                {{solcambh.horarioSeleccionado.EsoSubGrupo}}
+                            </p>
+                            <p class="m-0"><b>Fechas: </b>
+                                {{solcambh.horarioSeleccionado.EsoFechaInicio}}
+                                <i class="fas fa-long-arrow-alt-right fa-xs"></i>
+                                {{solcambh.horarioSeleccionado.EsoFechaFin}}
+                            </p>
+                            <p class="m-0"><b>Día: </b> {{solcambh.horarioSeleccionado.DiaCodigo}}.
+                                {{solcambh.horarioSeleccionado.DiaNombre}} </p>
+                            <p class="m-0"><b>Hora: </b> {{solcambh.horarioSeleccionado.EsoHora}}</p>
+                            <p class="m-0"><b>Docente: </b> {{solcambh.horarioSeleccionado.UapCodigo}}.
+                                {{solcambh.horarioSeleccionado.NombreApellidoDocente}} </p>
+                            <p class="m-0"><b>Espacio: </b> {{solcambh.horarioSeleccionado.SedNombre}} -
+                                {{solcambh.horarioSeleccionado.SusNombre}} -
+                                {{solcambh.horarioSeleccionado.BloNombre}} -
+                                {{solcambh.horarioSeleccionado.EspCodigo}}.
+                                {{solcambh.horarioSeleccionado.EspNombreCorto}} </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-auto m-auto">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+                <!-- Formulario horario nuevo -->
+                <div class="col">
+                    <div class="card card-success" style="height: auto;">
+                        <div class="card-header">
+                            <b>Horario Nuevo</b>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col">
+                                    <label>Fecha Inicial</label>
+                                    <input type="text" class="form-control form-control-sm" datepicker
+                                        data-ng-model="solcambh.horarioSeleccionado.fechaInicial"
+                                        data-ng-change="solcambh.calcularFechaFin(solcambh.edicionSolicitud.CursoSeleccionado.CurSemanas); solcambh.reiniciarSeleccionado()"
+                                        autocomplete="off" placeholder="aaaa-mm-dd">
+                                </div>
+                                <div class="col">
+                                    <label>Semanas</label>
+                                    <input type="text" class="form-control form-control-sm" disabled
+                                        data-ng-model="solcambh.edicionSolicitud.CursoSeleccionado.CurSemanas"
+                                        autocomplete="off">
+                                </div>
+                                <div class="col">
+                                    <label>Fecha Final</label>
+                                    <input type="text" class="form-control form-control-sm" disabled
+                                        data-ng-model="solcambh.horarioSeleccionado.fechaFinal" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="row my-4">
+                                <div class="col">
+                                    <label>Día</label>
+                                    <select class="form-control form-control-sm"
+                                        ng-model="solcambh.horarioSeleccionado.diaNuevo"
+                                        ng-options="dia.DiaCodigo + '. ' + dia.DiaNombre for dia in solcambh.listaDias"
+                                        style="background-image: none; appearance: none;"
+                                        disabled>
+                                        <option value="" disabled>Seleccionar dia</option>
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <label>Hora</label>
+                                    <select class="form-control form-control-sm"
+                                        ng-model="solcambh.horarioSeleccionado.horaNuevo"
+                                        ng-change="solcambh.reiniciarSeleccionado()"
+                                        ng-options="hora.HraCodigo + '. ' + hora.HraInicio  + '. ' + hora.HraFin for hora in solcambh.listaHoras"
+                                        id="">
+                                        <option value="" disabled>Seleccionar dia</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row my-4">
+                                <div class="col-md-6">
+                                    <label>Cambio de docente</label>
+                                    <select class="form-control form-control-sm"
+                                        data-ng-change="solcambh.refrescarDocente()"
+                                        ng-model="solcambh.horarioSeleccionado.NuevoDocente">
+                                        <option value="" selected>No</option>
+                                        <option value="1">Si</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row my-4"
+                                data-ng-if="solcambh.horarioSeleccionado.NuevoDocente == 1">
+                                <div class="col-12">
+                                    <label>Busqueda nuevo docente</label>
+                                    <div class="input-group">
+                                        <p class="form-control  form-control-sm">
+                                            <span
+                                                data-ng-if="solcambh.horarioSeleccionado.VinculacionNuevoDocente.UapCodigo">
+                                                {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.UapCodigo}}.
+                                                {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.PerNombre}}
+                                                {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.PerApellido}}
+                                            </span>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-success btn-sm"
+                                                data-ng-click="solcambh.consultarAgendaDocente()"
+                                                title="Ver la agenda docente del coordinador.">Agenda</button>
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="solcambh.consultarDocentes()"
+                                                title="Ver los docentes disponibles para las unidades.">Propios</button>
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="solcambh.consultarDocentesPrestados()"
+                                                title="Ver los docentes aprobados por otros programas.">Asignados</button>
+                                        </div>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="col-12"
+                                    data-ng-if="solcambh.horarioSeleccionado.VinculacionNuevoDocente.Tipo == 'Prestado'">
+                                    <small class="text-bold text-danger">Este docente es de otro
+                                        departamento y
+                                        pertenece a una solicitud aprobada de prestamo docente para este
+                                        periodo.</small><br>
+                                    <div class="callout callout-danger my-2">
+                                        <h5>Horario permitido para el docente</h5>
+                                        <hr>
+                                        <p data-ng-repeat="horario in solcambh.horarioSeleccionado.VinculacionNuevoDocente.Horario"
+                                            class="badge bg-success m-1">{{horario.DiaCodigo}}.
+                                            {{horario.DiaNombre}}
+                                            {{horario.HraCodigo}}. {{horario.HraInicio}} -
+                                            {{horario.HraFin}}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <button class="btn btn-sm btn-danger"
+                                data-ng-click="solcambh.verificarHorarioSolicitud('Edicion')">Verificar cruce
+                                horario</button>
+                            <button class="btn btn-sm btn-success"
+                                ng-disabled="solcambh.horarioSeleccionado.cruceEstudiantes || solcambh.horarioSeleccionado.cruceDocente || solcambh.horarioSeleccionado.yaSeleccionado"
+                                data-ng-click="solcambh.agregarHorarioSolicitud('Edicion')">Agregar a la
+                                solicitud</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Horario Nuevo -->
+            <div class="row">
+                <div class="col">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <div class="row justify-content-between">
+                                <div class="col-auto">
+                                    <h5>Horario Nuevo:</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-borderless table-hover table-striped table-sm">
+                                <tbody>
+                                    <tr data-ng-repeat="horario in solcambh.edicionSolicitud.Horario">
+                                        <td>
+                                            <b class="text-warning">Antiguo</b>
+                                            <b>{{horario.SchhSubgrupo}}</b> -
+                                            <b>{{horario.DiaAntCodigo}}.</b> {{horario.DiaAntNombre}}
+                                            <b>{{horario.HraAntCodigo}}.</b> {{horario.HraAntInicio}} -
+                                            {{horario.HraAntFin}}
+                                            (<b>{{horario.UapAntCodigo}}.</b> {{horario.PerAntNombre}}
+                                            {{horario.PerAntApellido}})
+                                        </td>
+                                        <td>
+                                            <i class="fas fa-chevron-right"></i>
+                                        </td>
+                                        <td>
+                                            <b class="text-success">Nuevo</b>
+                                            <b>{{horario.DiaNuevoCodigo}}.</b> {{horario.DiaNuevoNombre}}
+                                            <b>{{horario.HraNuevoCodigo}}.</b> {{horario.HraNuevoInicio}} -
+                                            {{horario.HraNuevoFin}}
+                                            <span data-ng-if="horario.UapNuevoCodigo">
+                                                (<b>{{horario.UapNuevoCodigo}}</b>.
+                                                {{horario.PerNuevoNombre}}
+                                                {{horario.PerNuevoApellido}})
+                                            </span>
+                                            <span data-ng-if="!horario.UapNuevoCodigo">
+                                                (<b>{{horario.UapAntCodigo}}</b>.
+                                                {{horario.PerAntNombre}}
+                                                {{horario.PerAntApellido}})
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="m-auto btn btn-sm btn-danger"
+                                                data-ng-click="solcambh.eliminarHorarioSolicitud(horario)">Eliminar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Informacion General -->
+            <div class="row" data-ng-if="solcambh.secciones.formularioCreacionCurso == 1">
+                <div class="col">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <div class="row justify-content-between">
+                                <div class="col-auto">
+                                    <h5>Información General</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col">
+                                    <label>Sede</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.SedNombre}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Notas parciales</label>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == 'S' "
+                                        class="form-control  form-control-sm">Si</p>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == 'N' "
+                                        class="form-control  form-control-sm">No</p>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == '' "
+                                        class="form-control  form-control-sm">Sin definir</p>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == NULL "
+                                        class="form-control  form-control-sm">Sin definir</p>
+                                </div>
+                                <div class="col">
+                                    <label>Modalidad</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.TicNombre}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Asignatura</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCodigo}}.
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiNombre}} -
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiNombreCorto}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Propietario Asignatura</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.UaaCodigo}}.
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.UaaNombreCorto}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Docente coordinador</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.PerNombreApellido}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Carácter</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.CarCodigo}} -
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.CarNombre}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Núcleo</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.NucNombre}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Calificación</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.TesNombre}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Total Matriculados</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.TotalMatriculados}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Plan académico</label>
+                                    <p class="form-control  form-control-sm">
+                                        {{csolcambh.creacionSolicitud.CursoSeleccionado.PlaNombre}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Creditos Total</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCreditos || 0}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Creditos Teoría</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCreditosTeoria || 0}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Creditos Práctica</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCreditosPractica || 0}}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-auto">
+                    <label>Cambio a espacio deportivo?</label>
+                    <select class="form-control form-control-sm" ng-model="solcambh.edicionSolicitud.EspDeportivo">
+                        <option value="0">No</option>
+                        <option value="1">Si</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-footer">
+            <button class="btn btn-warning btn-sm"
+                data-ng-click="solcambh.mostrarSweetAlertDisabled('reactivar_solicitud')">Re activar solicitud</button>
+        </div>
+    </div>
+</div>
+
+<!-- Seccion formulario creacion solicitud -->
+<div class="container-fluid" data-ng-if="solcambh.secciones.formularioCreacion == 1">
+    <div class="card card-danger">
+        <div class="card-header">
+            <div class="row justify-content-between">
+                <div class="col">
+                    <h4>Formulario creación solicitud cambio de horario</h4>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-default"
+                        data-ng-click="solcambh.cancelarCrearSolicitud()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col">
+                    <label>Curso</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control form-control-sm"
+                            data-ng-model="solcambh.cursoSeleccionado" placeholder="Ingrese codigo del curso.">
+                        <div class="input-group-append">
+                            <button class="btn btn-success btn-sm"
+                                data-ng-click="solcambh.consultarCursoDetalle();">Buscar
+                                Curso Programado</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- Horario Curso -->
+            <div class="row" data-ng-if="solcambh.secciones.formularioCreacionCurso == 1">
+                <div class="col">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <div class="row justify-content-between">
+                                <div class="col-auto">
+                                    <h5>Horario</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <table
+                                class="p-0 table table-sm table-hover table-bordered table-striped table-head-fixed table-sm">
+                                <thead>
+                                    <th>Subgrupo</th>
+                                    <th>Día</th>
+                                    <th>Hora</th>
+                                    <th>Docente</th>
+                                    <th>Espacio</th>
+                                    <th></th>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-repeat="horario in solcambh.creacionSolicitud.CursoSeleccionado.Horario">
+                                        <td>{{horario.EsoSubGrupo}}</td>
+                                        <td>{{horario.DiaCodigo}}. {{horario.DiaNombre}}</td>
+                                        <td>{{horario.EsoHora}}</td>
+                                        <td>
+                                            {{horario.UapCodigo}}. {{horario.NombreApellidoDocente}}
+                                            {{horario.VinNombre}}
+                                        </td>
+                                        <td>
+                                            {{horario.SedNombre}} - {{horario.SusNombre}} - {{horario.BloNombre}} -
+                                            {{horario.EspCodigo}}. {{horario.EspNombreCorto}}
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-sm" 
+                                                ng-class="{'btn-success': !solcambh.isHorarioSeleccionado(horario), 'btn-secondary': solcambh.isHorarioSeleccionado(horario)}"
+                                                data-ng-click="solcambh.seleccionarHorario(horario)"
+                                                ng-disabled="solcambh.isHorarioSeleccionado(horario)">
+                                                {{solcambh.isHorarioSeleccionado(horario) ? 'Seleccionado' : 'Seleccionar'}}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Horario Nuevo -->
+            <div class="row" data-ng-if="solcambh.secciones.formularioCreacionHorario == 1">
+                <div class="col">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <div class="row justify-content-between">
+                                <div class="col-auto">
+                                    <h5>Horario seleccionado</h5>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-body">
+
+                            <!-- Formulario horario nuevo -->
+                            <div class="row align-items-center">
+                                <!-- Horario Actual Seleccionado -->
+                                <div class="col">
+                                    <div class="card card-info" style="height: auto;">
+                                        <div class="card-header">
+                                            <b>Horario actual seleccionado</b>
+                                        </div>
+                                        <div class="card-body">
+                                            <p class="m-0"><b>Subgrupo: </b>
+                                                {{solcambh.horarioSeleccionado.EsoSubGrupo}}
+                                            </p>
+                                            <p class="m-0"><b>Fechas: </b>
+                                                {{solcambh.horarioSeleccionado.EsoFechaInicio}}
+                                                <i class="fas fa-long-arrow-alt-right fa-xs"></i>
+                                                {{solcambh.horarioSeleccionado.EsoFechaFin}}
+                                            </p>
+                                            <p class="m-0"><b>Día: </b> {{solcambh.horarioSeleccionado.DiaCodigo}}.
+                                                {{solcambh.horarioSeleccionado.DiaNombre}} </p>
+                                            <p class="m-0"><b>Hora: </b> {{solcambh.horarioSeleccionado.EsoHora}}</p>
+                                            <p class="m-0"><b>Docente: </b> {{solcambh.horarioSeleccionado.UapCodigo}}.
+                                                {{solcambh.horarioSeleccionado.NombreApellidoDocente}} </p>
+                                            <p class="m-0"><b>Espacio: </b> {{solcambh.horarioSeleccionado.SedNombre}} -
+                                                {{solcambh.horarioSeleccionado.SusNombre}} -
+                                                {{solcambh.horarioSeleccionado.BloNombre}} -
+                                                {{solcambh.horarioSeleccionado.EspCodigo}}.
+                                                {{solcambh.horarioSeleccionado.EspNombreCorto}} </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-auto m-auto">
+                                    <i class="fas fa-chevron-right"></i>
+                                </div>
+                                <!-- Formulario horario nuevo -->
+                                <div class="col">
+                                    <div class="card card-success" style="height: auto;">
+                                        <div class="card-header">
+                                            <b>Horario Nuevo</b>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row">
+                                                <div class="col">
+                                                    <label>Fecha Inicial</label>
+                                                    <input type="text" class="form-control form-control-sm" datepicker
+                                                        data-ng-model="solcambh.horarioSeleccionado.fechaInicial"
+                                                        data-ng-change="solcambh.calcularFechaFin(solcambh.creacionSolicitud.CursoSeleccionado.CurSemanas); solcambh.reiniciarSeleccionado()"
+                                                        autocomplete="off" placeholder="aaaa-mm-dd">
+                                                </div>
+                                                <div class="col">
+                                                    <label>Semanas</label>
+                                                    <input type="text" class="form-control form-control-sm" disabled
+                                                        data-ng-model="solcambh.creacionSolicitud.CursoSeleccionado.CurSemanas"
+                                                        autocomplete="off">
+                                                </div>
+                                                <div class="col">
+                                                    <label>Fecha Final</label>
+                                                    <input type="text" class="form-control form-control-sm" disabled
+                                                        data-ng-model="solcambh.horarioSeleccionado.fechaFinal"
+                                                        autocomplete="off">
+                                                </div>
+                                            </div>
+                                            <div class="row my-4">
+                                                <div class="col">
+                                                    <label>Día</label>
+                                                    <select class="form-control form-control-sm"
+                                                        ng-model="solcambh.horarioSeleccionado.diaNuevo"
+                                                        ng-options="dia.DiaCodigo + '. ' + dia.DiaNombre for dia in solcambh.listaDias"
+                                                        style="background-image: none; appearance: none;"
+                                                        disabled>
+                                                        <option value="" disabled>Seleccionar dia</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col">
+                                                    <label>Hora</label>
+                                                    <select class="form-control form-control-sm"
+                                                        ng-model="solcambh.horarioSeleccionado.horaNuevo"
+                                                        ng-change="solcambh.reiniciarSeleccionado()"
+                                                        ng-options="hora.HraCodigo + '. ' + hora.HraInicio  + '. ' + hora.HraFin for hora in solcambh.listaHoras" 
+                                                        id="">
+                                                        <option value="" disabled>Seleccionar dia</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row my-4">
+                                                <div class="col-md-6">
+                                                    <label>Cambio de docente</label>
+                                                    <select class="form-control form-control-sm"
+                                                        data-ng-change="solcambh.refrescarDocente()"
+                                                        ng-model="solcambh.horarioSeleccionado.NuevoDocente">
+                                                        <option value="" selected>No</option>
+                                                        <option value="1">Si</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="row my-4"
+                                                data-ng-if="solcambh.horarioSeleccionado.NuevoDocente == 1">
+                                                <div class="col-12">
+                                                    <label>Búsqueda nuevo docente</label>
+                                                    <div class="input-group">
+                                                        <p class="form-control  form-control-sm">
+                                                            <span
+                                                                data-ng-if="solcambh.horarioSeleccionado.VinculacionNuevoDocente.UapCodigo">
+                                                                {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.UapCodigo}}.
+                                                                {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.PerNombre}}
+                                                                {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.PerApellido}}
+                                                            </span>
+                                                        <div class="input-group-append">
+                                                            <button class="btn btn-success btn-sm"
+                                                                data-ng-click="solcambh.consultarAgendaDocente()"
+                                                                title="Ver la agenda docente del coordinador.">Agenda</button>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                data-ng-click="solcambh.consultarDocentes()"
+                                                                title="Ver los docentes disponibles para las unidades.">Propios</button>
+                                                            <button class="btn btn-danger btn-sm"
+                                                                data-ng-click="solcambh.consultarDocentesPrestados()"
+                                                                title="Ver los docentes aprobados por otros programas.">Asignados</button>
+                                                        </div>
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div class="col-12"
+                                                    data-ng-if="solcambh.horarioSeleccionado.VinculacionNuevoDocente.Tipo == 'Prestado'">
+                                                    <small class="text-bold text-danger">Este docente es de otro
+                                                        departamento y
+                                                        pertenece a una solicitud aprobada de prestamo docente para este
+                                                        periodo.</small><br>
+                                                    <div class="callout callout-danger my-2">
+                                                        <h5>Horario permitido para el docente</h5>
+                                                        <hr>
+                                                        <p data-ng-repeat="horario in solcambh.horarioSeleccionado.VinculacionNuevoDocente.Horario"
+                                                            class="badge bg-success m-1">{{horario.DiaCodigo}}.
+                                                            {{horario.DiaNombre}}
+                                                            {{horario.HraCodigo}}. {{horario.HraInicio}} -
+                                                            {{horario.HraFin}}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="card-footer">
+                                            <button class="btn btn-sm btn-danger"
+                                                data-ng-click="solcambh.verificarHorarioSolicitud()">Verificar cruce
+                                                horario</button>
+                                            <button class="btn btn-sm btn-success"
+                                                ng-disabled="solcambh.horarioSeleccionado.cruceEstudiantes || solcambh.horarioSeleccionado.cruceDocente  || solcambh.horarioSeleccionado.yaSeleccionado"
+                                                data-ng-click="solcambh.agregarHorarioSolicitud()">Agregar a la
+                                                solicitud</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Lista de horario nuevo agregado -->
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="card card-success">
+                                        <div class="card-header">
+                                            <div class="row justify-content-between">
+                                                <div class="col-auto">
+                                                    <h5>Horario Nuevo Agregado</h5>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="row"
+                                                data-ng-if="solcambh.creacionSolicitud.NuevoHorario.length <= 0">
+                                                <div class="col">
+                                                    <p>No se encontró ningún cambio de horario a la solicitud
+                                                        seleccionada.</p>
+                                                </div>
+                                            </div>
+                                            <div class="row"
+                                                data-ng-repeat="horarioNuevo in solcambh.creacionSolicitud.NuevoHorario | orderBy:['DiaCodigo', 'EsoHora']">
+                                                <div class="col text-left">
+                                                    <b class="text-warning">Antiguo: </b>{{horarioNuevo.EsoSubGrupo}} -
+                                                    {{horarioNuevo.DiaCodigo}}.
+                                                    {{horarioNuevo.DiaNombre}} - {{horarioNuevo.EsoHora}}
+                                                    ({{horarioNuevo.UapCodigo}}.
+                                                    {{horarioNuevo.NombreApellidoDocente}})
+                                                </div>
+                                                <div class="col-auto"><i class="fas fa-chevron-right"></i></div>
+                                                <div class="col text-left">
+                                                    <b class="text-success">Nuevo: </b>{{horarioNuevo.EsoSubGrupo}} -
+                                                    {{horarioNuevo.diaNuevo.DiaCodigo}}.
+                                                    {{horarioNuevo.diaNuevo.DiaNombre}} -
+                                                    {{horarioNuevo.horaNuevo.HraCodigo}}.
+                                                    {{horarioNuevo.horaNuevo.HraInicio}}
+                                                    {{horarioNuevo.horaNuevo.HraFin}}
+                                                    <span data-ng-if="horarioNuevo.VinculacionNuevoDocente">
+                                                        ({{horarioNuevo.VinculacionNuevoDocente.UapCodigo}}.
+                                                        {{horarioNuevo.VinculacionNuevoDocente.PerNombre}}
+                                                        {{horarioNuevo.VinculacionNuevoDocente.PerApellido}})
+                                                    </span>
+                                                </div>
+                                                <div class="col-auto">
+                                                    <button class="btn btn-danger btn-sm"
+                                                        data-ng-click="solcambh.eliminarHorarioTemporal(horarioNuevo)">Eliminar</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-auto">
+                                    <label>Cambio a espacio deportivo?</label>
+                                    <select class="form-control form-control-sm"
+                                        ng-model="solcambh.creacionSolicitud.EspDeportivo">
+                                        <option value="0">No</option>
+                                        <option value="1">Si</option>
+                                    </select>
+                                </div>
+                            </div>
+
+
+                        </div>
+
+                        <div class="card-footer">
+                            <button class="btn btn-danger btn-sm"
+                                data-ng-click="solcambh.mostrarSweetAlertDisabled('crear_solicitud',null)">Crear</button>
+                            <button class="btn btn-default btn-sm" data-ng-click="solcambh.cancelarCrearSolicitud()">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Informacion General -->
+            <div class="row" data-ng-if="solcambh.secciones.formularioCreacionCurso == 1">
+                <div class="col">
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <div class="row justify-content-between">
+                                <div class="col-auto">
+                                    <h5>Información General</h5>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col">
+                                    <label>Sede</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.SedNombre}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Notas parciales</label>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == 'S' "
+                                        class="form-control  form-control-sm">Si</p>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == 'N' "
+                                        class="form-control  form-control-sm">No</p>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == '' "
+                                        class="form-control  form-control-sm">Sin definir</p>
+                                    <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.CurNotaParcial == NULL "
+                                        class="form-control  form-control-sm">Sin definir</p>
+                                </div>
+                                <div class="col">
+                                    <label>Modalidad</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.TicNombre}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Asignatura</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCodigo}}.
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiNombre}} -
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiNombreCorto}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Propietario Asignatura</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.UaaCodigo}}.
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.UaaNombreCorto}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Docente coordinador</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.PerNombreApellido}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Carácter</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.CarCodigo}} -
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.CarNombre}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Núcleo</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.NucNombre}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Calificación</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.TesNombre}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Total Matriculados</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.TotalMatriculados}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Plan académico</label>
+                                    <p class="form-control  form-control-sm">
+                                        {{csolcambh.creacionSolicitud.CursoSeleccionado.PlaNombre}}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Total Créditos</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCreditos || 0}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Créditos Teoría</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCreditosTeoria || 0}}
+                                    </p>
+                                </div>
+                                <div class="col">
+                                    <label>Créditos Práctica</label>
+                                    <p class="form-control form-control-sm">
+                                        {{solcambh.creacionSolicitud.CursoSeleccionado.AsiCreditosPractica || 0}}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modals -->
+
+<!-- Inicio modal de comentarios de solicitud -->
+<div class="modal fade" id="modalComentariosSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de comentarios de la solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p class="my-0"><b>Codigo Solicitud</b>: {{solcambh.solicitudSeleccionada.SchCodigo}}</p>
+                        <p class="my-0"><b>Curso</b>: {{solcambh.solicitudSeleccionada.CurCodigo}} <b>Periodo</b>:
+                            {{solcambh.solicitudSeleccionada.CalNombre}}</p>
+                        <p class="my-0"><b>Asignatura</b>: {{solcambh.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{solcambh.solicitudSeleccionada.AsiNombre}}</p>
+                        <p class="my-0"><b>Fecha creación</b>:
+                            {{solcambh.solicitudSeleccionada.SchFechaCreacion}}</p>
+                        <p class="my-0"><b>Espacio Deportivo: </b> {{solcambh.solicitudSeleccionada.EspDeportivo == 1 ?
+                            'Si' : 'No'}}</p>
+                        <p class="my-0"><b>Cambio Docente: </b> {{solcambh.solicitudSeleccionada.CambioDocente == 1 ?
+                            'Si' : 'No'}}</p>
+                        <p class="mb-1"><b>Cambio por Semanas: </b> {{solcambh.solicitudSeleccionada.CambioSemanas == 1
+                            ? 'Si' : 'No'}}</p>
+                    </div>
+                    <div class="col-auto">
+                        <p class="my-0"><b>Unidad</b>: {{solcambh.solicitudSeleccionada.UaaCodigo}}.
+                            {{solcambh.solicitudSeleccionada.UaaNombreCorto}}</p>
+                        <p class="my-0"><b>Solicitud creada</b>: {{solcambh.solicitudSeleccionada.UsuNombreApellido}}
+                        </p>
+                        <p class="my-0"><b>Estado</b>:
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 8">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 7">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 6">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 5">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 4">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 3">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 2">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 1">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 0">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                        </p>
+                        <p class="my-0"><b>Sede:</b> {{solcambh.solicitudSeleccionada.SedCodigo}}.
+                            {{solcambh.solicitudSeleccionada.SedNombre}}</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50%;">ANTIGUO</th>
+                                    <th style="width: 50%;">NUEVO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-ng-repeat="horario in solcambh.solicitudSeleccionada.Horario">
+                                    <!-- ANTIGUO -->
+                                    <td>
+                                        <b>{{horario.SchhSubgrupo}}</b> -
+                                        <b>{{horario.DiaAntCodigo}}.</b> {{horario.DiaAntNombre}}
+                                        <b>{{horario.HraAntCodigo}}.</b> {{horario.HraAntInicio}} -
+                                        {{horario.HraAntFin}} 
+                                        <span class="badge bg-warning text-white" data-ng-if="horario.EspAntCodigo">
+                                            ({{horario.EspAntCodigo}}. {{horario.EspAntNombreCorto}})
+                                        </span>
+                                        <br>
+                                        <b>{{horario.UapAntCodigo}}.</b> {{horario.PerAntNombre}}
+                                        {{horario.PerAntApellido}}
+                                    </td>
+                                    <!-- NUEVO -->
+                                    <td>
+                                        <b>{{horario.DiaNuevoCodigo}}.</b>
+                                        {{horario.DiaNuevoNombre}}
+                                        <b>{{horario.HraNuevoCodigo}}.</b>
+                                        {{horario.HraNuevoInicio}} -
+                                        {{horario.HraNuevoFin}}
+                                        <span class="badge bg-success text-white my-auto"
+                                            data-ng-if="horario.EspNuevoCodigo">
+                                            ({{horario.EspNuevoCodigo}}. {{horario.EspNombreCorto}})
+                                        </span>
+                                        <b data-ng-if="horario.UapNuevoCodigo != ''"><br>{{horario.UapNuevoCodigo}}.</b>
+                                        {{horario.PerNuevoNombre}}
+                                        {{horario.PerNuevoApellido}}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <hr>
+                <div class="row" data-ng-if="solcambh.solicitudSeleccionada.SchEstado != 0">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Comentario</label>
+                            <textarea class="form-control" rows="3" maxlength="250"
+                                data-ng-model="solcambh.mensajeComentario"> {{solcambh.mensajeComentario}}</textarea>
+                            <small>{{solcambh.mensajeComentario ? solcambh.mensajeComentario.length : 0}}/250</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <button class="btn btn-sm btn-danger" data-ng-click="solcambh.agregarComentario()">Agregar
+                            comentario</button>
+                    </div>
+                    <div class="col-md-12">
+                        <hr>
+                    </div>
+                </div>
+                <p><small class="p-4">Total de comentarios: {{solcambh.listaComentarios ?
+                        solcambh.listaComentarios.length :
+                        0}}</small></p>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div style="height: 500px; overflow: auto">
+                            <div class="timeline">
+                                <div data-ng-repeat="comentario in solcambh.listaComentarios">
+                                    <i class="fas bg-danger"
+                                        style="font-family: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';"><span>{{
+                                            solcambh.getUserInitials(comentario.PerNombreApellido) }}</span></i>
+                                    <div class="timeline-item">
+                                        <span class="time"><i
+                                                class="fas fa-clock"></i>{{comentario.SchcFechaCreacion}}</span>
+                                        <h3 class="timeline-header no-border">{{comentario.PerNombreApellido}}</h3>
+                                        <p class="p-2">{{comentario.SchcComentario}}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal rechazo solicitud -->
+<div class="modal fade" id="modalRechazoSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Rechazo de la solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p class="my-0"><b>Codigo Solicitud</b>: {{solcambh.solicitudSeleccionada.SchCodigo}}</p>
+                        <p class="my-0"><b>Curso</b>: {{solcambh.solicitudSeleccionada.CurCodigo}} <b>Periodo</b>:
+                            {{solcambh.solicitudSeleccionada.CalNombre}}</p>
+                        <p class="my-0"><b>Asignatura</b>: {{solcambh.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{solcambh.solicitudSeleccionada.AsiNombre}}</p>
+                        <p class="my-0"><b>Fecha creación</b>:
+                            {{solcambh.solicitudSeleccionada.SchFechaCreacion}}</p>
+                        <p class="my-0"><b>Espacio Deportivo: </b> {{solcambh.solicitudSeleccionada.EspDeportivo == 1 ?
+                            'Si' : 'No'}}</p>
+                        <p class="my-0"><b>Cambio Docente: </b> {{solcambh.solicitudSeleccionada.CambioDocente == 1 ?
+                            'Si' : 'No'}}</p>
+                        <p class="mb-1"><b>Cambio por Semanas: </b> {{solcambh.solicitudSeleccionada.CambioSemanas == 1
+                            ? 'Si' : 'No'}}</p>
+                    </div>
+                    <div class="col-auto">
+                        <p class="my-0"><b>Unidad</b>: {{solcambh.solicitudSeleccionada.UaaCodigo}}.
+                            {{solcambh.solicitudSeleccionada.UaaNombreCorto}}</p>
+                        <p class="my-0"><b>Solicitud creada</b>: {{solcambh.solicitudSeleccionada.UsuNombreApellido}}
+                        </p>
+                        <p class="my-0"><b>Estado</b>:
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 8">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 7">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 6">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 5">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 4">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 3">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 2">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 1">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 0">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                        </p>
+                        <p class="my-0"><b>Sede:</b> {{solcambh.solicitudSeleccionada.SedCodigo}}.
+                            {{solcambh.solicitudSeleccionada.SedNombre}}</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50%;">ANTIGUO</th>
+                                    <th style="width: 50%;">NUEVO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-ng-repeat="horario in solcambh.solicitudSeleccionada.Horario">
+                                    <!-- ANTIGUO -->
+                                    <td>
+                                        <b>{{horario.SchhSubgrupo}}</b> -
+                                        <b>{{horario.DiaAntCodigo}}.</b> {{horario.DiaAntNombre}}
+                                        <b>{{horario.HraAntCodigo}}.</b> {{horario.HraAntInicio}} -
+                                        {{horario.HraAntFin}} 
+                                        <span class="badge bg-warning text-white" data-ng-if="horario.EspAntCodigo">
+                                            ({{horario.EspAntCodigo}}. {{horario.EspAntNombreCorto}})
+                                        </span>
+                                        <br>
+                                        <b>{{horario.UapAntCodigo}}.</b> {{horario.PerAntNombre}}
+                                        {{horario.PerAntApellido}}
+                                    </td>
+                                    <!-- NUEVO -->
+                                    <td>
+                                        <b>{{horario.DiaNuevoCodigo}}.</b>
+                                        {{horario.DiaNuevoNombre}}
+                                        <b>{{horario.HraNuevoCodigo}}.</b>
+                                        {{horario.HraNuevoInicio}} -
+                                        {{horario.HraNuevoFin}}
+                                        <span class="badge bg-success text-white my-auto"
+                                            data-ng-if="horario.EspNuevoCodigo">
+                                            ({{horario.EspNuevoCodigo}}. {{horario.EspNombreCorto}})
+                                        </span>
+                                        <b data-ng-if="horario.UapNuevoCodigo != ''"><br>{{horario.UapNuevoCodigo}}.</b>
+                                        {{horario.PerNuevoNombre}}
+                                        {{horario.PerNuevoApellido}}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <hr>
+                <div class="row" data-ng-if="solcambh.solicitudSeleccionada.SchEstado != 0">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Justificacion</label>
+                            <textarea class="form-control" rows="3" maxlength="250"
+                                data-ng-model="solcambh.mensajeComentario"> {{solcambh.mensajeComentario}}</textarea>
+                            <small>{{solcambh.mensajeComentario ? solcambh.mensajeComentario.length : 0}}/250</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <button class="btn btn-sm btn-danger"
+                            data-ng-click="solcambh.mostrarSweetAlertDisabled('rechazar_solicitud')">Rechazar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal aprobacion solicitud -->
+<div class="modal fade" id="modalAprobarSolicitud" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Aprobación de la solicitud</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-auto">
+                        <p class="my-0"><b>Codigo Solicitud</b>: {{solcambh.solicitudSeleccionada.SchCodigo}}</p>
+                        <p class="my-0"><b>Curso</b>: {{solcambh.solicitudSeleccionada.CurCodigo}} <b>Periodo</b>:
+                            {{solcambh.solicitudSeleccionada.CalNombre}}</p>
+                        <p class="my-0"><b>Asignatura</b>: {{solcambh.solicitudSeleccionada.AsiNombreCorto}} -
+                            {{solcambh.solicitudSeleccionada.AsiNombre}}</p>
+                        <p class="my-0"><b>Fecha creación</b>:
+                            {{solcambh.solicitudSeleccionada.SchFechaCreacion}}</p>
+                        <p class="my-0"><b>Espacio Deportivo: </b> {{solcambh.solicitudSeleccionada.EspDeportivo == 1 ?
+                            'Si' : 'No'}}</p>
+                        <p class="my-0"><b>Cambio Docente: </b> {{solcambh.solicitudSeleccionada.CambioDocente == 1 ?
+                            'Si' : 'No'}}</p>
+                        <p class="mb-1"><b>Cambio por Semanas: </b> {{solcambh.solicitudSeleccionada.CambioSemanas == 1
+                            ? 'Si' : 'No'}}</p>
+                    </div>
+                    <div class="col-auto">
+                        <p class="my-0"><b>Unidad</b>: {{solcambh.solicitudSeleccionada.UaaCodigo}}.
+                            {{solcambh.solicitudSeleccionada.UaaNombreCorto}}</p>
+                        <p class="my-0"><b>Solicitud creada</b>: {{solcambh.solicitudSeleccionada.UsuNombreApellido}}
+                        </p>
+                        <p class="my-0"><b>Estado</b>:
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 8">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 7">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 6">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 5">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 4">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 3">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-success"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 2">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-warning"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 1">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                            <span class="badge bg-danger"
+                                data-ng-if="solcambh.solicitudSeleccionada.SchEstado == 0">{{solcambh.estadosSolicitud[solcambh.solicitudSeleccionada.SchEstado]}}</span>
+                        </p>
+                        <p class="my-0"><b>Sede:</b> {{solcambh.solicitudSeleccionada.SedCodigo}}.
+                            {{solcambh.solicitudSeleccionada.SedNombre}}</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50%;">ANTIGUO</th>
+                                    <th style="width: 50%;">NUEVO</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr data-ng-repeat="horario in solcambh.solicitudSeleccionada.Horario">
+                                    <!-- ANTIGUO -->
+                                    <td>
+                                        <b>{{horario.SchhSubgrupo}}</b> -
+                                        <b>{{horario.DiaAntCodigo}}.</b> {{horario.DiaAntNombre}}
+                                        <b>{{horario.HraAntCodigo}}.</b> {{horario.HraAntInicio}} -
+                                        {{horario.HraAntFin}} 
+                                        <span class="badge bg-warning text-white" data-ng-if="horario.EspAntCodigo">
+                                            ({{horario.EspAntCodigo}}. {{horario.EspAntNombreCorto}})
+                                        </span>
+                                        <br>
+                                        <b>{{horario.UapAntCodigo}}.</b> {{horario.PerAntNombre}}
+                                        {{horario.PerAntApellido}}
+                                    </td>
+                                    <!-- NUEVO -->
+                                    <td>
+                                        <b>{{horario.DiaNuevoCodigo}}.</b>
+                                        {{horario.DiaNuevoNombre}}
+                                        <b>{{horario.HraNuevoCodigo}}.</b>
+                                        {{horario.HraNuevoInicio}} -
+                                        {{horario.HraNuevoFin}}
+                                        <span class="badge bg-success text-white my-auto"
+                                            data-ng-if="horario.EspNuevoCodigo">
+                                            ({{horario.EspNuevoCodigo}}. {{horario.EspNombreCorto}})
+                                        </span>
+                                        <b data-ng-if="horario.UapNuevoCodigo != ''"><br>{{horario.UapNuevoCodigo}}.</b>
+                                        {{horario.PerNuevoNombre}}
+                                        {{horario.PerNuevoApellido}}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <hr>
+                <div class="row" data-ng-if="solcambh.solicitudSeleccionada.SchEstado != 0">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Justificacion</label>
+                            <textarea class="form-control" rows="3" maxlength="250"
+                                data-ng-model="solcambh.mensajeComentario"> {{solcambh.mensajeComentario}}</textarea>
+                            <small>{{solcambh.mensajeComentario ? solcambh.mensajeComentario.length : 0}}/250</small>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <button class="btn btn-sm btn-success"
+                            data-ng-click="solcambh.mostrarSweetAlertDisabled('aprobar_solicitud')">Aprobar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Inicio modal lista Docentes ============================================================ -->
+<div class="modal fade" id="modalDocentes" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Docentes</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="solcambh.filter.Docentes"></span>
+                    </div>
+                    <br>
+                    <div class="col-md-12"><br>
+                        <span>Rango de busquedas entre fechas de vinculacion:
+                            <b>{{solcambh.vinculacionDocenteFechas.inicio}} -
+                                {{solcambh.vinculacionDocenteFechas.fin}}</b></span><br>
+                        <span class="text-danger"><b>Nota: </b>Si no se encuentra el docente por favor verifique las
+                            fechas de vinculación, en caso de necesitar docentes NN o vincular un docente recuerde que
+                            debe <b>solicitarlos a talento humano con anticipación.</b></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 70vh;overflow: auto;">
+                    <div class="col">
+                        <!-- Inicio lista de docentes de planta. -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesPlanta" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE PLANTA
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesPlanta'] ==  null ">No
+                                                    se
+                                                    encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesPlanta"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesPlanta'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de planta. -->
+
+                        <!-- Inicio lista de docentes de planta con fecha fin.-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesPlantaFechaFin" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE PLANTA CON FECHA FIN
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesPlantaFechaFin'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesPlantaFechaFin"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesPlantaFechaFin'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de planta con fecha fin.-->
+
+                        <!-- Inicio lista de docentes de catedra-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesCatedra" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE CATEDRA
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesCatedra'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesCatedra"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesCatedra'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de catedra-->
+
+                        <!-- Inicio lista de docentes de nombramiento ocacional-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNombramientoOcacional" style="cursor: pointer;"
+                                                    colspan="9" class="text-center bg-danger">
+                                                    DOCENTES DE NOMBRAMIENTO OCASIONAL
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesNombramientoOcacional']  ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNombramientoOcacional"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesNombramientoOcacional'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de nombramiento ocacional-->
+
+                        <!-- Inicio lista de docentes de nombramiento ocacional posterior al periodo -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNombramientoOcacionalPosterior" style="cursor: pointer;"
+                                                    colspan="9" class="text-center bg-danger">
+                                                    DOCENTES DE NOMBRAMIENTO OCASIONAL POSTERIOR AL PERIODO SELECCIONADO
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesNombramientoOcacionalPosterior'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNombramientoOcacionalPosterior"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesNombramientoOcacionalPosterior'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de nombramiento ocacional posterior al periodo -->
+
+                        <!-- Inicio lista de docentes otros -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesOtros" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES OTROS
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesOtros'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesOtros"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesOtros'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes otros -->
+
+                        <!-- Inicio lista de docentes NN -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNN" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES NN
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="8"
+                                                    data-ng-if="solcambh.listaDocentes['DocentesNN'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNN"
+                                                data-ng-repeat="docente in solcambh.listaDocentes['DocentesNN'] | toArray | filter:solcambh.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="solcambh.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes NN -->
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Docentes =============================================================== -->
+
+<!-- Inicio modal agenda docente -->
+<div class="modal fade" id="modalAgendaDocente" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%">
+            <div class="modal-header modal-header-danger">
+                <h5 class="modal-title" id="myModalLabel">AGENDA DOCENTE:
+                    <b>{{solcambh.horarioSeleccionado.VinculacionNuevoDocente.PerNombre}}
+                        {{solcambh.horarioSeleccionado.VinculacionNuevoDocente.PerApellido}}</b>
+                    <br>
+                    <p><b>Fecha inicio:</b> {{solcambh.agendaDocenteFechas.inicio}} <b>Fecha fin:</b>
+                        {{solcambh.agendaDocenteFechas.fin}} </p>
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <td><b>Hora</b></td>
+                            <td class="text-center" width="380px"><b>Lunes</b></td>
+                            <td class="text-center" width="380px"><b>Martes</b></td>
+                            <td class="text-center" width="380px"><b>Miercoles</b></td>
+                            <td class="text-center" width="380px"><b>Jueves</b></td>
+                            <td class="text-center" width="380px"><b>Viernes</b></td>
+                            <td class="text-center" width="380px"><b>Sabado</b></td>
+                            <td class="text-center" width="380px"><b>Domingo</b></td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-ng-repeat="agenda in solcambh.agendaDocente">
+                            <td class="align-middle text-center"><b>{{$index + 1}}</b></td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[1].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[1].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[1].AsiNombre + ' '
+                                            +agenda[1].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[1].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[1].EspCodigo + '. '}}
+                                            {{agenda[1].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[1].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[1]}}</span><br>
+                                        <span>Libre</span>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[2].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[2].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[2].AsiNombre + ' '
+                                            +agenda[2].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[2].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[2].EspCodigo + '. '}}
+                                            {{agenda[2].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[2].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[2]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[3].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[3].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[3].AsiNombre + ' '
+                                            +agenda[3].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[3].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[3].EspCodigo + '. '}}
+                                            {{agenda[3].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[3].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[3]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[4].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[4].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[4].AsiNombre + ' '
+                                            +agenda[4].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[4].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[4].EspCodigo + '. '}}
+                                            {{agenda[4].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[4].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[4]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[5].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[5].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[5].AsiNombre + ' '
+                                            +agenda[5].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[5].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[5].EspCodigo + '. '}}
+                                            {{agenda[5].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[5].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[5]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[6].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[6].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[6].AsiNombre + ' '
+                                            +agenda[6].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[6].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[6].EspCodigo + '. '}}
+                                            {{agenda[6].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[6].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[6]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[7].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[7].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[7].AsiNombre + ' '
+                                            +agenda[7].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[7].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[7].EspCodigo + '. '}}
+                                            {{agenda[7].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[7].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[7]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal agenda docente -->
+
+<!-- Inicio modal lista Docentes Prestados ============================================================ -->
+<div class="modal fade" id="modalDocentesPrestados" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Docentes Prestados</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese la busqueda..." class="input input-sm"
+                                data-ng-model="solcambh.filter.Docentes"></span>
+                    </div>
+                    <br>
+                    <div class="col-md-12"><br>
+                        <span>Rango de busquedas entre fechas de vinculacion:
+                            <b>{{solcambh.listaDocentesPrestados['FechaInicio']}} -
+                                {{solcambh.listaDocentesPrestados['FechaFin']}}</b></span><br>
+                        <span class="text-danger"><b>Nota: </b>Si no se encuentra el docente por favor verifique las
+                            fechas de vinculación, en caso de necesitar docentes NN o vincular un docente recuerde
+                            que
+                            debe <b>solicitarlos a talento humano con anticipación.</b></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 600px;overflow: auto;">
+                    <div class="col-md-12 m-0"
+                        data-ng-repeat="docente in solcambh.listaDocentesPrestados['Docentes'] | toArray | filter:solcambh.filter.Docentes">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <span><b>SOLICITUD:</b> {{docente.SpdCodigo}}</span> <br>
+                                <span><b>DOCENTE:</b> {{docente.UapCodigo}}. {{docente.PerNombreApellido}}</span> <br>
+                                <span><b>VINCULACIÓN:</b> {{docente.VinNombre}} {{docente.DedNombre}}</span> <br>
+                                <span><b>FECHAS VINCULACIÓN:</b> {{docente.UapFechaInicio}}
+                                    {{docente.UapFechaFin}}</span> <br>
+                                <span><b>CARGA ACADÉMICA:</b> {{docente.UapCarga}}</span><br>
+                                <span><b>ASIGNATURA:</b> {{docente.AsiNombre}} {{docente.AsiNombreCorto}}</span><br>
+                                <span><b>UNIDAD DIRIGIDA:</b> {{docente.UaaNombreDpto}}</span><br>
+                                <span><b>UNIDAD SOLICITA:</b> {{docente.UaaNombreSolicita}}</span><br>
+                                <span><b>SEDE:</b> {{docente.SedCodigo}}. {{docente.SedNombre}}</span><br>
+                            </div>
+                            <div class="col-md-4">
+                                <span><b>HORARIO PERMITIDO:</b> </span>
+                                <div data-ng-repeat="horario in docente.Horario">
+                                    <span class="badge bg-success">{{horario.DiaCodigo}}. {{horario.DiaNombre}}
+                                        {{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</span>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.AsiCodigo != docente.AsiCodigo && solcambh.creacionSolicitud.CursoSeleccionado.SedCodigo == docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura del curso
+                                        ({{solcambh.creacionSolicitud.CursoSeleccionado.AsiNombre + ' - ' +
+                                        solcambh.creacionSolicitud.CursoSeleccionado.AsiNombreCorto}}) es diferente a la
+                                        aprobada al docente.</b></p>
+                                <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.AsiCodigo == docente.AsiCodigo && solcambh.creacionSolicitud.CursoSeleccionado.SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La sede del curso es diferente a la aprobada al
+                                        docente ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                <p data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.AsiCodigo != docente.AsiCodigo && solcambh.creacionSolicitud.CursoSeleccionado.SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura del curso
+                                        ({{solcambh.creacionSolicitud.CursoSeleccionado.AsiNombre + ' - ' +
+                                        solcambh.creacionSolicitud.CursoSeleccionado.AsiNombreCorto}}) y la sede son
+                                        diferentes a las aprobadas al docente
+                                        ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                <button type="button" class="btn btn-danger btn-sm mt-2" data-dismiss="modal"
+                                    data-ng-if="solcambh.creacionSolicitud.CursoSeleccionado.AsiCodigo == docente.AsiCodigo && solcambh.creacionSolicitud.CursoSeleccionado.SedCodigo == docente.SedCodigo"
+                                    data-ng-click="solcambh.seleccionarDocente(docente, 'Prestado')">Seleccionar</button>
+                            </div>
+                        </div>
+                        <hr>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Docentes Prestados =============================================================== -->
+
+<script>
+    $("#DocentesPlanta").click(function () {
+        $(".DocentesPlanta").toggle();
+    });
+    $("#DocentesPlantaFechaFin").click(function () {
+        $(".DocentesPlantaFechaFin").toggle();
+    });
+    $("#DocentesCatedra").click(function () {
+        $(".DocentesCatedra").toggle();
+    });
+    $("#DocentesNombramientoOcacional").click(function () {
+        $(".DocentesNombramientoOcacional").toggle();
+    });
+    $("#DocentesNombramientoOcacionalPosterior").click(function () {
+        $(".DocentesNombramientoOcacionalPosterior").toggle();
+    });
+    $("#DocentesOtros").click(function () {
+        $(".DocentesOtros").toggle();
+    });
+    $("#DocentesNN").click(function () {
+        $(".DocentesNN").toggle();
+    });
+
+    function copiarTabla(NombreTabla) {
+        // Get the text field
+        let el = document.getElementById(NombreTabla)
+        var body = document.body, range, sel;
+        if (document.createRange && window.getSelection) {
+            range = document.createRange();
+            sel = window.getSelection();
+            sel.removeAllRanges();
+            try {
+                range.selectNodeContents(el);
+                sel.addRange(range);
+            } catch (e) {
+                range.selectNode(el);
+                sel.addRange(range);
+            }
+        } else if (body.createTextRange) {
+            range = body.createTextRange();
+            range.moveToElementText(el);
+            range.select();
+        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000
+        });
+        if (document.execCommand('copy')) {
+            Toast.fire({
+                icon: 'success',
+                title: 'Información copiada correctamente.'
+            });
+        } else {
+            Toast.fire({
+                icon: 'error',
+                title: 'No se pudo copiar la información.'
+            });
+        }
+    }
+</script>

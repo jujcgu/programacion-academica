@@ -1,0 +1,2167 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Gestión de Cursos</h1>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col">
+                <hr>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <form class="form-horizontal">
+                    <div class="form-group row">
+                        <label class="col-auto col-form-label">Unidad</label>
+                        <div class="col-md-3">
+                            <input type="text" class="form-control form-control-sm" readonly placeholder="Seleccione..."
+                                value="{{curcrea.seleccion.Uaa.UaaCodigoNombre}}" style="cursor: pointer;"
+                                data-ng-click="curcrea.abrirModal('modalUnidades')">
+                        </div>
+
+                        <div class="col-auto" data-ng-if="curcrea.sinCalendario == 1">
+                            <label class="col-form-label">Esta unidad no tiene calendarios activos para programación
+                                académica.</label>
+                        </div>
+
+                        <label class="col-auto col-form-label"
+                            data-ng-if="curcrea.listaCalendarios.length > 0">Calendario</label>
+                        <div class="col-md-3" data-ng-if="curcrea.listaCalendarios.length > 0">
+                            <input type="text" class="form-control form-control-sm" readonly placeholder="Seleccione..."
+                                value="{{curcrea.seleccion.Calendario.CalCodigoNombreProceso}}" style="cursor: pointer;"
+                                data-ng-click="curcrea.abrirModal('modalCalendarios')">
+                        </div>
+
+                        <div class="col-auto" data-ng-if="curcrea.btnBuscarCursos == 1">
+                            <button class="btn btn-danger btn-sm" ng-click="curcrea.consultarCurso()">Buscar</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="row" data-ng-if="curcrea.seccionCursos == 1">
+            <div class="col">
+                <hr>
+            </div>
+        </div>
+
+        <div class="row" data-ng-if="curcrea.seccionCursos == 1">
+            <!-- Inicio lista de cursos -->
+            <div class="col-md-4">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row justify-content-between">
+                            <div class="col-auto">
+                                <h4>Lista de cursos</h4>
+                            </div>
+                            <div class="col-md-5">
+                                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                                    data-ng-model="curcrea.filter.Curso">
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-sm btn-success"
+                                    data-ng-if="curcrea.seleccion.Calendario.Administrador == 1 || curcrea.seleccion.Calendario.ActivaAhora == 1"
+                                    title="Crear nuevo curso." ng-click="curcrea.formularioCrearCurso()">Crear</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body" style="overflow: auto;max-height:700px">
+                        <span data-ng-if="curcrea.listaCursos.length <= 0 || curcrea.listaCursos == null"
+                            style="color: #c2c2c2;">No se encontraron cursos.</span>
+                        <div class="card seleccionable" data-ng-click="curcrea.consultarDetalleCurso(curso);"
+                            data-ng-class="{
+                                'alert-danger': curso.CurEstado == 0, 
+                                'alert-warning': curso.TotalHorario == 0
+                            }" data-ng-repeat="curso in curcrea.listaCursos | toArray | filter:curcrea.filter.Curso">
+                            <!-- 'alert-warning': curso.TotalMatriculados <= 40,  -->
+                            <div class="card-header">
+                                <span>
+                                    <b>Codigo:</b> {{curso.CurCodigo}}
+                                    <b>Sede: </b>{{curso.SedNombre}}
+                                    <b>Grupo:</b> {{curso.CurGrupo}}
+                                    <b>Nucleo: </b>{{curso.NucNombre}}
+                                    <b>Modalidad: </b>{{curso.CutNombre}}
+                                </span><br>
+                                <span><b>Matriculados: </b>{{curso.TotalMatriculados}} de {{curso.CurCupo}}</span><br>
+                                <span><b>Asignatura:</b> {{curso.AsiNombre}} {{curso.AsiNombreCorto}}</span><br>
+                                <span><b>Link: </b>
+                                    <span data-ng-if="curso.CurUrl != ''">{{curso.CurUrl}}</span>
+                                    <span data-ng-if="curso.CurUrl == ''">Sin asignar.</span>
+                                </span><br>
+                                <span data-ng-if="curso.DocentePrestado > 0"><b>Programado con docente
+                                        prestado.</b><br></span>
+                                <span data-ng-if="curso.CurEstado == 0"><b>Estado:</b> Eliminado<br></span>
+                                <span data-ng-if="curso.TotalHorario == 0"><b>SIN HORARIO</b><br></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin lista de cursos -->
+
+            <!-- Inicio informacion de curso -->
+            <div class="col-md-8" data-ng-if="curcrea.informacionCursos == 1">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row justify-content-between">
+                            <div class="col-auto">
+                                <h4>Información del curso {{curcrea.seleccion.Curso[0].CurCodigo}}</h4>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-default btn-sm"
+                                    data-ng-if="curcrea.seleccion.Calendario.Administrador == 1 || curcrea.seleccion.Calendario.ActivaAhora == 1"
+                                    data-ng-click="curcrea.formularioEditarCurso(curcrea.seleccion.Curso[0])">
+                                    Editar curso
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row"
+                            data-ng-if="curcrea.seleccion.Calendario.PeriodoPersonalizado && curcrea.seleccion.Calendario.PeriodoPersonalizado != ''">
+                            <div class="col">
+                                <h5><b><span class="text-danger">Periodo fecha especial:
+                                            {{curcrea.seleccion.Calendario.PeriodoPersonalizado}}</span></b></h5>
+                            </div>
+                            <div class="col-md-12">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Codigo curso</label>
+                                    <p class="form-control form-control-sm">{{curcrea.seleccion.Curso[0].CurCodigo}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Calendario</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].CalNombre}}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Sede</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].SedNombre}}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Notas parciales</label>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].CurNotaParcial == 'S' "
+                                        class="form-control  form-control-sm">Si</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].CurNotaParcial == 'N' "
+                                        class="form-control  form-control-sm">No</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].CurNotaParcial == '' "
+                                        class="form-control  form-control-sm">Sin definir</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].CurNotaParcial == NULL "
+                                        class="form-control  form-control-sm">Sin definir</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Modalidad</label>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].TicCodigo == 1"
+                                        class="form-control  form-control-sm">
+                                        Presencial</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].TicCodigo == 2"
+                                        class="form-control  form-control-sm">Apoyo
+                                        virtual (b-Learning)</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].TicCodigo == 3"
+                                        class="form-control  form-control-sm">Mixto
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Calificación</label>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].TesCodigo == 1 "
+                                        class="form-control  form-control-sm">
+                                        Númerico (0-5)</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].TesCodigo == 2 "
+                                        class="form-control  form-control-sm">
+                                        Aprobado/Reprobado</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].TesCodigo == 3 "
+                                        class="form-control  form-control-sm">Tres
+                                        Niveles</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Total matriculados</label>
+                                    <p data-ng-class="{'bg-warning bg-opacity-25': curcrea.seleccion.Curso[0].TotalMatriculados <= 40}"
+                                        class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.Curso[0].TotalMatriculados}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Tipo curso</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].CutNombre}}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Estado</label>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].CurEstado == 1 "
+                                        class="form-control  form-control-sm">
+                                        Activo</p>
+                                    <p data-ng-if="curcrea.seleccion.Curso[0].CurEstado == 0 "
+                                        class="form-control  form-control-sm">
+                                        Eliminado</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Nombre asignatura</label>
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.Curso[0].AsiNombreCorto}} -
+                                        {{curcrea.seleccion.Curso[0].AsiNombre}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Propietario de la asignatura</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].UaaCodigo}}.
+                                        {{curcrea.seleccion.Curso[0].UaaNombreCorto}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Caracter</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].CarCodigo}}.
+                                        {{curcrea.seleccion.Curso[0].CarNombre}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Plan académico</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].PlaNombre}}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Totales</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].AsiCreditos}}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Teoria</label>
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.Curso[0].AsiCreditosTeoria}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Practica</label>
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.Curso[0].AsiCreditosPractica}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Horas Semanales Teoria</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.Curso[0].AsiHorasSemanalesTeorico}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Horas Semanales Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.Curso[0].AsiHorasSemanalesPractica}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Horas Semanales Teorico Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.Curso[0].AsiHorasSemanalesTeoricoPractico}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Grupo</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].CurGrupo}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Cupo total</label>
+                                    <p class="form-control  form-control-sm" name="InfoCurCupo" id="InfoCurCupo">
+                                        {{curcrea.seleccion.Curso[0].CurCupo}}</p>
+                                    <small class="text-info"
+                                        data-ng-if="curcrea.seleccion.Curso[0].AforoMaximoTeoria !== null && curcrea.seleccion.Curso[0].AforoMaximoTeoria !== undefined && curcrea.seleccion.Curso[0].AforoMaximoTeoria !== ''">
+                                        Aforo máximo teoría (00): {{curcrea.seleccion.Curso[0].AforoMaximoTeoria}}
+                                    </small>
+                                    <small class="text-muted"
+                                        data-ng-if="curcrea.seleccion.Curso[0].AforoMaximoTeoria === null || curcrea.seleccion.Curso[0].AforoMaximoTeoria === undefined || curcrea.seleccion.Curso[0].AforoMaximoTeoria === ''">
+                                        Sin espacios con aforo configurado para teoría (00).
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Cupo reservado</label>
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.Curso[0].CurAmpliacionCupo}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Semanas</label>
+                                    <p class="form-control  form-control-sm">{{curcrea.seleccion.Curso[0].CurSemanas}}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Exclusivo</label>
+                                    <div class="input-group">
+                                        <p class="form-control  form-control-sm"
+                                            data-ng-if="curcrea.seleccion.Curso[0].CurExclusivo == 1">Si</p>
+                                        <p class="form-control  form-control-sm"
+                                            data-ng-if="curcrea.seleccion.Curso[0].CurExclusivo == 0">No</p>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarPlanExclusivo()"
+                                                title="Ver los planes de estudios exclusivos del curso.">Plan
+                                                estudios</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Docente coordinador</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.Curso[0].PerNombreApellido}} -
+                                        {{curcrea.seleccion.Curso[0].VinNombre}}</p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="curcrea.consultarAgendaDocente()"
+                                            title="Ver la agenda docente del coordinador.">Agenda</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col mb-2">
+                                <small data-ng-if="curcrea.seleccion.Curso[0].DocentePrestado.length > 0"
+                                    class="text-bold text-danger">Este docente es de otro departamento y pertenece a una
+                                    solicitud aprobada de prestamo docente para este periodo.</small><br>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Link meet</label>
+                                <p class="form-control  form-control-sm"><a href="{{curcrea.seleccion.Curso[0].CurUrl}}"
+                                        target="_blank">{{curcrea.seleccion.Curso[0].CurUrl}}</a> </p>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Observaciones</label>
+                                <textarea class="form-control  form-control-sm" readonly style="resize: none;"
+                                    rows="5">{{curcrea.seleccion.Curso[0].CurObservaciones}}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin informacion de curso -->
+
+            <!-- Inicio formulario edicion de curso -->
+            <div class="col-md-8" data-ng-if="curcrea.formularioEdicionCursos == 1">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row justify-content-between">
+                            <div class="col-auto">
+                                <h4>Formulario edición del curso {{curcrea.seleccion.Curso[0].CurCodigo}}</h4>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-default btn-sm" data-ng-click="curcrea.cancelarEditarCurso()">
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row"
+                            data-ng-if="curcrea.seleccion.Calendario.PeriodoPersonalizado && curcrea.seleccion.Calendario.PeriodoPersonalizado != ''">
+                            <div class="col">
+                                <h5><b><span class="text-danger">Periodo fecha especial:
+                                            {{curcrea.seleccion.Calendario.PeriodoPersonalizado}}</span></b></h5>
+                            </div>
+                            <div class="col-md-12">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Codigo curso</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.CurCodigo}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Calendario</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.CalNombre}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Sede</label>
+                                    <select class="form-control form-control-sm" id="slcSede"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.SedCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option data-ng-repeat="sede in curcrea.listaSedes" value="{{sede.SedCodigo}}">
+                                            {{sede.SedNombre}}</option>
+                                    </select>
+                                    <!-- <p class="form-control">{{curcrea.seleccion.CursoActualizar.SedNombre}}</p> -->
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Notas parciales</label>
+                                    <select class="form-control form-control-sm" id="slcNotas"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.CurNotaParcial">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="S">Si</option>
+                                        <option value="N">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Modalidad </label>
+                                    <select class="form-control form-control-sm" id="slcModalidad"
+                                        data-ng-disabled="curcrea.seleccion.CursoActualizar.TotalHorario > 0"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.TicCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="1">Presencial</option>
+                                        <option value="2">Apoyo virtual (b-Learning)</option>
+                                        <option value="3">Mixto</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Calificación</label>
+                                    <select class="form-control form-control-sm" id="slcCalificacion"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.TesCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="1">Númerico (0-5)</option>
+                                        <option value="2">Aprobado/Reprobado</option>
+                                        <option value="3">Tres Niveles</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Total matriculados</label>
+                                    <p data-ng-class="{'bg-warning bg-opacity-25': curcrea.seleccion.Curso[0].TotalMatriculados <= 40}"
+                                        class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.CursoActualizar.TotalMatriculados}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Tipo curso</label>
+                                    <select class="form-control form-control-sm" id="slcTipoCurso"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.CutCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="{{tipocurso.CutCodigo}}"
+                                            data-ng-repeat="tipocurso in curcrea.listaTipoCurso">{{tipocurso.CutNombre}}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Estado</label>
+                                    <p class="form-control form-control-sm"
+                                        data-ng-if="curcrea.seleccion.CursoActualizar.CurEstado == 1">Activo</p>
+                                    <p class="form-control form-control-sm"
+                                        data-ng-if="curcrea.seleccion.CursoActualizar.CurEstado == 0">Eliminado</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Nombre asignatura</label>
+                                    <div class="input-group">
+                                        <p class="form-control  form-control-sm">
+                                            {{curcrea.seleccion.CursoActualizar.AsiNombreCorto}} -
+                                            {{curcrea.seleccion.CursoActualizar.AsiNombre}}</p>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarPlanesAcademicos()"
+                                                title="Ver los planes academicos.">Plan academico</button>
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarAsignaturas()"
+                                                title="Ver la lista de asignaturas permitidas.">Equivalencias</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Propietario de la asignatura</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.UaaCodigo}}.
+                                        {{curcrea.seleccion.CursoActualizar.UaaNombreCorto}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Caracter</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.CarCodigo}}.
+                                        {{curcrea.seleccion.CursoActualizar.CarNombre}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Plan académico</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.PlaNombre}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Totales</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.AsiCreditos}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Teoria</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.AsiCreditosTeoria}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.AsiCreditosPractica}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Totales</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.AsiHorasSemanalesTeorico}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Teoria</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.AsiHorasSemanalesPractica}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.AsiHorasSemanalesTeoricoPractico}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Grupo</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoActualizar.CurGrupo}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Cupo total</label>
+                                    <input type="text" class="form-control form-control-sm" name="EditCurCupo"
+                                        id="EditCurCupo" ng-model="curcrea.seleccion.CursoActualizar.CurCupo">
+                                    <small class="text-info"
+                                        data-ng-if="curcrea.seleccion.CursoActualizar.AforoMaximoTeoria !== null && curcrea.seleccion.CursoActualizar.AforoMaximoTeoria !== undefined && curcrea.seleccion.CursoActualizar.AforoMaximoTeoria !== ''">
+                                        Aforo máximo teoría (00): {{curcrea.seleccion.CursoActualizar.AforoMaximoTeoria}}
+                                    </small>
+                                    <small class="text-muted"
+                                        data-ng-if="curcrea.seleccion.CursoActualizar.AforoMaximoTeoria === null || curcrea.seleccion.CursoActualizar.AforoMaximoTeoria === undefined || curcrea.seleccion.CursoActualizar.AforoMaximoTeoria === ''">
+                                        Sin espacios con aforo configurado para teoría (00).
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Cupo reservado</label>
+                                    <input type="text" class="form-control form-control-sm"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.CurAmpliacionCupo">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Semanas</label>
+                                    <input type="text" class="form-control form-control-sm"
+                                        data-ng-model="curcrea.seleccion.CursoActualizar.CurSemanas">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Exclusivo</label>
+                                    <div class="input-group">
+                                        <select class="form-control form-control-sm" id="slcExclusivo"
+                                            data-ng-model="curcrea.seleccion.CursoActualizar.CurExclusivo">
+                                            <option value="" selected disabled>Seleccione...</option>
+                                            <option value="1">Si</option>
+                                            <option value="0">No</option>
+                                        </select>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarPlanExclusivoCurso()"
+                                                title="Ver los planes de estudios exclusivos del curso.">Plan
+                                                estudios</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Docente coordinador</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.CursoActualizar.PerNombreApellido}} -
+                                        {{curcrea.seleccion.CursoActualizar.VinNombre}}</p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="curcrea.consultarAgendaDocente()"
+                                            title="Ver la agenda docente del coordinador.">Agenda</button>
+                                        <button class="btn btn-danger btn-sm"
+                                            data-ng-click="curcrea.consultarDocentes()"
+                                            title="Ver los docentes disponibles para las unidades.">Propios</button>
+                                        <button class="btn btn-danger btn-sm"
+                                            data-ng-click="curcrea.consultarDocentesPrestados()"
+                                            title="Ver los docentes aprobados por otros programas.">Asignados</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Link meet</label>
+                                <input type="url" class="form-control form-control-sm"
+                                    data-ng-model="curcrea.seleccion.CursoActualizar.CurUrl">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Observaciones</label>
+                                <textarea class="form-control  form-control-sm" style="resize: none;"
+                                    data-ng-model="curcrea.seleccion.CursoActualizar.CurObservaciones"
+                                    rows="5">{{curcrea.seleccion.CursoActualizar.CurObservaciones}}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-sm btn-danger"
+                            data-ng-click="curcrea.mostrarSweetAlertDisabled('actualizar_curso', curcrea.seleccion.Curso[0].CurCodigo)">Actualizar</button>
+                        <button class="btn btn-sm btn-default"
+                            data-ng-click="curcrea.cancelarEditarCurso()">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin formulario edicion de curso -->
+
+            <!-- Inicio formulario creacion de curso -->
+            <div class="col-md-8" data-ng-if="curcrea.formularioCreacionCursos == 1">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <div class="row justify-content-between">
+                            <div class="col-auto">
+                                <h4>Formulario creación de curso</h4>
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-default btn-sm" data-ng-click="curcrea.cancelarCrearCurso()">
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row"
+                            data-ng-if="curcrea.seleccion.Calendario.PeriodoPersonalizado && curcrea.seleccion.Calendario.PeriodoPersonalizado != ''">
+                            <div class="col">
+                                <h5><b><span class="text-danger">Periodo fecha especial:
+                                            {{curcrea.seleccion.Calendario.PeriodoPersonalizado}}</span></b></h5>
+                            </div>
+                            <div class="col-md-12">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Calendario</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.Calendario.CalNombre}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Sede</label>
+                                    <select class="form-control form-control-sm" id="slcSede"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.SedCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option data-ng-repeat="sede in curcrea.listaSedes" value="{{sede.SedCodigo}}">
+                                            {{sede.SedNombre}}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Notas parciales</label>
+                                    <select class="form-control form-control-sm" id="slcNotas"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.CurNotaParcial">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="S">Si</option>
+                                        <option value="N">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Modalidad</label>
+                                    <select class="form-control form-control-sm" id="slcModalidad"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.TicCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="1">Presencial</option>
+                                        <option value="2">Apoyo virtual (b-Learning)</option>
+                                        <option value="3">Mixto</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Tipo curso</label>
+                                    <select class="form-control form-control-sm" id="slcTipoCurso"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.CutCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="{{tipocurso.CutCodigo}}"
+                                            data-ng-repeat="tipocurso in curcrea.listaTipoCurso">{{tipocurso.CutNombre}}
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Calificación</label>
+                                    <select class="form-control form-control-sm" id="slcCalificacion"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.TesCodigo">
+                                        <option value="" selected disabled>Seleccione...</option>
+                                        <option value="1">Númerico (0-5)</option>
+                                        <option value="2">Aprobado/Reprobado</option>
+                                        <option value="3">Tres Niveles</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Nombre asignatura</label>
+                                    <div class="input-group">
+                                        <p class="form-control  form-control-sm">
+                                            {{curcrea.seleccion.CursoCrear.AsiNombreCorto}} -
+                                            {{curcrea.seleccion.CursoCrear.AsiNombre}}</p>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarPlanesAcademicos()"
+                                                title="Ver los planes academicos.">Plan academico</button>
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarAsignaturas()"
+                                                title="Ver la lista de asignaturas permitidas.">Equivalencias</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Propietario de la asignatura</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.UaaCodigo}}.
+                                        {{curcrea.seleccion.CursoCrear.UaaNombreCorto}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Caracter</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.CarCodigo}}.
+                                        {{curcrea.seleccion.CursoCrear.CarNombre}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Plan académico</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.PlaNombre}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Totales</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.AsiCreditos}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Teoria</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.AsiCreditosTeoria}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Créditos Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.AsiCreditosPractica}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Horas Semanales Teoria</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.AsiHorasSemanalesTeorico}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Horas Semanales Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.AsiHorasSemanalesPractica}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Horas Semanales Teorico Practica</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.AsiHorasSemanalesTeoricoPractico}}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col">
+                                <hr>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Grupo</label>
+                                    <p class="form-control  form-control-sm bg-gray">
+                                        {{curcrea.seleccion.CursoCrear.CurGrupo}}</p>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Cupo total</label>
+                                    <input type="text" class="form-control form-control-sm" name="EditCurCupo"
+                                        id="EditCurCupo" ng-model="curcrea.seleccion.CursoCrear.CurCupo">
+                                    <small class="text-muted">
+                                        El cupo final puede variar según el aforo del espacio que se asigne al curso.
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Cupo reservado</label>
+                                    <input type="text" class="form-control form-control-sm"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.CurAmpliacionCupo">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label>Semanas</label>
+                                    <input type="text" class="form-control form-control-sm"
+                                        data-ng-model="curcrea.seleccion.CursoCrear.CurSemanas">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Exclusivo</label>
+                                    <div class="input-group">
+                                        <select class="form-control form-control-sm" id="slcExclusivo"
+                                            data-ng-model="curcrea.seleccion.CursoCrear.CurExclusivo">
+                                            <option value="" selected disabled>Seleccione...</option>
+                                            <option value="1">Si</option>
+                                            <option value="0">No</option>
+                                        </select>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-danger btn-sm"
+                                                data-ng-click="curcrea.consultarPlanExclusivoCreacion()"
+                                                title="Ver los planes de estudios exclusivos del curso.">Plan
+                                                estudios</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Docente coordinador</label>
+                                <div class="input-group">
+                                    <p class="form-control  form-control-sm">
+                                        {{curcrea.seleccion.CursoCrear.PerNombreApellido}} -
+                                        {{curcrea.seleccion.CursoCrear.VinNombre}}</p>
+                                    <div class="input-group-append">
+                                        <button class="btn btn-success btn-sm"
+                                            data-ng-click="curcrea.consultarAgendaDocente()"
+                                            title="Ver la agenda docente del coordinador.">Agenda</button>
+                                        <button class="btn btn-danger btn-sm"
+                                            data-ng-click="curcrea.consultarDocentes()"
+                                            title="Ver los docentes disponibles para las unidades.">Propios</button>
+                                        <button class="btn btn-danger btn-sm"
+                                            data-ng-click="curcrea.consultarDocentesPrestados()"
+                                            title="Ver los docentes aprobados por otros programas.">Asignados</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Link meet</label>
+                                <input type="url" class="form-control form-control-sm"
+                                    data-ng-model="curcrea.seleccion.CursoCrear.CurUrl">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Observaciones</label>
+                                <textarea class="form-control  form-control-sm" style="resize: none;"
+                                    data-ng-model="curcrea.seleccion.CursoCrear.CurObservaciones"
+                                    rows="5">{{curcrea.seleccion.CursoCrear.CurObservaciones}}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-sm btn-danger"
+                            data-ng-click="curcrea.mostrarSweetAlertDisabled('crear_curso','')">Crear</button>
+                        <button class="btn btn-sm btn-default"
+                            data-ng-click="curcrea.cancelarCrearCurso()">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin formulario creacion de curso -->
+        </div>
+    </div>
+</div>
+<!-- Seccion modals -->
+
+<!-- Inicio modal agenda docente -->
+<div class="modal fade" id="modalAgendaDocente" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="margin-top: 0%">
+            <div class="modal-header modal-header-danger">
+                <h5 class="modal-title" id="myModalLabel">AGENDA DOCENTE:
+                    <b>{{curcrea.seleccion.Curso[0].PerNombreApellido}}</b>
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <td><b>Hora</b></td>
+                            <td class="text-center" width="380px"><b>Lunes</b></td>
+                            <td class="text-center" width="380px"><b>Martes</b></td>
+                            <td class="text-center" width="380px"><b>Miercoles</b></td>
+                            <td class="text-center" width="380px"><b>Jueves</b></td>
+                            <td class="text-center" width="380px"><b>Viernes</b></td>
+                            <td class="text-center" width="380px"><b>Sabado</b></td>
+                            <td class="text-center" width="380px"><b>Domingo</b></td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr data-ng-repeat="agenda in curcrea.agendaDocente">
+                            <td class="align-middle text-center"><b>{{$index + 1}}</b></td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[1].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[1].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[1].AsiNombre + ' '
+                                            +agenda[1].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[1].UaaNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[1].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[1]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[2].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[2].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[2].AsiNombre + ' '
+                                            +agenda[2].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[2].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[2].EspCodigo + '. '}}
+                                            {{agenda[2].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[2].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[2]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[3].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[3].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[3].AsiNombre + ' '
+                                            +agenda[3].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[3].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[3].EspCodigo + '. '}}
+                                            {{agenda[3].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[3].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[3]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[4].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[4].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[4].AsiNombre + ' '
+                                            +agenda[4].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[4].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[4].EspCodigo + '. '}}
+                                            {{agenda[4].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[4].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[4]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[5].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[5].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[5].AsiNombre + ' '
+                                            +agenda[5].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[5].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[5].EspCodigo + '. '}}
+                                            {{agenda[5].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[5].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[5]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[6].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[6].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[6].AsiNombre + ' '
+                                            +agenda[6].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[6].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[6].EspCodigo + '. '}}
+                                            {{agenda[6].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[6].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[6]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                            <td class="align-middle text-center">
+                                <div class="alert alert-danger" style="padding:5px" data-ng-if="agenda[7].CurCodigo">
+                                    <small>
+                                        <span><b>Curso</b>: {{agenda[7].CurCodigo}}</span><br>
+                                        <span><b>Asignatura</b>: {{agenda[7].AsiNombre + ' '
+                                            +agenda[7].AsiNombreCorto}}</span><br>
+                                        <span><b>Unidad</b>: {{agenda[7].UaaNombreCorto}}</span><br>
+                                        <span><b>Espacio</b>: {{agenda[7].EspCodigo + '. '}}
+                                            {{agenda[7].EspNombreCorto}}</span><br>
+                                    </small>
+                                </div>
+                                <div class="alert alert-success" style="padding:5px" data-ng-if="!agenda[7].CurCodigo">
+                                    <small>
+                                        <span>{{agenda[7]}}</span><br>
+                                        <span>Libre</span><br>
+                                    </small>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal agenda docente -->
+
+<!-- Inicio modal lista Uaa ============================================================ -->
+<div class="modal fade" id="modalUnidades" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Unidades</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="curcrea.filter.Unidad"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm">
+                        <thead>
+                            <tr>
+                                <th width="100px">CODIGO</th>
+                                <th>NOMBRE</th>
+                                <th width="100px" class="text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-repeat="unidad in curcrea.listaUnidadesUnificadas | toArray | filter:curcrea.filter.Unidad">
+                                <td>{{unidad.UaaCodigo}}</td>
+                                <td>{{unidad.UaaNombreCorto}}</td>
+                                <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                        data-dismiss="modal"
+                                        data-ng-click="curcrea.seleccion.Uaa = unidad; curcrea.consultarCalendarios()">Seleccionar</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Uaa =============================================================== -->
+
+<!-- Inicio modal lista calendarios ============================================================ -->
+<div class="modal fade" id="modalCalendarios" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Calendarios</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <input type="text" placeholder="Buscar calendario, proceso o fecha..."
+                            class="form-control form-control-sm" data-ng-model="curcrea.filter.Calendario">
+                    </div>
+                    <div class="col-md-6 text-right">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Filtros de calendario">
+                            <button type="button" class="btn"
+                                data-ng-class="curcrea.filtroEstadoCalendario == 'PRINCIPAL' ? 'btn-danger' : 'btn-default'"
+                                data-ng-click="curcrea.filtroEstadoCalendario = 'PRINCIPAL'">Principal</button>
+                            <button type="button" class="btn"
+                                data-ng-class="curcrea.filtroEstadoCalendario == 'ACTIVO' ? 'btn-success' : 'btn-default'"
+                                data-ng-click="curcrea.filtroEstadoCalendario = 'ACTIVO'">Activos
+                                ({{curcrea.contarCalendariosEstado('ACTIVO')}})</button>
+                            <button type="button" class="btn"
+                                data-ng-class="curcrea.filtroEstadoCalendario == 'PENDIENTE' ? 'btn-info' : 'btn-default'"
+                                data-ng-click="curcrea.filtroEstadoCalendario = 'PENDIENTE'">Pendientes
+                                ({{curcrea.contarCalendariosEstado('PENDIENTE')}})</button>
+                            <button type="button" class="btn"
+                                data-ng-class="curcrea.filtroEstadoCalendario == 'VENCIDO' ? 'btn-warning' : 'btn-default'"
+                                data-ng-click="curcrea.filtroEstadoCalendario = 'VENCIDO'">Vencidos
+                                ({{curcrea.contarCalendariosEstado('VENCIDO')}})</button>
+                            <button type="button" class="btn"
+                                data-ng-class="curcrea.filtroEstadoCalendario == 'TODOS' ? 'btn-secondary' : 'btn-default'"
+                                data-ng-click="curcrea.filtroEstadoCalendario = 'TODOS'">Todos</button>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <small data-ng-if="curcrea.filtroEstadoCalendario == 'PRINCIPAL' && curcrea.hayCalendariosActivos()">
+                            <b>Nota: </b>
+                            <span>Se muestran primero los calendarios activos. Solo estos se pueden seleccionar.</span>
+                        </small>
+                        <small data-ng-if="curcrea.filtroEstadoCalendario == 'PRINCIPAL' && !curcrea.hayCalendariosActivos() && curcrea.hayCalendariosPendientes()">
+                            <b>Nota: </b>
+                            <span>No hay calendarios activos; se muestran los pendientes para que pueda identificar las proximas aperturas.</span>
+                        </small>
+                        <small data-ng-if="curcrea.filtroEstadoCalendario != 'PRINCIPAL' || (!curcrea.hayCalendariosActivos() && !curcrea.hayCalendariosPendientes())">
+                            <b>Nota: </b>
+                            <span>Solo se puede seleccionar un calendario activo dentro de su rango de apertura. Periodo especial aplica para unidades academicas que manejan fechas diferentes a las normales.</span>
+                        </small>
+                    </div>
+                </div>
+                <br>
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm table-hover table-bordered">
+                        <thead>
+                            <tr>
+                                <th width="100px">CODIGO</th>
+                                <th>CALENDARIO</th>
+                                <th width="300px">PERIODO</th>
+                                <th width="300px">PERIODO ESPECIAL</th>
+                                <th width="300px">APERTURA</th>
+                                <th>PROCESO</th>
+                                <th>ESTADO</th>
+                                <th width="100px" class="text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-class="{
+                                    'calendario-row-activo': calendario.ActivaAhora == 1,
+                                    'calendario-row-pendiente': calendario.Pendiente == 1 && calendario.PraEstado == 1,
+                                    'calendario-row-vencido': calendario.Vencida == 1 && calendario.PraEstado == 1,
+                                    'calendario-row-desactivado': calendario.PraEstado == 0
+                                }"
+                                data-ng-repeat="calendario in curcrea.listaCalendarios | toArray | filter:curcrea.filter.Calendario | filter:curcrea.filtroCalendarioPorEstado">
+                                <td>{{calendario.CalCodigo}}</td>
+                                <td>{{calendario.CalNombre}}</td>
+                                <td>
+                                    <p class="mb-0">{{calendario.PerFechaInicio}} - {{calendario.PerFechaFin}}</p>
+                                </td>
+                                <td>
+                                    <p class="mb-0" data-ng-if="calendario.PeriodoPersonalizado != ''"><b
+                                            class="text-danger">{{calendario.PeriodoPersonalizado}}</b></p>
+                                    <p class="mb-0" data-ng-if="calendario.PeriodoPersonalizado == ''">Sin asignar</p>
+                                </td>
+                                <td>{{calendario.PraFechaInicio}} - {{calendario.PraFechaFin}}</td>
+                                <td>{{calendario.PrpNombre}}</td>
+                                <td>
+                                    <span data-ng-if="calendario.ActivaAhora == 1" class="badge bg-success">Activo</span>
+                                    <span data-ng-if="calendario.Pendiente == 1 && calendario.PraEstado == 1" class="badge bg-info">Pendiente</span>
+                                    <span data-ng-if="calendario.Vencida == 1 && calendario.PraEstado == 1" class="badge bg-warning">Vencido</span>
+                                    <span data-ng-if="calendario.PraEstado == 0" class="badge bg-danger">Desactivado</span>
+                                </td>
+                                <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                        data-ng-disabled="calendario.ActivaAhora != 1"
+                                        data-dismiss="{{calendario.ActivaAhora == 1 ? 'modal' : ''}}"
+                                        title="{{calendario.ActivaAhora == 1 ? 'Seleccionar calendario' : 'Disponible solo dentro del rango de apertura'}}"
+                                        data-ng-click="curcrea.seleccionarCalendario(calendario)">Seleccionar</button>
+                                </td>
+                            </tr>
+                            <tr
+                                data-ng-if="(curcrea.listaCalendarios | toArray | filter:curcrea.filter.Calendario | filter:curcrea.filtroCalendarioPorEstado).length <= 0">
+                                <td colspan="8" class="text-muted">
+                                    No se encontraron calendarios para el filtro seleccionado.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista calendarios =============================================================== -->
+
+<!-- Inicio modal lista solo los planes exclusivos del curso ============================================================ -->
+<div class="modal fade" id="modalPlanExclusivo" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Planes exclusivos del curso
+                    <b>{{curcrea.seleccion.Curso[0].CurCodigo}}</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table tablaLista table-sm">
+                        <thead>
+                            <tr>
+                                <th>PLAN ACADEMICO</th>
+                                <th>UNIDAD</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                data-ng-if="curcrea.listaPlanExclusivo.length <= 0 || curcrea.listaPlanExclusivo == null">
+                                <td colspan="2">
+                                    No tiene exclusividad con ningun plan academico.
+                                </td>
+                            </tr>
+                            <tr data-ng-if="curcrea.listaPlanExclusivo.length >= 0"
+                                data-ng-repeat="plan_exclusivo in curcrea.listaPlanExclusivo">
+                                <td>{{plan_exclusivo.PlaNombre}}</td>
+                                <td>{{plan_exclusivo.UaaNombreCorto}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista solo los planes exclusivos del curso =============================================================== -->
+
+<!-- Inicio modal lista solo los planes exclusivos del curso ============================================================ -->
+<div class="modal fade" id="modalPlanExclusivoEditar" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Planes exclusivos del curso
+                    <b>{{curcrea.seleccion.Curso[0].CurCodigo}}</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="curcrea.filter.PlanAcademico"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 30vh; overflow: auto;">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table tablaLista table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>PLAN ACADEMICO</th>
+                                        <th>UNIDAD</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-if="curcrea.listaPlanExclusivo.length <= 0 || curcrea.listaPlanExclusivo == null">
+                                        <td colspan="2">
+                                            No tiene exclusividad ni se encontro algun plan academico.
+                                        </td>
+                                    </tr>
+                                    <tr data-ng-if="curcrea.listaPlanExclusivo.length >= 0"
+                                        data-ng-repeat="plan_exclusivo in curcrea.listaPlanExclusivo | toArray | filter:curcrea.filter.PlanAcademico">
+                                        <td>{{plan_exclusivo.PlaNombre}}</td>
+                                        <td>{{plan_exclusivo.UaaNombreCorto}}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger"
+                                                data-ng-click="curcrea.ponerComoExclusivo(plan_exclusivo.PlaCodigo)"
+                                                data-ng-if="plan_exclusivo.Exclusivo == 'NoExclusivo'">Seleccionar</button>
+                                            <button class="btn btn-sm btn-default"
+                                                data-ng-click="curcrea.quitarExclusividad(plan_exclusivo.CupCodigo)"
+                                                data-ng-if="plan_exclusivo.Exclusivo == 'Exclusivo'">Eliminar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista solo los planes exclusivos del curso =============================================================== -->
+
+<!-- Inicio modal lista solo los planes exclusivos del curso para creacion ============================================================ -->
+<div class="modal fade" id="modalPlanExclusivoCrear" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Planes academicos</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="curcrea.filter.PlanAcademico"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 30vh; overflow: auto;">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table tablaLista table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>PLAN ACADEMICO</th>
+                                        <th>UNIDAD</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-if="curcrea.listaPlanExclusivo.length <= 0 || curcrea.listaPlanExclusivo == null">
+                                        <td colspan="2">
+                                            No tiene exclusividad ni se encontro algun plan academico.
+                                        </td>
+                                    </tr>
+                                    <tr data-ng-if="curcrea.listaPlanExclusivo.length >= 0"
+                                        data-ng-repeat="plan_exclusivo in curcrea.listaPlanExclusivo | toArray | filter:curcrea.filter.PlanAcademico">
+                                        <td>{{plan_exclusivo.PlaNombre}}</td>
+                                        <td>{{plan_exclusivo.UaaNombreCorto}}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger"
+                                                data-ng-if="!curcrea.seleccion.CursoCrear.PlanesExclusivos.includes(plan_exclusivo.PlaCodigo)"
+                                                data-ng-click="curcrea.seleccionarPlanAcademico(plan_exclusivo.PlaCodigo)">Seleccionar</button>
+                                            <button class="btn btn-sm btn-default"
+                                                data-ng-if="curcrea.seleccion.CursoCrear.PlanesExclusivos.includes(plan_exclusivo.PlaCodigo)"
+                                                data-ng-click="curcrea.deseleccionarPlanAcademico(plan_exclusivo.PlaCodigo)">Eliminar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista solo los planes exclusivos del curso para creacion =============================================================== -->
+
+<!-- Inicio modal lista Asignaturas ============================================================ -->
+<div class="modal fade" id="modalAsignaturas" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Asignaturas</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="curcrea.filter.Asignatura"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 30vh;overflow: auto;">
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm table-head-fixed">
+                                <thead>
+                                    <tr>
+                                        <th width="100px">CODIGO</th>
+                                        <th>NOMBRE</th>
+                                        <th></th>
+                                        <th width="100px">CODIGO</th>
+                                        <th>NOMBRE</th>
+                                        <th width="100px" class="text-center"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr
+                                        data-ng-repeat="asignatura in curcrea.listaAsignaturas | toArray | filter:curcrea.filter.Asignatura">
+                                        <td><b>{{asignatura.AsiBNombreCorto}}</b></td>
+                                        <td>
+                                            <b>{{asignatura.AsiBNombre}}</b> <br>
+                                            {{asignatura.NucBNombre}} <br>
+                                            {{asignatura.CarNombre}} <br>
+                                            {{asignatura.UaaBCodigo}}. {{asignatura.UaaBNombreCorto}} <br>
+                                            Teorico: {{asignatura.AsiBCreditosTeoria}} - Practico:
+                                            {{asignatura.AsiBCreditosPractica}} <br>
+                                            Total: {{asignatura.AsiBCreditos}}
+                                        </td>
+
+                                        <td width="100px">
+                                            <h3><i class="fas fa-arrow-right text-success"></i></h3>
+                                        </td>
+
+                                        <td><b>{{asignatura.AsiNombreCorto}}</b></td>
+                                        <td>
+                                            <b>{{asignatura.AsiNombre}} </b><br>
+                                            {{asignatura.NucNombre}} <br>
+                                            {{asignatura.CarNombre}} <br>
+                                            {{asignatura.UaaCodigo}}. {{asignatura.UaaNombreCorto}} <br>
+                                            Teorico: {{asignatura.AsiCreditosTeoria}} - Practico:
+                                            {{asignatura.AsiCreditosPractica}} <br>
+                                            Total: {{asignatura.AsiCreditos}}
+                                        </td>
+
+                                        <td class="text-center"><button type="button" class="btn btn-danger btn-sm"
+                                                data-dismiss="modal"
+                                                data-ng-click="curcrea.actualizarAsignatura(asignatura)">Seleccionar</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Asignaturas =============================================================== -->
+
+<!-- Inicio modal lista Docentes ============================================================ -->
+<div class="modal fade" id="modalDocentes" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Docentes</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="curcrea.filter.Docentes"></span>
+                    </div>
+                    <br>
+                    <div class="col-md-12"><br>
+                        <span>Rango de busquedas entre fechas de vinculacion:
+                            <b>{{curcrea.listaDocentes['FechaInicio']}} -
+                                {{curcrea.listaDocentes['FechaFin']}}</b></span><br>
+                        <span class="text-danger"><b>Nota: </b>Si no se encuentra el docente por favor verifique las
+                            fechas de vinculación, en caso de necesitar docentes NN o vincular un docente recuerde que
+                            debe <b>solicitarlos a talento humano con anticipación.</b></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 70vh;overflow: auto;">
+                    <div class="col">
+                        <!-- Inicio lista de docentes de planta. -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesPlanta" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE PLANTA
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="9"
+                                                    data-ng-if="curcrea.listaDocentes['DocentesPlanta'] ==  null ">No se
+                                                    encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesPlanta"
+                                                data-ng-repeat="docente in curcrea.listaDocentes['DocentesPlanta'] | toArray | filter:curcrea.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de planta. -->
+
+                        <!-- Inicio lista de docentes de planta con fecha fin.-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesPlantaFechaFin" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE PLANTA CON FECHA FIN
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="9"
+                                                    data-ng-if="curcrea.listaDocentes['DocentesPlantaFechaFin'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesPlantaFechaFin"
+                                                data-ng-repeat="docente in curcrea.listaDocentes['DocentesPlantaFechaFin'] | toArray | filter:curcrea.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de planta con fecha fin.-->
+
+                        <!-- Inicio lista de docentes de catedra-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesCatedra" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES DE CATEDRA
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="9"
+                                                    data-ng-if="curcrea.listaDocentes['DocentesCatedra'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesCatedra"
+                                                data-ng-repeat="docente in curcrea.listaDocentes['DocentesCatedra'] | toArray | filter:curcrea.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de catedra-->
+
+                        <!-- Inicio lista de docentes de nombramiento ocacional-->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNombramientoOcacional" style="cursor: pointer;"
+                                                    colspan="9" class="text-center bg-danger">
+                                                    DOCENTES DE NOMBRAMIENTO OCASIONAL
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="9"
+                                                    data-ng-if="curcrea.listaDocentes['DocentesNombramientoOcacional']  ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNombramientoOcacional"
+                                                data-ng-repeat="docente in curcrea.listaDocentes['DocentesNombramientoOcacional'] | toArray | filter:curcrea.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes de nombramiento ocacional-->
+
+                        <!-- Inicio lista de docentes NN -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="table-responsive">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th id="DocentesNN" style="cursor: pointer;" colspan="9"
+                                                    class="text-center bg-danger">
+                                                    DOCENTES NN
+                                                </th>
+                                            </tr>
+                                            <tr>
+                                                <th width="100px" title="Código de vinculación">CODIGO</th>
+                                                <th>DOCENTE</th>
+                                                <th>VINCULACIÓN</th>
+                                                <th>DEDICACIÓN</th>
+                                                <th>UNIDAD</th>
+                                                <th title="Fecha inicio de la vinculación">FECHA INI</th>
+                                                <th title="Fecha fin de la vinculación">FECHA FIN</th>
+                                                <th title="Cursos de la vinculación">CARGA</th>
+                                                <th width="100px" class="text-center"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td colspan="9"
+                                                    data-ng-if="curcrea.listaDocentes['DocentesNN'] ==  null ">
+                                                    No
+                                                    se encontraron docentes activos.</td>
+                                            </tr>
+                                            <tr class="DocentesNN"
+                                                data-ng-repeat="docente in curcrea.listaDocentes['DocentesNN'] | toArray | filter:curcrea.filter.Docentes">
+                                                <td title="Código de vinculación">{{docente.UapCodigo}}</td>
+                                                <td>{{docente.PerNombre}} {{docente.PerApellido}}</td>
+                                                <td>{{docente.VinNombre}}</td>
+                                                <td>{{docente.DedNombre}}</td>
+                                                <td>{{docente.UaaNombreCorto}}</td>
+                                                <td title="Fecha inicio de la vinculación">{{docente.UapFechaInicio}}
+                                                </td>
+                                                <td title="Fecha fin de la vinculación">{{docente.UapFechaFin}}</td>
+                                                <td class="text-center" title="Cursos de la vinculación">
+                                                    {{docente.UapCarga}}</td>
+                                                <td class="text-center"><button type="button"
+                                                        class="btn btn-danger btn-sm" data-dismiss="modal"
+                                                        data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Fin lista de docentes NN -->
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Docentes =============================================================== -->
+
+<!-- Inicio modal lista Asignaturas Plan Academico ============================================================ -->
+<div class="modal fade" id="modalPlanAcademico" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de planes académicos de la unidad
+                    <b>{{curcrea.seleccion.Uaa.UaaCodigo}}. {{curcrea.seleccion.Uaa.UaaNombreCorto}}</b>
+                </h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese el nombre..." class="input input-sm"
+                                data-ng-model="curcrea.filter.Asignatura"></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 60vh;overflow: auto;">
+                    <div class="col-md-12">
+                        <div class="card card-danger" data-ng-repeat="formal in curcrea.listaPlanesAcademicos">
+                            <div class="card-header">
+                                {{formal.ForNombre}}
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive" data-ng-repeat="plan in formal.PlanesAcademicos">
+                                    <table class="table table-hover table-sm table-head-fixed table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th class="text-center bg-danger" colspan="13">Plan académico
+                                                    {{plan.PlaNombre}}</th>
+                                            </tr>
+                                            <tr>
+                                                <th rowspan="2" width="100px" class="align-middle">CODIGO</th>
+                                                <th rowspan="2" class="align-middle">NOMBRE</th>
+                                                <th rowspan="2" class="align-middle">NUCLEO</th>
+                                                <th rowspan="2" class="align-middle">CARACTER</th>
+                                                <th rowspan="2" class="align-middle">PROPIETARIO</th>
+                                                <!-- <th title="CREDITOS TOTAL">CRE. TOTAL</th>
+                                                <th title="CREDITOS TEORIA">CRE. TEORIA</th>
+                                                <th title="CREDITOS PRACTICA">CRE. PRACTICA</th> -->
+                                                <!-- background: #ffecb3; -->
+                                                <th colspan="3" class="text-center align-middle bg-info-creditos" title="CREDITOS TOTAL">CREDITOS</th>
+                                                <th colspan="3" class="text-center align-middle bg-info-horas-semana" title="MAXIMO HORAS SEMANALES PERMITIDAS">H. SEMANA</th>
+                                                <th rowspan="2" width="100px" class="text-center align-middle" title="OPCIONES">OPC.</th>
+                                            </tr>
+                                            <tr>
+                                                <th class="bg-info-creditos">TOTAL</th>
+                                                <th width="30px" class="text-center align-middle bg-info-creditos" title="CREDITOS TEORIA">T</th>
+                                                <th width="30px" class="text-center align-middle bg-info-creditos" title="CREDITOS PRACTICA">P</th>
+
+                                                <th width="30px" class="text-center align-middle bg-info-horas-semana" title="HORAS TEORIA">T</th>
+                                                <th width="30px" class="text-center align-middle bg-info-horas-semana" title="HORAS PRACTICA">P</th>
+                                                <th width="30px" class="text-center align-middle bg-info-horas-semana" title="HORAS TEORICO PRACTICA">TP</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr data-ng-class="{'table-danger': asignatura.UaaCodigo != curcrea.seleccion.Uaa.UaaCodigo }"
+                                                data-ng-if="(asignatura.AsiNombreCorto >= 0) === false"
+                                                data-ng-repeat="asignatura in plan.Asignaturas | toArray | filter:curcrea.filter.Asignatura">
+                                                <td class="align-middle">{{asignatura.AsiNombreCorto}}</td>
+                                                <td class="align-middle">{{asignatura.AsiNombre}}</td>
+                                                <td class="align-middle">{{asignatura.NucNombre}}</td>
+                                                <td class="align-middle">{{asignatura.CarNombre}}</td>
+                                                <td class="align-middle" data-ng-if="asignatura.UaaCodigo != ''">{{asignatura.UaaCodigo}}.
+                                                    {{asignatura.UaaNombreCorto}}</td>
+                                                <td class="align-middle" data-ng-if="asignatura.UaaCodigo == ''">No se encontro</td>
+                                                
+                                                <td class="text-center align-middle bg-info-creditos" title="CREDITOS TOTAL">{{asignatura.AsiCreditos}}</td>
+                                                <td class="text-center align-middle bg-info-creditos" title="CREDITOS TEORIA">{{asignatura.AsiCreditosTeoria}}</td>
+                                                <td class="text-center align-middle bg-info-creditos" title="CREDITOS PRACTICA">{{asignatura.AsiCreditosPractica}}</td>
+                                                
+                                                <td class="text-center align-middle bg-info-horas-semana" title="HORAS SEMANALES TEORIA">{{asignatura.AsiHorasSemanalesTeorico}}</td>
+                                                <td class="text-center align-middle bg-info-horas-semana" title="HORAS SEMANALES PRACTICA">{{asignatura.AsiHorasSemanalesPractica}}</td>
+                                                <td class="text-center align-middle bg-info-horas-semana" title="HORAS SEMANALES TEORICO PRACTICA">{{asignatura.AsiHorasSemanalesTeoricoPractico}}</td>
+                                                
+                                                <td class="text-center align-middle">
+                                                    <p
+                                                        data-ng-if="asignatura.UaaCodigo != curcrea.seleccion.Uaa.UaaCodigo && (asignatura.AsiNombreCorto >= 0) === false">
+                                                        <b>No es el propietario.</b>
+                                                    </p>
+                                                    <p data-ng-if="asignatura.AsiNombreCorto >= 0"><b>Es antigua</b></p>
+                                                    <button type="button" class="btn btn-danger btn-sm"
+                                                        data-dismiss="modal"
+                                                        data-ng-if="(asignatura.AsiNombreCorto >= 0) === false"
+                                                        data-ng-click="curcrea.actualizarAsignaturaPlan(plan, asignatura)">Seleccionar</button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Asignaturas Plan Academico =============================================================== -->
+
+<!-- Inicio modal lista Docentes Prestados ============================================================ -->
+<div class="modal fade" id="modalDocentesPrestados" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Lista de Docentes Asignados</h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <span>Buscar: <input type="text" placeholder="Ingrese la busqueda..." class="input input-sm"
+                                data-ng-model="curcrea.filter.Docentes"></span>
+                    </div>
+                    <br>
+                    <div class="col-md-12"><br>
+                        <span>Rango de busquedas entre fechas de vinculacion:
+                            <b>{{curcrea.listaDocentesPrestados['FechaInicio']}} -
+                                {{curcrea.listaDocentesPrestados['FechaFin']}}</b></span><br>
+                        <span class="text-danger"><b>Nota: </b>Si no se encuentra el docente por favor verifique las
+                            fechas de vinculación, en caso de necesitar docentes NN o vincular un docente recuerde que
+                            debe <b>solicitarlos a talento humano con anticipación.</b></span>
+                    </div>
+                </div>
+                <br>
+                <div class="row" style="height: 600px;overflow: auto;">
+                    <div class="col-md-12 m-0"
+                        data-ng-repeat="docente in curcrea.listaDocentesPrestados['Docentes'] | toArray | filter:curcrea.filter.Docentes">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <span><b>SOLICITUD:</b> {{docente.SpdCodigo}}</span> <br>
+                                <span><b>DOCENTE:</b> <span
+                                        data-ng-if="docente.UapCodigo && docente.UapCodigo != ''">{{docente.UapCodigo}}.
+                                    </span>{{docente.PerNombre}}
+                                    {{docente.PerApellido}}</span> <br>
+                                <div data-ng-if="docente.UapCodigo && docente.UapCodigo != ''">
+                                    <span><b>VINCULACIÓN:</b> {{docente.VinNombre}} {{docente.DedNombre}}</span> <br>
+                                    <span><b>FECHAS VINCULACIÓN:</b> {{docente.UapFechaInicio}}
+                                        {{docente.UapFechaFin}}</span> <br>
+                                    <span><b>CARGA ACADÉMICA:</b> {{docente.UapCarga}}</span><br>
+                                </div>
+                                <span><b>ASIGNATURA:</b> {{docente.AsiNombre}} {{docente.AsiNombreCorto}}</span><br>
+                                <span><b>UNIDAD DIRIGIDA:</b> {{docente.UaaNombreDpto}}</span><br>
+                                <span><b>UNIDAD SOLICITA:</b> {{docente.UaaNombreSolicita}}</span><br>
+                                <span><b>SEDE:</b> {{docente.SedCodigo}}. {{docente.SedNombre}}</span><br>
+                            </div>
+                            <div class="col-md-4">
+                                <span><b>HORARIO PERMITIDO:</b> </span>
+                                <div data-ng-repeat="horario in docente.Horario">
+                                    <span class="badge bg-success">{{horario.DiaCodigo}}. {{horario.DiaNombre}}
+                                        {{horario.HraCodigo}}. {{horario.HraInicio}} - {{horario.HraFin}}</span>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <p data-ng-if="!docente.UapCodigo || docente.UapCodigo == ''" class="text-danger mb-0">
+                                    <b>El docente no cuenta con una vinculación activa entre las fechas
+                                        {{curcrea.listaDocentesPrestados['FechaInicio']}} -
+                                        {{curcrea.listaDocentesPrestados['FechaFin']}}, por favor consultar en talento
+                                        humano.</b></p>
+                                <p data-ng-if="curcrea.formularioCreacionCursos == 1 && curcrea.seleccion.CursoCrear.AsiCodigo != docente.AsiCodigo && curcrea.seleccion.CursoCrear.SedCodigo == docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura del curso
+                                        ({{curcrea.seleccion.CursoCrear.AsiNombre + ' - ' +
+                                        curcrea.seleccion.CursoCrear.AsiNombreCorto}}) es diferente a la
+                                        aprobada al docente.</b></p>
+                                <p data-ng-if="curcrea.formularioCreacionCursos == 1 && curcrea.seleccion.CursoCrear.AsiCodigo == docente.AsiCodigo && curcrea.seleccion.CursoCrear.SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La sede del curso es diferente a la aprobada al
+                                        docente ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                <p data-ng-if="curcrea.formularioCreacionCursos == 1 && curcrea.seleccion.CursoCrear.AsiCodigo != docente.AsiCodigo && curcrea.seleccion.CursoCrear.SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura del curso
+                                        ({{curcrea.seleccion.CursoCrear.AsiNombre + ' - ' +
+                                        curcrea.seleccion.CursoCrear.AsiNombreCorto}}) y la sede son diferentes a
+                                        las aprobadas al docente
+                                        ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                <p data-ng-if="curcrea.formularioEdicionCursos == 1 && curcrea.seleccion.CursoActualizar.AsiCodigo != docente.AsiCodigo && curcrea.seleccion.CursoActualizar.SedCodigo == docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura del curso
+                                        ({{curcrea.seleccion.CursoActualizar.AsiNombre + ' - ' +
+                                        curcrea.seleccion.CursoActualizar.AsiNombreCorto}}) es diferente a la
+                                        aprobada al docente.</b></p>
+                                <p data-ng-if="curcrea.formularioEdicionCursos == 1 && curcrea.seleccion.CursoActualizar.AsiCodigo == docente.AsiCodigo && curcrea.seleccion.CursoActualizar.SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La sede del curso es diferente a la aprobada al
+                                        docente ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                <p data-ng-if="curcrea.formularioEdicionCursos == 1 && curcrea.seleccion.CursoActualizar.AsiCodigo != docente.AsiCodigo && curcrea.seleccion.CursoActualizar.SedCodigo != docente.SedCodigo"
+                                    class="text-danger"><b>La asignatura del curso
+                                        ({{curcrea.seleccion.CursoActualizar.AsiNombre + ' - ' +
+                                        curcrea.seleccion.CursoActualizar.AsiNombreCorto}}) y la sede son diferentes a
+                                        las aprobadas al docente
+                                        ({{docente.SedCodigo + '. ' + docente.SedNombre}}).</b></p>
+                                <button type="button" class="btn btn-danger btn-sm mt-2" data-dismiss="modal"
+                                    data-ng-if="curcrea.formularioCreacionCursos == 1 && (docente.UapCodigo && docente.UapCodigo != '' &&  curcrea.seleccion.CursoCrear.AsiCodigo == docente.AsiCodigo && curcrea.seleccion.CursoCrear.SedCodigo == docente.SedCodigo)"
+                                    data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                                <button type="button" class="btn btn-danger btn-sm mt-2" data-dismiss="modal"
+                                    data-ng-if="curcrea.formularioEdicionCursos == 1 && (docente.UapCodigo && docente.UapCodigo != '' && curcrea.seleccion.CursoActualizar.AsiCodigo == docente.AsiCodigo && curcrea.seleccion.CursoActualizar.SedCodigo == docente.SedCodigo)"
+                                    data-ng-click="curcrea.seleccionarDocente(docente)">Seleccionar</button>
+                            </div>
+                        </div>
+                        <hr>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Fin modal lista Docentes Prestados =============================================================== -->
+
+<script>
+    $("#DocentesPlanta").click(function () {
+        $(".DocentesPlanta").toggle();
+    });
+    $("#DocentesPlantaFechaFin").click(function () {
+        $(".DocentesPlantaFechaFin").toggle();
+    });
+    $("#DocentesCatedra").click(function () {
+        $(".DocentesCatedra").toggle();
+    });
+    $("#DocentesNombramientoOcacional").click(function () {
+        $(".DocentesNombramientoOcacional").toggle();
+    });
+    $("#DocentesNombramientoOcacionalPosterior").click(function () {
+        $(".DocentesNombramientoOcacionalPosterior").toggle();
+    });
+    $("#DocentesOtros").click(function () {
+        $(".DocentesOtros").toggle();
+    });
+    $("#DocentesNN").click(function () {
+        $(".DocentesNN").toggle();
+    });
+</script>
+
+<style>
+    .seleccionable:hover {
+        cursor: pointer;
+        background-color: #c2c2c2;
+    }
+
+    #modalCalendarios .btn-group .btn {
+        margin-bottom: 4px;
+    }
+
+    #modalCalendarios .calendario-row-activo {
+        background-color: rgba(40, 167, 69, 0.08);
+    }
+
+    #modalCalendarios .calendario-row-pendiente {
+        background-color: rgba(23, 162, 184, 0.08);
+    }
+
+    #modalCalendarios .calendario-row-vencido {
+        background-color: rgba(255, 193, 7, 0.10);
+    }
+
+    #modalCalendarios .calendario-row-desactivado {
+        background-color: rgba(220, 53, 69, 0.06);
+    }
+</style>

@@ -1,0 +1,106 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Cursos Especiales</h1>
+            </div>
+            <div class="col-auto">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar Curso"
+                    ng-model="curesp.CurCodigo">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="curesp.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="curesp.cursoSeleccionado.length > 0">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{curesp.cursoSeleccionado[0].CurCodigo}}</b>
+                        <br>
+                        <span style="color:red; " ng-if="curesp.PermitidoEditar == false">
+                            EL CALENDARIO DEL CURSO NO SE ENCUENTRA ACTIVO PARA CAMBIOS.
+                        </span>
+                        <span style="color:red; " ng-if="curesp.cursoSeleccionado[0].CurEstado == 0">
+                            <br>EL CURSO SE ENCUENTRA INACTIVO / ELIMINADO.
+                        </span>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            <label>Nombre Asignatura:</label> {{curesp.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{curesp.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{curesp.cursoSeleccionado[0].NucNombre}}<br>
+                            <label>Calendario:</label> {{curesp.cursoSeleccionado[0].CalNombre}}
+                        </div>
+                        <div class="col-auto">
+                            <label>Asignatura Ofrecida por:</label>
+                            {{curesp.cursoSeleccionado[0].UaaCodigo}}.
+                            {{curesp.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{curesp.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{curesp.creadorCurso}}<br>
+                            <label>Estado:</label>
+                            <span class="text-warning"
+                                data-ng-if="curesp.cursoSeleccionado[0].CurEstado == 0">Eliminado/Inactivo</span>
+                            <span class="text-success"
+                                data-ng-if="curesp.cursoSeleccionado[0].CurEstado == 1">Activo</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin seccion de informacion general del curso -->
+
+        <div class="row" ng-if="curesp.cursoSeleccionado.length > 0">
+            <!-- Inicio seccion de tipo de curso -->
+            <div class="col-md-6">
+                <div class="callout callout-danger">
+                    <h5>TIPO DE CURSO
+                    </h5>
+                    <hr>
+                    <p>
+                        Actualmente el tipo de curso es: <b>{{curesp.tipoCursoActual[0].CutNombre}}</b>
+                    </p>
+                </div>
+            </div>
+            <!-- Fin seccion de tipo de curso -->
+
+            <!-- Inicio seccion formulario tipo de curso -->
+            <div class="col-md-6" data-ng-if="curesp.PermitidoEditar == true">
+                <div class="callout callout-danger">
+                    <h5>CAMBIO TIPO DE CURSO
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col-auto">
+                            Seleccione el nuevo tipo de curso:
+                        </div>
+                        <div class="col-auto">
+                            <select class="form-control form-control-sm" id="slcTipoCurso"
+                                data-ng-model="curesp.tipoCursoSeleccionado">
+                                <option value="" disabled>Seleccione...</option>
+                                <option data-ng-repeat="tipo in curesp.listaTipoCurso" value="{{tipo.CutCodigo}}">
+                                    {{tipo.CutNombre}}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-auto">
+                            <button class="btn btn-danger btn-sm"
+                                ng-click="curesp.mostrarSweetAlertDisabled('guardar_tipo_curso', '')">Guardar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin seccion formulario tipo de curso -->
+
+        </div>
+
+
+    </div>
+</section>

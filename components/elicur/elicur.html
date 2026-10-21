@@ -1,0 +1,307 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Eliminación Curso</h1>
+            </div>
+            <div class="col-md-3">
+                <input type="text" class="form-control form-control-sm" placeholder="Codigo del curso"
+                    ng-model="elicur.busquedaCurso">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-danger btn-sm" ng-click="elicur.consultarCurso()">Buscar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<section class="content">
+    <div class="container-fluid">
+        <!-- Inicio seccion de informacion general del curso -->
+        <div class="row justify-content-center align-items-center" ng-if="elicur.seccionInformacionCurso == 1">
+            <div class="col-md-12">
+                <div class="callout callout-danger">
+                    <h5>INFORMACIÓN GENERAL DEL CURSO <b>{{elicur.cursoSeleccionado[0].CurCodigo}}
+                            ({{elicur.cursoSeleccionado[0].CalNombre}})</b>
+                        <p style="color:red; " data-ng-if="elicur.PermiteEditar == false">
+                            EL CALENDARIO DEL CURSO NO SE ENCUENTRA ACTIVO PARA CAMBIOS O NO ES DE SU PROPIEDAD.
+                        </p>
+                    </h5>
+                    <hr>
+                    <div class="row">
+                        <div class="col">
+                            <label>Nombre Asignatura:</label> {{elicur.cursoSeleccionado[0].AsiNombre}}<br>
+                            <label>Nombre Corto:</label> {{elicur.cursoSeleccionado[0].AsiNombreCorto}}<br>
+                            <label>Núcleo:</label> {{elicur.cursoSeleccionado[0].NucNombre}}<br>
+                            <label>Asignatura Ofrecida por:</label>
+                            {{elicur.cursoSeleccionado[0].UaaCodigo}}.
+                            {{elicur.cursoSeleccionado[0].UaaNombreCorto}}<br>
+                            <label>Para la Sede:</label> {{elicur.cursoSeleccionado[0].SedNombre}}<br>
+                            <label>Curso Creado por:</label> {{elicur.creadorCurso}}<br>
+                        </div>
+                        <div class="col">
+                            <label>Caracter:</label>{{elicur.cursoSeleccionado[0].CarNombre}} <br>
+                            <label>Matriculados Curso:</label> {{elicur.cursoSeleccionado[0].TotalMatriculados}} / {{elicur.cursoSeleccionado[0].CurCupo}}
+                            <button class="btn btn-danger btn-sm"
+                                data-ng-click="elicur.consultarMatriculadosCurso()">Ver</button><br>
+                            <label>Calendario:</label> {{elicur.cursoSeleccionado[0].CalNombre}}<br>
+                            <label>Estado:</label>
+                            <span data-ng-if="elicur.cursoSeleccionado[0].CurEstado == 1"
+                                class="text-success"><b>Activo</b></span>
+                            <span data-ng-if="elicur.cursoSeleccionado[0].CurEstado == 0"
+                                class="text-danger"><b>Eliminado</b></span>
+                            <br>
+                            <label>Coordinador:</label> {{elicur.cursoSeleccionado[0].PerNombreApellido}}<br>
+                            <label>Vinculación:</label> {{elicur.cursoSeleccionado[0].VinNombre}} -
+                            {{elicur.cursoSeleccionado[0].DedNombre}}<br>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <label>Observación: </label> {{elicur.cursoSeleccionado[0].CurObservaciones}}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fin secciion de informacion general del curso -->
+
+        <!-- Inicio seccion horario del curso -->
+        <div class="row" ng-if="elicur.seccionInformacionCurso == 1 && elicur.PermiteEditar == true">
+            <div class="col">
+                <div class="card card-danger card-sm">
+                    <div class="card-header">
+                        <div class="row">
+                            <div class="col-auto">
+                                HORARIO DEL CURSO <b>{{elicur.cursoSeleccionado[0].CurCodigo}}
+                                    ({{elicur.cursoSeleccionado[0].CalNombre}})</b>
+                            </div>
+                            <div class="col-auto">
+                                <input type="text" class="form-control form-control-sm"
+                                    placeholder="Busqueda general horario" data-ng-model="elicur.filter.Horario">
+                            </div>
+                            <div class="col-auto">
+                                <input type="text" class="form-control form-control-sm" placeholder="Busqueda subgrupo"
+                                    data-ng-model="elicur.filter.Subgrupo">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body table-responsive p-0" style="max-height: 500px;">
+                        <table class="table table-bordered table-striped table-sm table-head-fixed table-hover"
+                            style="max-height: 500px;">
+                            <thead>
+                                <th>#</th>
+                                <th>SUBGRUPO</th>
+                                <th>DOCENTE</th>
+                                <th>SEMANAS</th>
+                                <th>FECHA INICIAL</th>
+                                <th>FECHA FINAL</th>
+                                <th>DIA</th>
+                                <th>HORA</th>
+                                <th>ESPACIO</th>
+                                <th>VINCULACIÓN</th>
+                                <th>DEDICACIÓN</th>
+                                <th>UNIDAD</th>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    data-ng-if="(elicur.listaHorarioCurso.length < 1 || elicur.listaHorarioCurso == null) && elicur.cargandoHorario == 0">
+                                    <td colspan="12" class="text-center">
+                                        No se encontro horario para el curso.
+                                    </td>
+                                </tr>
+                                <tr data-ng-if="elicur.cargandoHorario == 1">
+                                    <td colspan="12" class="text-center">
+                                        <img class="" src="dist/img/precarga-usco.gif">
+                                    </td>
+                                </tr>
+                                <tr
+                                    data-ng-repeat="horario in elicur.listaHorarioCurso | toArray | filter:{$: elicur.filter.Horario, EsoSubGrupo: elicur.filter.Subgrupo}">
+                                    <td>{{$index + 1}}</td>
+                                    <td>{{horario.EsoSubGrupo}}</td>
+                                    <td>{{horario.NombreApellidoDocente}}</td>
+                                    <td>{{horario.EsoSemanas}}</td>
+                                    <td>{{horario.EsoFechaInicio}}</td>
+                                    <td>{{horario.EsoFechaFin}}</td>
+                                    <td>{{horario.DiaNombre}}</td>
+                                    <td>{{horario.EsoHora}}</td>
+                                    <td>{{horario.EspNombreCorto}}</td>
+                                    <td>{{horario.VinNombre}}</td>
+                                    <td>{{horario.DedNombre}}</td>
+                                    <td>{{horario.UaaCodigo}}. {{horario.UaaNombreCorto}}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fin seccion horario del curso -->
+
+        <div class="row" ng-if="elicur.seccionInformacionCurso == 1  && elicur.PermiteEditar == true">
+            <!-- Inicio seccion de eliminacion de curso -->
+            <div class="col-md-5">
+                <div class="card card-danger card-sm">
+                    <div class="card-header">
+                        ELIMINACIÓN DEL CURSO <b>{{elicur.cursoSeleccionado[0].CurCodigo}}
+                            ({{elicur.cursoSeleccionado[0].CalNombre}})</b>
+                    </div>
+                    <div class="card-body" data-ng-if="elicur.cursoSeleccionado[0].TotalMatriculados == 0">
+                        <div class="form-group">
+                            <div class="row align-items-center">
+                                <label class="col col-form-label  text-nowrap">Justificación: </label>
+                                <small class="col-auto text-right text-nowrap">{{elicur.cursoEliminar.Justificacion ? elicur.cursoEliminar.Justificacion.length :  0}}/190</small>
+                            </div>
+                            <div class="row">
+                                <div class="col">
+                                    <textarea class="form-control form-control-sm" name="" id="" cols="30" rows="10" maxlength="190"
+                                        ng-model="elicur.cursoEliminar.Justificacion">{{elicur.cursoEliminar.Justificacion}}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <p class="text-danger" data-ng-if="elicur.cursoSeleccionado[0].TotalMatriculados > 0"><b>El
+                                curso cuenta con {{elicur.cursoSeleccionado[0].TotalMatriculados}} matriculados, no se
+                                puede eliminar con matriculados.</b></p>
+                        <button class="btn btn-danger btn-sm"
+                            data-ng-click="elicur.mostrarSweetAlertDisabled('eliminar_curso', '')"
+                            data-ng-if="elicur.cursoSeleccionado[0].TotalMatriculados == 0">
+                            Eliminar curso y todos los subgrupos
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin seccion de eliminacion de curso -->
+
+            <!-- Inicio seccion de eliminacion de curso subgrupo -->
+            <div class="col-md-7">
+                <div class="card card-danger card-sm">
+                    <div class="card-header">
+                        ELIMINACIÓN DE SUBGRUPOS DEL CURSO <b>{{elicur.cursoSeleccionado[0].CurCodigo}}
+                            ({{elicur.cursoSeleccionado[0].CalNombre}})</b>
+                    </div>
+                    <div class="card-body table-responsive p-0" style="max-height: 500px;">
+                        <table class="table table-bordered table-striped table-hover table-sm table-head-fixed"
+                            style="max-height: 500px;">
+                            <thead>
+                                <th>#</th>
+                                <th>SUBGRUPO</th>
+                                <th>DOCENTE</th>
+                                <th>CUPO</th>
+                                <th>MATRICULADOS</th>
+                                <th>ESTADO</th>
+                                <th></th>
+                            </thead>
+                            <tbody>
+                                <tr data-ng-if="elicur.listaSubgrupo.length < 1 || elicur.listaSubgrupo == null">
+                                    <td colspan="12" class="text-center">
+                                        No se encontraron subgrupos para el curso.
+                                    </td>
+                                </tr>
+                                <tr data-ng-class="{'bg-danger bg-opacity-25': subgrupo.CusEstado == 0, 'bg-warning bg-opacity-25': subgrupo.TotalMatriculados > 0}"
+                                    data-ng-repeat="subgrupo in elicur.listaSubgrupo">
+                                    <td>{{$index + 1}}</td>
+                                    <td>{{subgrupo.EsoSubgrupo}}</td>
+                                    <td class="text-nowrap">{{subgrupo.PerNombreApellido}}</td>
+                                    <td>{{subgrupo.CusCupo}}</td>
+                                    <td>{{subgrupo.TotalMatriculados}}
+                                        <button class="btn btn-danger btn-sm"
+                                            data-ng-if="subgrupo.TotalMatriculados > 0"
+                                            data-ng-click="elicur.consultarMatriculadosCurso(subgrupo.EsoSubgrupo)">Ver</button>
+                                    </td>
+                                    <td>{{subgrupo.CusEstado}}</td>
+                                    <td>
+                                        <button data-ng-if="subgrupo.CusEstado == 1 && subgrupo.TotalMatriculados < 1"
+                                            class="btn btn-danger btn-sm"
+                                            data-ng-click="elicur.mostrarSweetAlertDisabled('eliminar_subgrupo', subgrupo)">Eliminar</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- Fin seccion de eliminacion de curso subgrupo -->
+
+        </div>
+
+        <!-- Inicio seccion de eliminacion de subgrupo -->
+        <!-- Fin seccion de eliminacion de subgrupo -->
+    </div>
+</section>
+
+
+
+<!-- Inicio modal matriculados -->
+<div class="modal fade" id="ModalEstudiantesMatriculados" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content" style="margin-top: 0%;">
+            <div class="modal-body">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h3 class="card-title">Lista Estudiantes Matriculados</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="input-group">
+                                    <input class="form-control form-control-sm" type="search"
+                                        placeholder="Buscar estudiante" aria-label="Search"
+                                        data-ng-model="elicur.filter.Matriculados">
+                                    <div class="input-group-append">
+                                        <button class="btn btn-sm">
+                                            <i class="fas fa-search fa-fw"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <br>
+                            </div>
+                            <div class="col-md-12 table-responsive" style="height: 500px;">
+                                <table id="tbl" class="table table-hover table-sm table-head-fixed">
+                                    <thead>
+                                        <th></th>
+                                    </thead>
+                                    <thead>
+                                        <th>#</th>
+                                        <th>Estado</th>
+                                        <th>Identificación</th>
+                                        <th>Nombre</th>
+                                        <th>Código</th>
+                                        <th>Subgrupo</th>
+                                        <th>Programa</th>
+                                    </thead>
+                                    <tbody>
+                                        <tr data-ng-class="{'bg-danger': row.MaaCodigo == 4, 'bg-warning': row.MaaCodigo == 6}"
+                                            data-ng-repeat="row in elicur.listaMatriculados | toArray | filter:elicur.filter.Matriculados  | orderBy:'MacGrupo'">
+                                            <td>{{$index + 1}}</td>
+                                            <td>{{row.MaaNombre}} <span
+                                                    data-ng-if="row.MaaCodigo == 4 || row.MaaCodigo == 6">{{row.MaaFecha}}</span>
+                                            </td>
+                                            <td>{{row.PerIdentificacion}}</td>
+                                            <td>{{row.PerNombre}}</td>
+                                            <td>{{row.EstCodigo}}</td>
+                                            <td>{{row.MacGrupo}}</td>
+                                            <td>{{row.UaaNombreCorto}}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="col-md-12">
+                                <hr>
+                                <b>Total Matriculados:</b> {{elicur.listaMatriculados.length}}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="button" class="btn btn-default btn-sm"
+                            ng-click="elicur.cerrarModal('ModalEstudiantesMatriculados')">Cerrar</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Inicio modal matriculados -->

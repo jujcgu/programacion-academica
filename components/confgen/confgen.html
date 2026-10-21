@@ -1,0 +1,41 @@
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-auto">
+                <h1 class="m-0">Configuración General</h1>
+            </div>
+        </div>
+    </div>
+</div>
+<hr>
+<div class="container-fluid">
+    <section class="content">
+        <div class="row">
+            <div class="col-auto">
+                <div class="card card-danger">
+                    <div class="card-header">
+                        <h4>Tope horas catedréticos</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Horas catedrático sedes</label>
+                                <input class="form-control form-contro-sm" type="number" min="0" data-ng-model="confgen.listaTopeHoras.horasCatedraticoSede">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <label>Horas catedrático Neiva</label>
+                                <input class="form-control form-contro-sm" type="number" min="0" data-ng-model="confgen.listaTopeHoras.horasCatedraticoNeiva">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button type="button" class="btn btn-danger btn-sm mt-3" data-ng-click="confgen.actualizarTopeHoras()">Actualizar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+</div>
+</section>
+</div>
