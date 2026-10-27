@@ -4,3 +4,5 @@ pacademica.ini
 .vscode/sftp.json
 /.agents
 /tests
+*.py
+*.pyc
