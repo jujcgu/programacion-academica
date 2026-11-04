@@ -1,13 +1,16 @@
 -- ============================================================================
 -- ARTEFACTO: 06_views.sql
--- DESCRIPCIÓN: Vistas relacionales optimizadas, normalizadas y seguras
---              - Calificación de esquema canónica ([dbo].[tabla])
---              - Reemplazo de UNION por UNION ALL (eliminación de ordenamiento DISTINCT)
---              - Eliminación de bloqueos sucios WITH(NOLOCK) en favor de RCSI
---              - Corrección del LEFT JOIN negado por WHERE en departamentos_programas_unificados
---              - Ocultamiento de contraseñas en texto claro (up, uwd) en proyecciones
+-- DESCRIPCIÓN: Vistas relacionales optimizadas, 100% compatibles con las tablas
+--              reales de producción (sql/dbo/vistas/*.sql):
+--              - Función dbo.Split compatible con cualquier nivel de compatibilidad
+--                (sin dependencia de STRING_SPLIT para SQL Server 2008/2012/2014/2016+)
+--              - Reemplazo de UNION por UNION ALL en vistas particionadas masivas
+--                (espacio_ocupacion_total, matricula_curso, usuario_general,
+--                 usuario_programacion, usuario_programacion_login)
+--              - Eliminación de hints WITH(NOLOCK) en estudiante_horario_actual
+--              - Corrección del LEFT JOIN en departamentos_programas_unificados
+--              - Conservación del 100% de nombres de columnas reales de producción
 -- PROYECTO: Sistema de Programación Académica (p_academica-main)
--- MOTOR OBJETIVO: Microsoft SQL Server 2016+ / Azure SQL Database / T-SQL ANSI
 -- ============================================================================
 
 SET ANSI_NULLS ON;
@@ -15,11 +18,15 @@ SET QUOTED_IDENTIFIER ON;
 GO
 
 -- ----------------------------------------------------------------------------
--- FUNCIÓN AUXILIAR: [dbo].[Split] (Función de división de subgrupos delimitados)
--- Requerida para estudiante_horario_actual
+-- FUNCIÓN AUXILIAR: [dbo].[Split]
+-- Compatible con todos los niveles de compatibilidad de SQL Server (80 a 160)
+-- sin requerir STRING_SPLIT. Expone la columna [Value] requerida por
+-- dbo.estudiante_horario_actual.
 -- ----------------------------------------------------------------------------
-IF OBJECT_ID('dbo.Split', 'IF') IS NOT NULL
-    DROP FUNCTION dbo.Split;
+IF OBJECT_ID(N'[dbo].[Split]', N'IF') IS NOT NULL
+    OR OBJECT_ID(N'[dbo].[Split]', N'TF') IS NOT NULL
+    OR OBJECT_ID(N'[dbo].[Split]', N'FN') IS NOT NULL
+    DROP FUNCTION [dbo].[Split];
 GO
 
 CREATE FUNCTION [dbo].[Split]
@@ -31,16 +38,25 @@ RETURNS TABLE
 AS
 RETURN
 (
-    SELECT value AS Item
-    FROM STRING_SPLIT(@String, @Delimiter)
+    SELECT 
+        LTRIM(RTRIM(m.n.value('.[1]', 'varchar(8000)'))) AS [Value]
+    FROM (
+        SELECT CAST('<XMLRoot><RowData>' + REPLACE(ISNULL(@String, ''), @Delimiter, '</RowData><RowData>') + '</RowData></XMLRoot>' AS XML) AS x
+    ) AS t
+    CROSS APPLY x.nodes('/XMLRoot/RowData') m(n)
+    WHERE LTRIM(RTRIM(m.n.value('.[1]', 'varchar(8000)'))) <> ''
 );
 GO
 
 -- ----------------------------------------------------------------------------
 -- VISTA 1: [dbo].[departamentos_programas_unificados]
--- Optimización: Calificación canónica, proyección de columnas requeridas por PHP
+-- Optimización: Traslado de pdt.prd_estado = 1 al predicado ON del LEFT JOIN
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER VIEW [dbo].[departamentos_programas_unificados]
+IF OBJECT_ID(N'[dbo].[departamentos_programas_unificados]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[departamentos_programas_unificados] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[departamentos_programas_unificados]
 AS 
 SELECT 
     u.uaa_codigo AS uaa_codigo_departamento, 
@@ -67,28 +83,42 @@ GO
 
 -- ----------------------------------------------------------------------------
 -- VISTA 2: [dbo].[espacio_ocupacion_total]
--- Optimización: Proyección de columnas físicas canónicas y UNION ALL simétrico
+-- Optimización: UNION ALL en lugar de UNION sobre las 32 columnas reales
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER VIEW [dbo].[espacio_ocupacion_total]
+IF OBJECT_ID(N'[dbo].[espacio_ocupacion_total]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[espacio_ocupacion_total] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[espacio_ocupacion_total]
 AS
 SELECT 
     eso_codigo, esp_codigo, uaa_codigo, eso_fecha, hor_codigo, dia_codigo, hra_codigo, 
     eso_actividad, eso_subgrupo, uap_codigo, eso_estado, oct_codigo, eso_descripcion, 
-    cdp_codigo, ctr_codigo, usu_codigo, 'ACTUAL' AS particion_temporal
+    cdp_codigo, ctr_codigo, usu_codigo, usu_clave, sippa_sedcodigo, sippa_calcodigo, 
+    sippa_progcodigo, sippa_plancodigo, sippa_asicodigo, sippa_grucodigo, sippa_subgrucodigo, 
+    sippa_horfecini, sippa_horfecfin, sippa_horcodigo, sippa_doccedula, sippa_salcodigo, 
+    sippa_horsemanas, sippa_horfactor, sippa_vincodigo
 FROM [dbo].[espacio_ocupacion]
 UNION ALL
 SELECT 
     eso_codigo, esp_codigo, uaa_codigo, eso_fecha, hor_codigo, dia_codigo, hra_codigo, 
     eso_actividad, eso_subgrupo, uap_codigo, eso_estado, oct_codigo, eso_descripcion, 
-    cdp_codigo, ctr_codigo, usu_codigo, 'HISTORICO' AS particion_temporal
+    cdp_codigo, ctr_codigo, usu_codigo, usu_clave, sippa_sedcodigo, sippa_calcodigo, 
+    sippa_progcodigo, sippa_plancodigo, sippa_asicodigo, sippa_grucodigo, sippa_subgrucodigo, 
+    sippa_horfecini, sippa_horfecfin, sippa_horcodigo, sippa_doccedula, sippa_salcodigo, 
+    sippa_horsemanas, sippa_horfactor, sippa_vincodigo
 FROM [dbo].[espacio_ocupacion_historico];
 GO
 
 -- ----------------------------------------------------------------------------
 -- VISTA 3: [dbo].[estudiante_horario_actual]
--- Optimización: Referencia a columna real eo.eso_fecha y proyección de eso_subgrupo
+-- Optimización: Eliminación de hints WITH(NOLOCK) y acotación de VARCHAR(30/10)
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER VIEW [dbo].[estudiante_horario_actual]
+IF OBJECT_ID(N'[dbo].[estudiante_horario_actual]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[estudiante_horario_actual] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[estudiante_horario_actual]
 AS
 SELECT     
     CONVERT(VARCHAR(30), CONVERT(date, eo.eso_fecha)) + '--' + CONVERT(VARCHAR(10), eo.dia_codigo) + '--' + CONVERT(VARCHAR(10), eo.hra_codigo) AS [date], 
@@ -109,266 +139,422 @@ INNER JOIN [dbo].[estudiante] AS est
 INNER JOIN [dbo].[programa] AS pro 
     ON est.pro_codigo = pro.pro_codigo
 INNER JOIN [dbo].[espacio_ocupacion] AS eo 
-    ON mc.cur_codigo = eo.eso_actividad;
+    ON mc.cur_codigo = eo.eso_actividad
+WHERE (m.cal_codigo IN (
+          SELECT [Value]
+          FROM [dbo].[Split]((
+              SELECT wep_valor
+              FROM [dbo].[web_parametro]
+              WHERE (wep_nombre = 'MATRICULA_PREGRADO_POSGRADO_CALENDARIO_ACTUAL')
+          ), ',') AS Split_1
+      ))
+  AND (mc.maa_codigo IN (1, 2))
+  AND (eo.eso_subgrupo IN ('00', mc.mac_subgrupo))
+GROUP BY 
+    eo.eso_fecha, eo.dia_codigo, eo.hra_codigo, m.est_codigo, 
+    mc.cur_codigo, eo.eso_actividad, eo.eso_subgrupo, est.per_codigo, pro.nia_codigo;
 GO
 
 -- ----------------------------------------------------------------------------
 -- VISTA 4: [dbo].[matricula_curso]
--- Optimización: UNION ALL en lugar de UNION sobre particiones masivas de calificaciones
+-- Optimización: UNION ALL en lugar de UNION sobre las 41 columnas reales
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER VIEW [dbo].[matricula_curso]
+IF OBJECT_ID(N'[dbo].[matricula_curso]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[matricula_curso] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[matricula_curso]
 AS
 SELECT 
-    mat_codigo, cur_codigo, est_codigo, mac_nota_definitiva, mac_estado, per_codigo, 'ACTUAL' AS tabla
+    mac_codigo, mat_codigo, cur_codigo, mac_subgrupo, mac_estado, mac_nota, mac_habilitacion, 
+    mac_perdio_fallas, mac_definitiva, maf_codigo, res_codigo, paa_codigo, mac_novedad, 
+    maa_codigo, mac_usuario, mac_ip_nota, mac_clave, mac_cliente, mac_fecha_nota, 
+    paa_codigo_anterior, sippa_sedcodigo, sippa_calcodigo, sippa_estcodigo, sippa_progcodigo, 
+    sippa_plancodigo, sippa_asicodigo, sippa_horasasignatura, sippa_grucodigo, sippa_subgrucodigo, 
+    sippa_cursemestre, sippa_curasignatura, sippa_curnomasigna, sippa_curforma, sippa_curautorizacion, 
+    temporal_null, mac_usuario_nota, mac_cliente_nota, esc_codigo, esc_nombre, mac_fecha_hora, 
+    'ACTUAL' AS tabla
 FROM [dbo].[matricula_curso_actual]
 UNION ALL
 SELECT 
-    mat_codigo, cur_codigo, est_codigo, mac_nota_definitiva, mac_estado, per_codigo, 'HISTORICO' AS tabla
+    mac_codigo, mat_codigo, cur_codigo, mac_subgrupo, mac_estado, mac_nota, mac_habilitacion, 
+    mac_perdio_fallas, mac_definitiva, maf_codigo, res_codigo, paa_codigo, mac_novedad, 
+    maa_codigo, mac_usuario, mac_ip_nota, mac_clave, mac_cliente, mac_fecha_nota, 
+    paa_codigo_anterior, sippa_sedcodigo, sippa_calcodigo, sippa_estcodigo, sippa_progcodigo, 
+    sippa_plancodigo, sippa_asicodigo, sippa_horasasignatura, sippa_grucodigo, sippa_subgrucodigo, 
+    sippa_cursemestre, sippa_curasignatura, sippa_curnomasigna, sippa_curforma, sippa_curautorizacion, 
+    temporal_null, mac_usuario_nota, mac_cliente_nota, esc_codigo, esc_nombre, mac_fecha_hora, 
+    'HISTORICO' AS tabla
 FROM [dbo].[matricula_curso_historico]
 UNION ALL
 SELECT 
-    mat_codigo, cur_codigo, est_codigo, mac_nota_definitiva, mac_estado, per_codigo, 'MULTICURSO' AS tabla
+    mac_codigo, mat_codigo, cur_codigo, mac_subgrupo, mac_estado, mac_nota, mac_habilitacion, 
+    mac_perdio_fallas, mac_definitiva, maf_codigo, res_codigo, paa_codigo, mac_novedad, 
+    maa_codigo, mac_usuario, mac_ip_nota, mac_clave, mac_cliente, mac_fecha_nota, 
+    paa_codigo_anterior, sippa_sedcodigo, sippa_calcodigo, sippa_estcodigo, sippa_progcodigo, 
+    sippa_plancodigo, sippa_asicodigo, sippa_horasasignatura, sippa_grucodigo, sippa_subgrucodigo, 
+    sippa_cursemestre, sippa_curasignatura, sippa_curnomasigna, sippa_curforma, sippa_curautorizacion, 
+    temporal_null, mac_usuario_nota, mac_cliente_nota, esc_codigo, esc_nombre, mac_fecha_hora, 
+    'MULTICURSO' AS tabla
 FROM [dbo].[matricula_multicurso];
 GO
 
 -- ----------------------------------------------------------------------------
 -- VISTA 5: [dbo].[notas_total]
--- Optimización: Calificación canónica de entidades y condiciones de agregación claras
+-- Optimización: Se beneficia directamente del UNION ALL de dbo.matricula_curso
+--               y reemplaza LIKE por = en el join numérico de sippa_asicodigo
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER VIEW [dbo].[notas_total]
+IF OBJECT_ID(N'[dbo].[notas_total]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[notas_total] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[notas_total]
 AS
 SELECT				
-    c.cal_nombre, 
-    mc.mat_codigo, 
-    mc.cur_codigo, 
-    mc.mac_nota_definitiva, 
-    mf.maf_nombre, 
-    m.est_codigo, 
-    cur.cur_codigo AS curso_codigo_ref, 
-    paa.paa_semestre, 
-    paa.paa_credito, 
-    asi.asi_codigo, 
-    paa.pla_codigo, 
-    asi.asi_nombre_corto, 
-    asi.asi_nombre,
-    asi.asi_creditos
-FROM [dbo].[calendario] c
-INNER JOIN [dbo].[curso] cur 
-    ON c.cal_codigo = cur.cal_codigo
-INNER JOIN [dbo].[matricula_curso_actual] mc 
-    ON cur.cur_codigo = mc.cur_codigo
-INNER JOIN [dbo].[matricula] m 
-    ON mc.mat_codigo = m.mat_codigo
-LEFT JOIN [dbo].[matricula_forma] mf 
-    ON cur.cut_codigo = mf.maf_codigo
-INNER JOIN [dbo].[asignatura] asi 
-    ON cur.asi_codigo = asi.asi_codigo
-LEFT JOIN [dbo].[plan_academico_asignatura] paa 
-    ON cur.asi_codigo = paa.asi_codigo AND cur.pla_codigo = paa.pla_codigo;
+    [dbo].[calendario].cal_nombre, 
+    [dbo].[matricula_curso].mac_subgrupo, 
+    [dbo].[matricula_curso].mac_nota, 
+    [dbo].[matricula_curso].maa_codigo, 
+    [dbo].[matricula_curso].cur_codigo, 
+    [dbo].[matricula_curso].mac_habilitacion, 
+    [dbo].[matricula_curso].mac_definitiva, 
+    [dbo].[matricula_forma].maf_nombre, 
+    [dbo].[matricula_curso].paa_codigo, 
+    [dbo].[matricula].est_codigo, 
+    [dbo].[curso].cur_codigo AS Expr1, 
+    [dbo].[plan_academico_asignatura].paa_semestre, 
+    [dbo].[plan_academico_asignatura].paa_credito, 
+    asignatura2.asi_codigo, 
+    [dbo].[plan_academico_asignatura].pla_codigo, 
+    asignatura1.asi_nombre_corto, 
+    asignatura2.asi_nombre,
+    asignatura2.asi_nombre_corto AS asi_nombre_corto_paa,
+    asignatura1.asi_nombre AS asi_nom2, 
+    asignatura1.asi_codigo AS Expr3, 
+    COALESCE(
+        CASE WHEN asignatura1.asi_creditos IS NULL THEN asignatura3.asi_creditos ELSE asignatura1.asi_creditos END,
+        CASE WHEN asignatura3.asi_creditos IS NULL THEN [dbo].[plan_academico_asignatura].paa_credito ELSE asignatura3.asi_creditos END
+    ) AS asi_creditos, 
+    [dbo].[matricula_curso].sippa_curnomasigna, 
+    [dbo].[matricula_curso].sippa_asicodigo, 
+    [dbo].[matricula_curso].sippa_cursemestre, 
+    [dbo].[matricula_curso].mac_fecha_nota, 
+    [dbo].[matricula_curso].esc_codigo, 
+    [dbo].[matricula_curso].esc_nombre, 
+    [dbo].[curso].tes_codigo, 
+    [dbo].[matricula_curso].tabla,
+    [dbo].[plan_academico_asignatura].paa_intensidad, 
+    [dbo].[matricula_autorizacion].maa_nombre, 
+    [dbo].[plan_academico_asignatura].paa_multi_asignatura, 
+    [dbo].[plan_academico_asignatura].paa_plan_academico
+FROM [dbo].[asignatura] AS asignatura2 
+INNER JOIN [dbo].[plan_academico_asignatura] 
+    ON asignatura2.asi_codigo = [dbo].[plan_academico_asignatura].asi_codigo 
+RIGHT OUTER JOIN [dbo].[calendario] 
+INNER JOIN [dbo].[matricula_curso] 
+INNER JOIN [dbo].[matricula] 
+    ON [dbo].[matricula_curso].mat_codigo = [dbo].[matricula].mat_codigo 
+INNER JOIN [dbo].[matricula_autorizacion] 
+    ON [dbo].[matricula_curso].maa_codigo = [dbo].[matricula_autorizacion].maa_codigo 
+INNER JOIN [dbo].[matricula_forma] 
+    ON [dbo].[matricula_curso].maf_codigo = [dbo].[matricula_forma].maf_codigo 
+    ON [dbo].[calendario].cal_codigo = [dbo].[matricula].cal_codigo 
+    ON [dbo].[plan_academico_asignatura].paa_codigo = [dbo].[matricula_curso].paa_codigo 
+LEFT OUTER JOIN [dbo].[curso] 
+    ON [dbo].[matricula_curso].cur_codigo = [dbo].[curso].cur_codigo 
+LEFT OUTER JOIN [dbo].[asignatura] AS asignatura1 
+    ON [dbo].[curso].asi_codigo = asignatura1.asi_codigo
+LEFT JOIN [dbo].[asignatura] AS asignatura3 
+    ON [dbo].[matricula_curso].sippa_asicodigo = asignatura3.asi_codigo;
 GO
 
 -- ----------------------------------------------------------------------------
 -- VISTA 6: [dbo].[resumen_docencia_final]
--- Optimización: Agrupación y suma de horas semestrales por docente y unidad
+-- Optimización: Conserva las 20 columnas reales de dbo.resumen_docencia_sem (SUM(c_horas))
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER VIEW [dbo].[resumen_docencia_final]
+IF OBJECT_ID(N'[dbo].[resumen_docencia_final]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[resumen_docencia_final] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[resumen_docencia_final]
 AS
 SELECT     
-    p.per_apellido, 
-    p.per_nombre, 
-    rds.per_codigo AS periodo, 
-    u.uaa_codigo, 
-    u.uaa_nombre, 
-    p.per_identificacion, 
-    p.per_codigo, 
-    SUM(rds.rds_horas) AS horas_sema, 
-    rds.cur_codigo, 
-    rds.uap_codigo
-FROM [dbo].[resumen_docencia_sem] rds
-INNER JOIN [dbo].[uaa_personal] uap 
-    ON rds.uap_codigo = uap.uap_codigo
-INNER JOIN [dbo].[persona] p 
-    ON uap.per_codigo = p.per_codigo
-INNER JOIN [dbo].[uaa] u 
-    ON uap.uaa_codigo = u.uaa_codigo
+    per_apellido, per_nombre, periodo, vin_codigo, vin_nombre, ded_codigo, ded_nombre, 
+    uaa_codigo, uaa_dependencia, per_identificacion, per_codigo, 
+    SUM(c_horas) AS horas_sema, 
+    semanas, uaa_nombre_corto, persona, uaa_nombre, cur_codigo, eso_subgrupo, cur_grupo, uap_codigo
+FROM [dbo].[resumen_docencia_sem]
 GROUP BY 
-    p.per_apellido, p.per_nombre, rds.per_codigo, u.uaa_codigo, 
-    u.uaa_nombre, p.per_identificacion, p.per_codigo, rds.cur_codigo, rds.uap_codigo;
+    per_apellido, per_nombre, persona, periodo, vin_codigo, vin_nombre, ded_codigo, ded_nombre, 
+    uaa_codigo, uaa_dependencia, per_identificacion, cur_codigo, eso_subgrupo, per_codigo, 
+    semanas, uaa_nombre_corto, uaa_nombre, cur_grupo, uap_codigo;
 GO
 
 -- ----------------------------------------------------------------------------
 -- VISTAS DE AUTENTICACIÓN Y ROLES INSTITUCIONALES (7 a 12)
--- Seguridad: Supresión de contraseñas en texto claro (up, uwd = NULL/Masked)
+-- Conservan el 100% de los nombres de columna reales de usuario_administrativos,
+-- usuario_docentes, usuario_estudiantes, etc. y optimizan UNION -> UNION ALL.
 -- ----------------------------------------------------------------------------
 
 -- VISTA 7: [dbo].[usuario_administrativo]
-CREATE OR ALTER VIEW [dbo].[usuario_administrativo]
+IF OBJECT_ID(N'[dbo].[usuario_administrativo]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[usuario_administrativo] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[usuario_administrativo]
 AS
 SELECT     
-    CAST(NULL AS VARCHAR(50)) AS up, 
-    u.us_nombre AS us, 
-    1 AS istipo, 
-    0 AS ischange, 
-    u.us_estado AS [state], 
-    'ACADEMICA' AS [sys], 
-    ug.usg_grupo, 
-    g.gru_nombre, 
-    ug.usg_usuario, 
-    u.[uid], 
-    g.gru_id, 
-    ug.usg_estado, 
-    CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[grupo] g
-INNER JOIN [dbo].[usuario_grupo] ug 
-    ON g.gru_codigo = ug.usg_grupo
-INNER JOIN [dbo].[usuario_administrativos] u 
-    ON ug.usg_usuario = u.[uid]
-WHERE g.gru_nombre NOT IN ('Docente', 'Estudiante');
+    [dbo].[usuario_administrativos].up, 
+    [dbo].[usuario_administrativos].us, 
+    [dbo].[usuario_administrativos].istipo, 
+    [dbo].[usuario_administrativos].ischange, 
+    [dbo].[usuario_administrativos].[state], 
+    [dbo].[usuario_administrativos].[sys], 
+    [dbo].[usuario_grupo].usg_grupo, 
+    [dbo].[grupo].gru_nombre, 
+    [dbo].[usuario_grupo].usg_usuario, 
+    [dbo].[usuario_administrativos].[uid], 
+    [dbo].[grupo].gru_id, 
+    [dbo].[usuario_grupo].usg_estado, 
+    [dbo].[usuario_administrativos].us_encriptado
+FROM [dbo].[grupo] 
+INNER JOIN [dbo].[usuario_grupo] 
+    ON [dbo].[grupo].gru_codigo = [dbo].[usuario_grupo].usg_grupo 
+INNER JOIN [dbo].[usuario_administrativos] 
+    ON [dbo].[usuario_grupo].usg_usuario = [dbo].[usuario_administrativos].[uid]
+WHERE ([dbo].[grupo].gru_nombre NOT IN ('Docente', 'Estudiante'));
 GO
 
 -- VISTA 8: [dbo].[usuario_docente]
-CREATE OR ALTER VIEW [dbo].[usuario_docente]
+IF OBJECT_ID(N'[dbo].[usuario_docente]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[usuario_docente] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[usuario_docente]
 AS
 SELECT     
-    CAST(NULL AS VARCHAR(50)) AS up, 
-    u.us_nombre AS us, 
-    2 AS istipo, 
-    0 AS ischange, 
-    u.us_estado AS [state], 
-    'ACADEMICA' AS [sys], 
-    ug.usg_grupo, 
-    g.gru_nombre, 
-    ug.usg_usuario, 
-    u.[uid], 
-    g.gru_id, 
-    ug.usg_estado, 
-    ug.usg_uaa, 
-    CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[grupo] g
-INNER JOIN [dbo].[usuario_grupo] ug 
-    ON g.gru_codigo = ug.usg_grupo
-INNER JOIN [dbo].[usuario_docentes] u 
-    ON ug.usg_usuario = u.[uid]
-WHERE g.gru_id = 'DOCENTE' OR g.gru_nombre = 'Docente';
+    [dbo].[usuario_docentes].up, 
+    [dbo].[usuario_docentes].us, 
+    [dbo].[usuario_docentes].istipo, 
+    [dbo].[usuario_docentes].ischange, 
+    [dbo].[usuario_docentes].[state], 
+    [dbo].[usuario_docentes].[sys], 
+    [dbo].[usuario_grupo].usg_grupo, 
+    [dbo].[grupo].gru_nombre, 
+    [dbo].[usuario_grupo].usg_usuario, 
+    [dbo].[usuario_docentes].[uid], 
+    [dbo].[grupo].gru_id, 
+    [dbo].[usuario_grupo].usg_estado, 
+    [dbo].[usuario_grupo].usg_uaa, 
+    [dbo].[usuario_docentes].us_encriptado
+FROM [dbo].[grupo] 
+INNER JOIN [dbo].[usuario_grupo] 
+    ON [dbo].[grupo].gru_codigo = [dbo].[usuario_grupo].usg_grupo 
+INNER JOIN [dbo].[usuario_docentes] 
+    ON [dbo].[usuario_grupo].usg_usuario = [dbo].[usuario_docentes].[uid]
+WHERE ([dbo].[grupo].gru_id IN ('DOCENTE', 'JEFE_PROGRAMA', 'JEFE_DEPARTAMENTO'));
 GO
 
 -- VISTA 9: [dbo].[usuario_general]
-CREATE OR ALTER VIEW [dbo].[usuario_general]
+-- Optimización: UNION ALL en lugar de UNION sobre las 7 tablas de usuarios
+IF OBJECT_ID(N'[dbo].[usuario_general]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[usuario_general] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[usuario_general]
 AS
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 3 AS istipo, 0 AS ischange, us_estado AS [state], 'ESTUDIANTE' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
+SELECT [uid], up, us, istipo, ischange, [state], [sys], us_correo, us_pregunta, us_respuesta, us_encriptado
 FROM [dbo].[usuario_estudiantes]
 UNION ALL
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 3 AS istipo, 0 AS ischange, us_estado AS [state], 'VIRTUAL' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
+SELECT [uid], up, us, istipo, ischange, [state], [sys], us_correo, us_pregunta, us_respuesta, us_encriptado
 FROM [dbo].[usuario_estudiantes_virtual]
 UNION ALL
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 3 AS istipo, 0 AS ischange, us_estado AS [state], 'INTERCAMBIO' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[usuario_estudiantes_intercambio]
-UNION ALL
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 4 AS istipo, 0 AS ischange, us_estado AS [state], 'GRADUADO' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[usuario_graduados]
-UNION ALL
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 5 AS istipo, 0 AS ischange, us_estado AS [state], 'EXTERNO' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[usuario_externos]
-UNION ALL
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 2 AS istipo, 0 AS ischange, us_estado AS [state], 'DOCENTE' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
+SELECT [uid], up, us, istipo, ischange, [state], [sys], us_correo, us_pregunta, us_respuesta, us_encriptado
 FROM [dbo].[usuario_docentes]
 UNION ALL
-SELECT [uid], CAST(NULL AS VARCHAR(50)) AS up, us_nombre AS us, 1 AS istipo, 0 AS ischange, us_estado AS [state], 'ADMIN' AS [sys], us_correo, CAST(NULL AS VARCHAR(100)) AS us_pregunta, CAST(NULL AS VARCHAR(100)) AS us_respuesta, CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[usuario_administrativos];
+SELECT [uid], up, us, istipo, ischange, [state], [sys], us_correo, us_pregunta, us_respuesta, us_encriptado
+FROM [dbo].[usuario_administrativos]
+UNION ALL
+SELECT [uid], up, us, istipo, ischange, [state], NULL AS [sys], NULL AS us_correo, NULL AS us_pregunta, NULL AS us_respuesta, us_encriptado
+FROM [dbo].[usuario_graduados]
+UNION ALL
+SELECT [uid], up, us, istipo, ischange, [state], [sys], us_correo, us_pregunta, us_respuesta, us_encriptado
+FROM [dbo].[usuario_estudiantes_intercambio]
+UNION ALL
+SELECT [uid], up, us, istipo, ischange, [state], [sys], us_correo, us_pregunta, us_respuesta, us_encriptado
+FROM [dbo].[usuario_externos];
 GO
 
 -- VISTA 10: [dbo].[usuario_planta_fisica]
-CREATE OR ALTER VIEW [dbo].[usuario_planta_fisica]
+IF OBJECT_ID(N'[dbo].[usuario_planta_fisica]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[usuario_planta_fisica] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[usuario_planta_fisica]
 AS
 SELECT		
-    ug.usg_usuario,		
-    g.gru_nombre, 
-    ug.usg_grupo,		
-    g.gru_id, 
-    ug.usg_uaa,			
-    ug.usg_estado, 
-    g.gru_codigo,				
-    ug.usg_codigo, 
-    CAST(NULL AS VARCHAR(50)) AS up,		
-    u.us_nombre AS us, 
-    1 AS istipo,	
-    0 AS ischange, 
-    u.us_estado AS [state],	
-    'PLANTA_FISICA' AS [sys]
-FROM [dbo].[grupo] g
-INNER JOIN [dbo].[usuario_grupo] ug 
-    ON g.gru_codigo = ug.usg_grupo
-INNER JOIN [dbo].[usuario_administrativos] u 
-    ON ug.usg_usuario = u.[uid]
-WHERE g.gru_nombre = 'Planta Fisica' OR g.gru_id = 'PLANTA_FISICA';
+    [dbo].[usuario_grupo].usg_usuario,		
+    [dbo].[grupo].gru_nombre, 
+    [dbo].[usuario_grupo].usg_grupo,		
+    [dbo].[grupo].gru_id, 
+    [dbo].[usuario_grupo].usg_uaa,			
+    [dbo].[usuario_grupo].usg_estado, 
+    [dbo].[grupo].gru_codigo,				
+    [dbo].[usuario_grupo].usg_codigo, 
+    [dbo].[usuario_administrativos].up,		
+    [dbo].[usuario_administrativos].us, 
+    [dbo].[usuario_administrativos].istipo,	
+    [dbo].[usuario_administrativos].ischange, 
+    [dbo].[usuario_administrativos].[state],	
+    [dbo].[usuario_administrativos].[sys], 
+    [dbo].[usuario_administrativos].[uid],	
+    [dbo].[usuario_administrativos].us_encriptado
+FROM [dbo].[usuario_grupo] 
+INNER JOIN [dbo].[grupo] 
+    ON [dbo].[usuario_grupo].usg_grupo = [dbo].[grupo].gru_codigo 
+INNER JOIN [dbo].[usuario_administrativos] 
+    ON [dbo].[usuario_grupo].usg_usuario = [dbo].[usuario_administrativos].[uid]
+WHERE ([dbo].[grupo].gru_codigo IN (8,9,56,270,271,272,273,274)) 
+  AND ([dbo].[grupo].gru_estado = 1) 
+  AND ([dbo].[usuario_grupo].usg_estado = 1)
+  AND ([dbo].[usuario_administrativos].[state] = 1)
+UNION ALL
+SELECT		
+    [dbo].[usuario_grupo].usg_usuario,		
+    [dbo].[grupo].gru_nombre, 
+    [dbo].[usuario_grupo].usg_grupo,		
+    [dbo].[grupo].gru_id, 
+    [dbo].[usuario_grupo].usg_uaa,			
+    [dbo].[usuario_grupo].usg_estado, 
+    [dbo].[grupo].gru_codigo,				
+    [dbo].[usuario_grupo].usg_codigo, 
+    [dbo].[usuario_docentes].up,		
+    [dbo].[usuario_docentes].us, 
+    [dbo].[usuario_docentes].istipo,	
+    [dbo].[usuario_docentes].ischange, 
+    [dbo].[usuario_docentes].[state],	
+    [dbo].[usuario_docentes].[sys], 
+    [dbo].[usuario_docentes].[uid],	
+    [dbo].[usuario_docentes].us_encriptado
+FROM [dbo].[usuario_grupo] 
+INNER JOIN [dbo].[grupo] 
+    ON [dbo].[usuario_grupo].usg_grupo = [dbo].[grupo].gru_codigo 
+INNER JOIN [dbo].[usuario_docentes] 
+    ON [dbo].[usuario_grupo].usg_usuario = [dbo].[usuario_docentes].[uid]
+WHERE ([dbo].[grupo].gru_codigo IN (8,9,56,270,271,272,273,274)) 
+  AND ([dbo].[grupo].gru_estado = 1) 
+  AND ([dbo].[usuario_grupo].usg_estado = 1)
+  AND ([dbo].[usuario_docentes].[state] = 1);
 GO
 
 -- VISTA 11: [dbo].[usuario_programacion]
-CREATE OR ALTER VIEW [dbo].[usuario_programacion]
+-- Optimización: UNION ALL en lugar de UNION
+IF OBJECT_ID(N'[dbo].[usuario_programacion]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[usuario_programacion] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[usuario_programacion]
 AS
 SELECT		
-    ug.usg_usuario,		
-    g.gru_nombre, 
-    ug.usg_grupo,			
-    g.gru_id, 
-    ug.usg_uaa,			
-    ug.usg_estado, 
-    g.gru_codigo,			
-    ug.usg_codigo, 
-    CAST(NULL AS VARCHAR(50)) AS up,					
-    u.us_nombre AS us, 
-    1 AS istipo,				
-    u.[uid],
-    u.us_estado AS [state]
-FROM [dbo].[grupo] g
-INNER JOIN [dbo].[usuario_grupo] ug 
-    ON g.gru_codigo = ug.usg_grupo
-INNER JOIN [dbo].[usuario_administrativos] u 
-    ON ug.usg_usuario = u.[uid];
+    usg.usg_usuario,		
+    gru.gru_nombre, 
+    usg.usg_grupo,			
+    gru.gru_id, 
+    usg.usg_uaa,			
+    usg.usg_estado, 
+    gru.gru_codigo,			
+    usg.usg_codigo, 
+    uad.up,					
+    uad.us, 
+    uad.istipo,				
+    uad.[uid],
+    uad.[state]
+FROM [dbo].[usuario_grupo] AS usg
+INNER JOIN [dbo].[grupo] AS gru 
+    ON usg.usg_grupo = gru.gru_codigo 
+INNER JOIN [dbo].[usuario_administrativos] AS uad 
+    ON usg.usg_usuario = uad.[uid]
+WHERE (gru.gru_codigo IN (68,69,318,34,14)) AND (usg.usg_estado = 1)
+UNION ALL
+SELECT		
+    usg.usg_usuario,		
+    gru.gru_nombre, 
+    usg.usg_grupo,			
+    gru.gru_id, 
+    usg.usg_uaa,			
+    usg.usg_estado, 
+    gru.gru_codigo,			
+    usg.usg_codigo, 
+    uad.up,					
+    uad.us, 
+    uad.istipo,				
+    uad.[uid],
+    uad.[state]
+FROM [dbo].[usuario_grupo] AS usg
+INNER JOIN [dbo].[grupo] AS gru 
+    ON usg.usg_grupo = gru.gru_codigo 
+INNER JOIN [dbo].[usuario_docentes] AS uad 
+    ON usg.usg_usuario = uad.[uid]
+WHERE (gru.gru_codigo IN (68,69,318,34,14)) AND (usg.usg_estado = 1);
 GO
 
 -- VISTA 12: [dbo].[usuario_programacion_login]
-CREATE OR ALTER VIEW [dbo].[usuario_programacion_login]
+-- Optimización: UNION ALL en lugar de UNION conservando uwd, uwd2, up, us_encriptado
+IF OBJECT_ID(N'[dbo].[usuario_programacion_login]', N'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[usuario_programacion_login] AS SELECT 1 AS stub');
+GO
+
+ALTER VIEW [dbo].[usuario_programacion_login]
 AS
 SELECT		
-    ug.usg_usuario,		
-    g.gru_nombre, 
-    ug.usg_grupo,			
-    g.gru_id, 
-    ug.usg_uaa,			
-    ug.usg_estado, 
-    g.gru_codigo,			
-    ug.usg_codigo, 
-    CAST(NULL AS VARCHAR(50)) AS up,					
-    u.us_nombre AS us, 
-    1 AS istipo,				
-    u.[uid],
-    u.us_estado AS [state],
-    CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[grupo] g
-INNER JOIN [dbo].[usuario_grupo] ug 
-    ON g.gru_codigo = ug.usg_grupo
-INNER JOIN [dbo].[usuario_administrativos] u 
-    ON ug.usg_usuario = u.[uid]
+    usg.usg_usuario,		
+    gru.gru_nombre, 
+    usg.usg_grupo,			
+    gru.gru_id, 
+    usg.usg_uaa,			
+    usg.usg_estado, 
+    gru.gru_codigo,			
+    usg.usg_codigo, 
+    uad.up,					
+    uad.us, 
+    uad.istipo,				
+    uad.ischange, 
+    uad.uwd,				
+    uad.uwd2, 
+    uad.[state],				
+    uad.[sys], 
+    uad.[uid],				
+    uad.us_encriptado
+FROM [dbo].[usuario_grupo] AS usg
+INNER JOIN [dbo].[grupo] AS gru 
+    ON usg.usg_grupo = gru.gru_codigo 
+INNER JOIN [dbo].[usuario_administrativos] AS uad 
+    ON usg.usg_usuario = uad.[uid]
+WHERE (gru.gru_codigo IN (68,69,318,34,14)) AND (usg.usg_estado = 1)
 UNION ALL
 SELECT		
-    ug.usg_usuario,		
-    g.gru_nombre, 
-    ug.usg_grupo,			
-    g.gru_id, 
-    ug.usg_uaa,			
-    ug.usg_estado, 
-    g.gru_codigo,			
-    ug.usg_codigo, 
-    CAST(NULL AS VARCHAR(50)) AS up,					
-    doc.us_nombre AS us, 
-    2 AS istipo,				
-    doc.[uid],
-    doc.us_estado AS [state],
-    CAST(NULL AS VARCHAR(50)) AS us_encriptado
-FROM [dbo].[grupo] g
-INNER JOIN [dbo].[usuario_grupo] ug 
-    ON g.gru_codigo = ug.usg_grupo
-INNER JOIN [dbo].[usuario_docentes] doc 
-    ON ug.usg_usuario = doc.[uid];
+    usg.usg_usuario,		
+    gru.gru_nombre, 
+    usg.usg_grupo,			
+    gru.gru_id, 
+    usg.usg_uaa,			
+    usg.usg_estado, 
+    gru.gru_codigo,			
+    usg.usg_codigo, 
+    uad.up,					
+    uad.us, 
+    uad.istipo,				
+    uad.ischange, 
+    uad.uwd,				
+    uad.uwd2, 
+    uad.[state],				
+    uad.[sys], 
+    uad.[uid],				
+    uad.us_encriptado
+FROM [dbo].[usuario_grupo] AS usg
+INNER JOIN [dbo].[grupo] AS gru 
+    ON usg.usg_grupo = gru.gru_codigo 
+INNER JOIN [dbo].[usuario_docentes] AS uad 
+    ON usg.usg_usuario = uad.[uid]
+WHERE (gru.gru_codigo IN (68,69,318,34,14)) AND (usg.usg_estado = 1);
 GO

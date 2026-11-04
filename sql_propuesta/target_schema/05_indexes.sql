@@ -1080,7 +1080,7 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_solicitud_prestamo_doc
 BEGIN
     CREATE NONCLUSTERED INDEX [IX_solicitud_prestamo_docente_doc_cal_estado_inc]
     ON [programacionacademica].[solicitud_prestamo_docente] ([persona_codigo], [periodo_codigo], [spd_estado])
-    INCLUDE ([spd_codigo], [asi_codigo], [uaa_solicita], [uaa_dirigida], [aud_fecha_creacion]);
+    INCLUDE ([spd_codigo], [asi_codigo], [uaa_solicita], [uaa_dirigida], [sed_codigo]);
 END
 GO
 

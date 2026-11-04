@@ -5,7 +5,7 @@
 --              - Registro de transiciones de estado en programacion_gestion y comentarios de solicitudes
 --              - Captura de SYSTEM_USER, HOST_NAME(), marca temporal precisa y tipo de operación (I/U/D)
 -- PROYECTO: Sistema de Programación Académica (p_academica-main)
--- MOTOR OBJETIVO: Microsoft SQL Server 2016+ / Azure SQL Database / T-SQL ANSI
+-- MOTOR OBJETIVO: Microsoft SQL Server (Compatible 2012/2014/2016/2019/2022)
 -- ============================================================================
 
 SET ANSI_NULLS ON;
@@ -16,7 +16,10 @@ GO
 -- TRIGGER 1: [dbo].[TR_curso_audit]
 -- Captura inserciones, modificaciones y eliminaciones sobre [dbo].[curso] hacia [dbo].[aud_curso]
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER [dbo].[TR_curso_audit]
+IF OBJECT_ID('[dbo].[TR_curso_audit]', 'TR') IS NOT NULL
+    DROP TRIGGER [dbo].[TR_curso_audit];
+GO
+CREATE TRIGGER [dbo].[TR_curso_audit]
 ON [dbo].[curso]
 AFTER INSERT, UPDATE, DELETE
 AS
@@ -52,7 +55,7 @@ BEGIN
             i.cur_cierre, i.cur_grabado, i.cdp_codigo, i.usu_codigo, 
             i.cur_observaciones, i.cur_ampliacion_cupo, i.cur_fecha_actualizacion, 
             i.cur_notaparcial, i.tes_codigo, i.cur_url, i.cur_id_evento, 
-            SUSER_SNAME(), SYSDATETIME(), HOST_NAME(), @log_type
+            SUSER_SNAME(), GETDATE(), HOST_NAME(), @log_type
         FROM inserted i;
     END
     ELSE -- Si es DELETE, capturar registro eliminado desde deleted
@@ -73,7 +76,7 @@ BEGIN
             d.cur_cierre, d.cur_grabado, d.cdp_codigo, d.usu_codigo, 
             d.cur_observaciones, d.cur_ampliacion_cupo, d.cur_fecha_actualizacion, 
             d.cur_notaparcial, d.tes_codigo, d.cur_url, d.cur_id_evento, 
-            SUSER_SNAME(), SYSDATETIME(), HOST_NAME(), 'DELETE'
+            SUSER_SNAME(), GETDATE(), HOST_NAME(), 'DELETE'
         FROM deleted d;
     END
 END;
@@ -83,7 +86,10 @@ GO
 -- TRIGGER 2: [dbo].[TR_espacio_ocupacion_audit]
 -- Captura cambios de asignación y reservas de aulas en [dbo].[espacio_ocupacion]
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER [dbo].[TR_espacio_ocupacion_audit]
+IF OBJECT_ID('[dbo].[TR_espacio_ocupacion_audit]', 'TR') IS NOT NULL
+    DROP TRIGGER [dbo].[TR_espacio_ocupacion_audit];
+GO
+CREATE TRIGGER [dbo].[TR_espacio_ocupacion_audit]
 ON [dbo].[espacio_ocupacion]
 AFTER INSERT, UPDATE, DELETE
 AS
@@ -112,7 +118,7 @@ BEGIN
             i.eso_codigo, i.esp_codigo, i.uaa_codigo, i.eso_fecha, i.hor_codigo, 
             i.dia_codigo, i.hra_codigo, i.eso_actividad, i.eso_subgrupo, i.uap_codigo, 
             i.eso_estado, i.oct_codigo, i.eso_descripcion, i.cdp_codigo, i.ctr_codigo, i.usu_codigo, 
-            SUSER_SNAME(), SYSDATETIME(), HOST_NAME(), @log_type
+            SUSER_SNAME(), GETDATE(), HOST_NAME(), @log_type
         FROM inserted i;
     END
     ELSE
@@ -127,7 +133,7 @@ BEGIN
             d.eso_codigo, d.esp_codigo, d.uaa_codigo, d.eso_fecha, d.hor_codigo, 
             d.dia_codigo, d.hra_codigo, d.eso_actividad, d.eso_subgrupo, d.uap_codigo, 
             d.eso_estado, d.oct_codigo, d.eso_descripcion, d.cdp_codigo, d.ctr_codigo, d.usu_codigo, 
-            SUSER_SNAME(), SYSDATETIME(), HOST_NAME(), 'DELET'
+            SUSER_SNAME(), GETDATE(), HOST_NAME(), 'DELET'
         FROM deleted d;
     END
 END;
@@ -137,7 +143,10 @@ GO
 -- TRIGGER 3: [dbo].[TR_curso_cupo_subgrupo_audit]
 -- Trazabilidad sobre ampliaciones y ajustes de subgrupos y cupos
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER [dbo].[TR_curso_cupo_subgrupo_audit]
+IF OBJECT_ID('[dbo].[TR_curso_cupo_subgrupo_audit]', 'TR') IS NOT NULL
+    DROP TRIGGER [dbo].[TR_curso_cupo_subgrupo_audit];
+GO
+CREATE TRIGGER [dbo].[TR_curso_cupo_subgrupo_audit]
 ON [dbo].[curso_cupo_subgrupo]
 AFTER INSERT, UPDATE, DELETE
 AS
@@ -162,7 +171,7 @@ BEGIN
         )
         SELECT 
             i.cus_cod, i.cur_codigo, i.eso_subgrupo, i.cus_cupo, i.cus_estado, i.cus_fecha_registro,
-            SUSER_SNAME(), SYSDATETIME(), HOST_NAME(), 
+            SUSER_SNAME(), GETDATE(), HOST_NAME(), 
             ISNULL(CONVERT(VARCHAR(50), CONNECTIONPROPERTY('client_net_address')), '127.0.0.1'), 
             @log_type
         FROM inserted i;
@@ -175,7 +184,7 @@ BEGIN
         )
         SELECT 
             d.cus_cod, d.cur_codigo, d.eso_subgrupo, d.cus_cupo, d.cus_estado, d.cus_fecha_registro,
-            SUSER_SNAME(), SYSDATETIME(), HOST_NAME(), 
+            SUSER_SNAME(), GETDATE(), HOST_NAME(), 
             ISNULL(CONVERT(VARCHAR(50), CONNECTIONPROPERTY('client_net_address')), '127.0.0.1'), 
             'DELETE'
         FROM deleted d;
@@ -188,7 +197,10 @@ GO
 -- Registra eventos de apertura, cierre y cambio de fechas en programacion_gestion
 -- Suministra pts_codigo = 1 (Tipo de trámite: Programación Académica General)
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER [programacionacademica].[TR_programacion_academica_audit]
+IF OBJECT_ID('[programacionacademica].[TR_programacion_academica_audit]', 'TR') IS NOT NULL
+    DROP TRIGGER [programacionacademica].[TR_programacion_academica_audit];
+GO
+CREATE TRIGGER [programacionacademica].[TR_programacion_academica_audit]
 ON [programacionacademica].[programacion_academica]
 AFTER INSERT, UPDATE
 AS
@@ -208,7 +220,10 @@ GO
 -- TRIGGER 5: [programacionacademica].[TR_solicitud_cambio_horario_audit]
 -- Registra automáticamente el comentario de cambio de estado en la solicitud
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER [programacionacademica].[TR_solicitud_cambio_horario_audit]
+IF OBJECT_ID('[programacionacademica].[TR_solicitud_cambio_horario_audit]', 'TR') IS NOT NULL
+    DROP TRIGGER [programacionacademica].[TR_solicitud_cambio_horario_audit];
+GO
+CREATE TRIGGER [programacionacademica].[TR_solicitud_cambio_horario_audit]
 ON [programacionacademica].[solicitud_cambio_horario]
 AFTER UPDATE
 AS
@@ -224,8 +239,8 @@ BEGIN
         SELECT 
             i.sch_codigo, 
             ISNULL(i.usu_codigo, 1), 
-            SYSDATETIME(), 
-            CONCAT('Transición de estado automática: de ', d.sch_estado, ' a ', i.sch_estado, ' por ', SUSER_SNAME())
+            GETDATE(), 
+            'Transición de estado automática: de ' + ISNULL(CAST(d.sch_estado AS VARCHAR(20)), 'NULL') + ' a ' + ISNULL(CAST(i.sch_estado AS VARCHAR(20)), 'NULL') + ' por ' + ISNULL(SUSER_SNAME(), '')
         FROM inserted i
         INNER JOIN deleted d ON i.sch_codigo = d.sch_codigo
         WHERE i.sch_estado <> d.sch_estado;
@@ -237,7 +252,10 @@ GO
 -- TRIGGER 6: [programacionacademica].[TR_solicitud_prestamo_docente_audit]
 -- Registra automáticamente comentarios de cambio de estado en préstamo docente
 -- ----------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER [programacionacademica].[TR_solicitud_prestamo_docente_audit]
+IF OBJECT_ID('[programacionacademica].[TR_solicitud_prestamo_docente_audit]', 'TR') IS NOT NULL
+    DROP TRIGGER [programacionacademica].[TR_solicitud_prestamo_docente_audit];
+GO
+CREATE TRIGGER [programacionacademica].[TR_solicitud_prestamo_docente_audit]
 ON [programacionacademica].[solicitud_prestamo_docente]
 AFTER UPDATE
 AS
@@ -253,8 +271,8 @@ BEGIN
             i.spd_codigo, 
             1, 
             ISNULL(i.persona_codigo, 1), 
-            SYSDATETIME(), 
-            CONCAT('Transición de estado de préstamo docente: de ', d.spd_estado, ' a ', i.spd_estado, ' por ', SUSER_SNAME())
+            GETDATE(), 
+            'Transición de estado de préstamo docente: de ' + ISNULL(CAST(d.spd_estado AS VARCHAR(20)), 'NULL') + ' a ' + ISNULL(CAST(i.spd_estado AS VARCHAR(20)), 'NULL') + ' por ' + ISNULL(SUSER_SNAME(), '')
         FROM inserted i
         INNER JOIN deleted d ON i.spd_codigo = d.spd_codigo
         WHERE i.spd_estado <> d.spd_estado;

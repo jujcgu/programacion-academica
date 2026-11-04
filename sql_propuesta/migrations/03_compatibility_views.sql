@@ -9,7 +9,7 @@
 --              4. Provisión de vistas en esquema proaca redirigiendo a programacionacademica
 --              5. Provisión de extensiones virtuales en uaa para columnas departamentales
 -- PROYECTO: Sistema de Programación Académica (p_academica-main)
--- MOTOR OBJETIVO: Microsoft SQL Server 2016+ / Azure SQL Database / T-SQL ANSI
+-- MOTOR OBJETIVO: Microsoft SQL Server (Compatible 2012/2014/2016/2019/2022)
 -- ============================================================================
 
 SET ANSI_NULLS ON;
@@ -30,7 +30,10 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER VIEW [proaca].[programacion_academica]
+IF OBJECT_ID('[proaca].[programacion_academica]', 'V') IS NULL
+    EXEC('CREATE VIEW [proaca].[programacion_academica] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [proaca].[programacion_academica]
 AS
 SELECT 
     pra_codigo, uaa_codigo, prp_codigo, cal_codigo, 
@@ -39,16 +42,22 @@ SELECT
 FROM [programacionacademica].[programacion_academica];
 GO
 
-CREATE OR ALTER VIEW [proaca].[programacion_gestion]
+IF OBJECT_ID('[proaca].[programacion_gestion]', 'V') IS NULL
+    EXEC('CREATE VIEW [proaca].[programacion_gestion] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [proaca].[programacion_gestion]
 AS
 SELECT 
     prg_codigo, uaa_codigo, cal_codigo, 
-    prg_fecha_inicio, prg_fecha_fin, prg_estado,
+    prg_fecha_inicio, prg_fecha_fin, prg_estado, pts_codigo,
     aud_fecha_creacion, aud_usuario_creacion, aud_fecha_modificacion, aud_usuario_modificacion
 FROM [programacionacademica].[programacion_gestion];
 GO
 
-CREATE OR ALTER VIEW [proaca].[periodo_unidad]
+IF OBJECT_ID('[proaca].[periodo_unidad]', 'V') IS NULL
+    EXEC('CREATE VIEW [proaca].[periodo_unidad] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [proaca].[periodo_unidad]
 AS
 SELECT 
     peu_codigo, uaa_codigo, per_codigo, 
@@ -61,8 +70,11 @@ GO
 -- 2. VISTAS DE COMPATIBILIDAD CON ALIAS DE COLUMNAS DEFECTUOSAS / RENOMBRADAS
 -- ============================================================================
 
--- 2.1 Periodo: Expone per_año para consultas heredadas que usan la eñe
-CREATE OR ALTER VIEW [dbo].[vw_compat_periodo]
+-- 2.1 Periodo: Expone tanto per_anio como per_año para consultas heredadas
+IF OBJECT_ID('[dbo].[vw_compat_periodo]', 'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[vw_compat_periodo] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [dbo].[vw_compat_periodo]
 AS
 SELECT 
     per_codigo, 
@@ -81,7 +93,10 @@ FROM [dbo].[periodo];
 GO
 
 -- 2.2 Proyectos: Expone pre_codgo para consultas con el typo histórico
-CREATE OR ALTER VIEW [proyectos].[vw_compat_proyecto_proyeccion_social]
+IF OBJECT_ID('[proyectos].[vw_compat_proyecto_proyeccion_social]', 'V') IS NULL
+    EXEC('CREATE VIEW [proyectos].[vw_compat_proyecto_proyeccion_social] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [proyectos].[vw_compat_proyecto_proyeccion_social]
 AS
 SELECT 
     pps_codigo, pps_titulo, pra_codigo, oap_codigo, pst_codigo, otp_codigo, 
@@ -112,7 +127,10 @@ GO
 -- Permite que SELECT cur.usu_clave o eso.usu_clave no arrojen error 207
 -- ============================================================================
 
-CREATE OR ALTER VIEW [dbo].[vw_compat_curso]
+IF OBJECT_ID('[dbo].[vw_compat_curso]', 'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[vw_compat_curso] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [dbo].[vw_compat_curso]
 AS
 SELECT 
     cur_codigo, uap_codigo, asi_codigo, cur_grupo, sed_codigo, 
@@ -129,7 +147,10 @@ SELECT
 FROM [dbo].[curso];
 GO
 
-CREATE OR ALTER VIEW [dbo].[vw_compat_espacio_ocupacion]
+IF OBJECT_ID('[dbo].[vw_compat_espacio_ocupacion]', 'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[vw_compat_espacio_ocupacion] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [dbo].[vw_compat_espacio_ocupacion]
 AS
 SELECT 
     eso_codigo, esp_codigo, uaa_codigo, eso_fecha, hor_codigo, 
@@ -145,7 +166,10 @@ GO
 -- 4. VISTA DE COMPATIBILIDAD UAA EXTENDIDA
 -- Resuelve consultas en Soldoc.php y Inicio_sesion.php que esperan columnas de programa en uaa
 -- ============================================================================
-CREATE OR ALTER VIEW [dbo].[vw_compat_uaa]
+IF OBJECT_ID('[dbo].[vw_compat_uaa]', 'V') IS NULL
+    EXEC('CREATE VIEW [dbo].[vw_compat_uaa] AS SELECT 1 AS stub');
+GO
+ALTER VIEW [dbo].[vw_compat_uaa]
 AS
 SELECT 
     u.uaa_codigo,

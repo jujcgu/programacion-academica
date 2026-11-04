@@ -2078,6 +2078,22 @@ BEGIN
         [cdp_codigo] [int] NULL,
         [ctr_codigo] [int] NULL,
         [usu_codigo] [int] NULL,
+        [usu_clave] [varchar](50) NULL,
+        [sippa_sedcodigo] [int] NULL,
+        [sippa_calcodigo] [int] NULL,
+        [sippa_progcodigo] [int] NULL,
+        [sippa_plancodigo] [int] NULL,
+        [sippa_asicodigo] [int] NULL,
+        [sippa_grucodigo] [int] NULL,
+        [sippa_subgrucodigo] [char](2) NULL,
+        [sippa_horfecini] [datetime] NULL,
+        [sippa_horfecfin] [datetime] NULL,
+        [sippa_horcodigo] [int] NULL,
+        [sippa_doccedula] [varchar](20) NULL,
+        [sippa_salcodigo] [int] NULL,
+        [sippa_horsemanas] [int] NULL,
+        [sippa_horfactor] [decimal](5,2) NULL,
+        [sippa_vincodigo] [int] NULL,
         [aud_fecha_creacion] [datetime2](7) NOT NULL CONSTRAINT [DF_espacio_ocupacion_historico_aud_fecha_creacion] DEFAULT (sysdatetime()),
         [aud_usuario_creacion] [nvarchar](128) NOT NULL CONSTRAINT [DF_espacio_ocupacion_historico_aud_usuario_creacion] DEFAULT (suser_sname()),
         CONSTRAINT [PK_espacio_ocupacion_historico] PRIMARY KEY CLUSTERED ([eso_codigo] ASC)
@@ -2106,14 +2122,19 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_docentes')
 BEGIN
     CREATE TABLE [dbo].[usuario_docentes](
-        [uid] [varchar](50) NOT NULL,
-        [per_codigo] [int] NULL,
-        [uaa_codigo] [int] NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
-        [us_titulo] [varchar](100) NULL,
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [uwd] [varbinary](256) NULL,
+        [uwd2] [varbinary](256) NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_docentes_state] DEFAULT (1),
+        [sys] [varchar](50) NULL,
         [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_docentes_us_estado] DEFAULT (1),
+        [us_pregunta] [varchar](150) NULL,
+        [us_respuesta] [varchar](150) NULL,
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_docentes] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2122,14 +2143,19 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_administrativos')
 BEGIN
     CREATE TABLE [dbo].[usuario_administrativos](
-        [uid] [varchar](50) NOT NULL,
-        [per_codigo] [int] NULL,
-        [uaa_codigo] [int] NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
-        [us_titulo] [varchar](100) NULL,
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [uwd] [varbinary](256) NULL,
+        [uwd2] [varbinary](256) NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_administrativos_state] DEFAULT (1),
+        [sys] [varchar](50) NULL,
         [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_administrativos_us_estado] DEFAULT (1),
+        [us_pregunta] [varchar](150) NULL,
+        [us_respuesta] [varchar](150) NULL,
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_administrativos] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2138,12 +2164,17 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_estudiantes')
 BEGIN
     CREATE TABLE [dbo].[usuario_estudiantes](
-        [uid] [varchar](50) NOT NULL,
-        [est_codigo] [char](11) NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_estudiantes_state] DEFAULT (1),
+        [sys] [varchar](50) NULL,
         [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_estudiantes_us_estado] DEFAULT (1),
+        [us_pregunta] [varchar](150) NULL,
+        [us_respuesta] [varchar](150) NULL,
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_estudiantes] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2152,12 +2183,17 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_estudiantes_virtual')
 BEGIN
     CREATE TABLE [dbo].[usuario_estudiantes_virtual](
-        [uid] [varchar](50) NOT NULL,
-        [est_codigo] [char](11) NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_estudiantes_virtual_state] DEFAULT (1),
+        [sys] [varchar](50) NULL,
         [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_estudiantes_virtual_us_estado] DEFAULT (1),
+        [us_pregunta] [varchar](150) NULL,
+        [us_respuesta] [varchar](150) NULL,
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_estudiantes_virtual] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2166,12 +2202,17 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_estudiantes_intercambio')
 BEGIN
     CREATE TABLE [dbo].[usuario_estudiantes_intercambio](
-        [uid] [varchar](50) NOT NULL,
-        [est_codigo] [char](11) NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_estudiantes_intercambio_state] DEFAULT (1),
+        [sys] [varchar](50) NULL,
         [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_estudiantes_intercambio_us_estado] DEFAULT (1),
+        [us_pregunta] [varchar](150) NULL,
+        [us_respuesta] [varchar](150) NULL,
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_estudiantes_intercambio] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2180,12 +2221,13 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_graduados')
 BEGIN
     CREATE TABLE [dbo].[usuario_graduados](
-        [uid] [varchar](50) NOT NULL,
-        [per_codigo] [int] NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
-        [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_graduados_us_estado] DEFAULT (1),
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_graduados_state] DEFAULT (1),
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_graduados] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2194,12 +2236,17 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'usuario_externos')
 BEGIN
     CREATE TABLE [dbo].[usuario_externos](
-        [uid] [varchar](50) NOT NULL,
-        [per_codigo] [int] NULL,
-        [us_nombre] [varchar](100) NULL,
-        [us_apellido] [varchar](100) NULL,
+        [uid] [int] NOT NULL,
+        [up] [varchar](50) NULL,
+        [us] [varchar](100) NULL,
+        [istipo] [int] NULL,
+        [ischange] [int] NULL,
+        [state] [tinyint] NOT NULL CONSTRAINT [DF_usuario_externos_state] DEFAULT (1),
+        [sys] [varchar](50) NULL,
         [us_correo] [varchar](150) NULL,
-        [us_estado] [tinyint] NOT NULL CONSTRAINT [DF_usuario_externos_us_estado] DEFAULT (1),
+        [us_pregunta] [varchar](150) NULL,
+        [us_respuesta] [varchar](150) NULL,
+        [us_encriptado] [varchar](100) NULL,
         CONSTRAINT [PK_usuario_externos] PRIMARY KEY CLUSTERED ([uid] ASC)
     );
 END
@@ -2211,13 +2258,47 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'matricula_curso_actual')
 BEGIN
     CREATE TABLE [dbo].[matricula_curso_actual](
+        [mac_codigo] [int] IDENTITY(1,1) NOT NULL,
         [mat_codigo] [int] NOT NULL,
         [cur_codigo] [int] NOT NULL,
-        [est_codigo] [char](11) NOT NULL,
-        [mac_nota_definitiva] [decimal](3,1) NULL,
+        [mac_subgrupo] [char](2) NULL,
         [mac_estado] [tinyint] NOT NULL CONSTRAINT [DF_matricula_curso_actual_mac_estado] DEFAULT (1),
-        [per_codigo] [int] NULL,
-        CONSTRAINT [PK_matricula_curso_actual] PRIMARY KEY CLUSTERED ([mat_codigo] ASC, [cur_codigo] ASC)
+        [mac_nota] [decimal](3,1) NULL,
+        [mac_habilitacion] [decimal](3,1) NULL,
+        [mac_perdio_fallas] [tinyint] NULL,
+        [mac_definitiva] [decimal](3,1) NULL,
+        [maf_codigo] [smallint] NULL,
+        [res_codigo] [int] NULL,
+        [paa_codigo] [int] NULL,
+        [mac_novedad] [int] NULL,
+        [maa_codigo] [smallint] NULL,
+        [mac_usuario] [varchar](50) NULL,
+        [mac_ip_nota] [varchar](50) NULL,
+        [mac_clave] [varchar](50) NULL,
+        [mac_cliente] [varchar](50) NULL,
+        [mac_fecha_nota] [datetime] NULL,
+        [paa_codigo_anterior] [int] NULL,
+        [sippa_sedcodigo] [int] NULL,
+        [sippa_calcodigo] [int] NULL,
+        [sippa_estcodigo] [char](11) NULL,
+        [sippa_progcodigo] [int] NULL,
+        [sippa_plancodigo] [int] NULL,
+        [sippa_asicodigo] [int] NULL,
+        [sippa_horasasignatura] [int] NULL,
+        [sippa_grucodigo] [int] NULL,
+        [sippa_subgrucodigo] [char](2) NULL,
+        [sippa_cursemestre] [int] NULL,
+        [sippa_curasignatura] [int] NULL,
+        [sippa_curnomasigna] [varchar](150) NULL,
+        [sippa_curforma] [int] NULL,
+        [sippa_curautorizacion] [int] NULL,
+        [temporal_null] [varchar](50) NULL,
+        [mac_usuario_nota] [varchar](50) NULL,
+        [mac_cliente_nota] [varchar](50) NULL,
+        [esc_codigo] [int] NULL,
+        [esc_nombre] [varchar](100) NULL,
+        [mac_fecha_hora] [datetime] NULL,
+        CONSTRAINT [PK_matricula_curso_actual] PRIMARY KEY CLUSTERED ([mac_codigo] ASC)
     );
 END
 GO
@@ -2225,13 +2306,47 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'matricula_curso_historico')
 BEGIN
     CREATE TABLE [dbo].[matricula_curso_historico](
+        [mac_codigo] [int] IDENTITY(1,1) NOT NULL,
         [mat_codigo] [int] NOT NULL,
         [cur_codigo] [int] NOT NULL,
-        [est_codigo] [char](11) NOT NULL,
-        [mac_nota_definitiva] [decimal](3,1) NULL,
+        [mac_subgrupo] [char](2) NULL,
         [mac_estado] [tinyint] NOT NULL CONSTRAINT [DF_matricula_curso_historico_mac_estado] DEFAULT (1),
-        [per_codigo] [int] NULL,
-        CONSTRAINT [PK_matricula_curso_historico] PRIMARY KEY CLUSTERED ([mat_codigo] ASC, [cur_codigo] ASC)
+        [mac_nota] [decimal](3,1) NULL,
+        [mac_habilitacion] [decimal](3,1) NULL,
+        [mac_perdio_fallas] [tinyint] NULL,
+        [mac_definitiva] [decimal](3,1) NULL,
+        [maf_codigo] [smallint] NULL,
+        [res_codigo] [int] NULL,
+        [paa_codigo] [int] NULL,
+        [mac_novedad] [int] NULL,
+        [maa_codigo] [smallint] NULL,
+        [mac_usuario] [varchar](50) NULL,
+        [mac_ip_nota] [varchar](50) NULL,
+        [mac_clave] [varchar](50) NULL,
+        [mac_cliente] [varchar](50) NULL,
+        [mac_fecha_nota] [datetime] NULL,
+        [paa_codigo_anterior] [int] NULL,
+        [sippa_sedcodigo] [int] NULL,
+        [sippa_calcodigo] [int] NULL,
+        [sippa_estcodigo] [char](11) NULL,
+        [sippa_progcodigo] [int] NULL,
+        [sippa_plancodigo] [int] NULL,
+        [sippa_asicodigo] [int] NULL,
+        [sippa_horasasignatura] [int] NULL,
+        [sippa_grucodigo] [int] NULL,
+        [sippa_subgrucodigo] [char](2) NULL,
+        [sippa_cursemestre] [int] NULL,
+        [sippa_curasignatura] [int] NULL,
+        [sippa_curnomasigna] [varchar](150) NULL,
+        [sippa_curforma] [int] NULL,
+        [sippa_curautorizacion] [int] NULL,
+        [temporal_null] [varchar](50) NULL,
+        [mac_usuario_nota] [varchar](50) NULL,
+        [mac_cliente_nota] [varchar](50) NULL,
+        [esc_codigo] [int] NULL,
+        [esc_nombre] [varchar](100) NULL,
+        [mac_fecha_hora] [datetime] NULL,
+        CONSTRAINT [PK_matricula_curso_historico] PRIMARY KEY CLUSTERED ([mac_codigo] ASC)
     );
 END
 GO
@@ -2239,13 +2354,47 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE s.name = 'dbo' AND t.name = 'matricula_multicurso')
 BEGIN
     CREATE TABLE [dbo].[matricula_multicurso](
+        [mac_codigo] [int] IDENTITY(1,1) NOT NULL,
         [mat_codigo] [int] NOT NULL,
         [cur_codigo] [int] NOT NULL,
-        [est_codigo] [char](11) NOT NULL,
-        [mac_nota_definitiva] [decimal](3,1) NULL,
+        [mac_subgrupo] [char](2) NULL,
         [mac_estado] [tinyint] NOT NULL CONSTRAINT [DF_matricula_multicurso_mac_estado] DEFAULT (1),
-        [per_codigo] [int] NULL,
-        CONSTRAINT [PK_matricula_multicurso] PRIMARY KEY CLUSTERED ([mat_codigo] ASC, [cur_codigo] ASC)
+        [mac_nota] [decimal](3,1) NULL,
+        [mac_habilitacion] [decimal](3,1) NULL,
+        [mac_perdio_fallas] [tinyint] NULL,
+        [mac_definitiva] [decimal](3,1) NULL,
+        [maf_codigo] [smallint] NULL,
+        [res_codigo] [int] NULL,
+        [paa_codigo] [int] NULL,
+        [mac_novedad] [int] NULL,
+        [maa_codigo] [smallint] NULL,
+        [mac_usuario] [varchar](50) NULL,
+        [mac_ip_nota] [varchar](50) NULL,
+        [mac_clave] [varchar](50) NULL,
+        [mac_cliente] [varchar](50) NULL,
+        [mac_fecha_nota] [datetime] NULL,
+        [paa_codigo_anterior] [int] NULL,
+        [sippa_sedcodigo] [int] NULL,
+        [sippa_calcodigo] [int] NULL,
+        [sippa_estcodigo] [char](11) NULL,
+        [sippa_progcodigo] [int] NULL,
+        [sippa_plancodigo] [int] NULL,
+        [sippa_asicodigo] [int] NULL,
+        [sippa_horasasignatura] [int] NULL,
+        [sippa_grucodigo] [int] NULL,
+        [sippa_subgrucodigo] [char](2) NULL,
+        [sippa_cursemestre] [int] NULL,
+        [sippa_curasignatura] [int] NULL,
+        [sippa_curnomasigna] [varchar](150) NULL,
+        [sippa_curforma] [int] NULL,
+        [sippa_curautorizacion] [int] NULL,
+        [temporal_null] [varchar](50) NULL,
+        [mac_usuario_nota] [varchar](50) NULL,
+        [mac_cliente_nota] [varchar](50) NULL,
+        [esc_codigo] [int] NULL,
+        [esc_nombre] [varchar](100) NULL,
+        [mac_fecha_hora] [datetime] NULL,
+        CONSTRAINT [PK_matricula_multicurso] PRIMARY KEY CLUSTERED ([mac_codigo] ASC)
     );
 END
 GO
@@ -2257,11 +2406,26 @@ IF NOT EXISTS (SELECT * FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.
 BEGIN
     CREATE TABLE [dbo].[resumen_docencia_sem](
         [rds_codigo] [int] IDENTITY(1,1) NOT NULL,
+        [per_apellido] [varchar](100) NULL,
+        [per_nombre] [varchar](100) NULL,
+        [periodo] [int] NOT NULL,
+        [vin_codigo] [int] NULL,
+        [vin_nombre] [varchar](50) NULL,
+        [ded_codigo] [int] NULL,
+        [ded_nombre] [varchar](50) NULL,
+        [uaa_codigo] [int] NULL,
+        [uaa_dependencia] [int] NULL,
+        [per_identificacion] [varchar](30) NULL,
         [per_codigo] [int] NOT NULL,
-        [uap_codigo] [int] NOT NULL,
+        [c_horas] [decimal](5,2) NOT NULL,
+        [semanas] [int] NULL,
+        [uaa_nombre_corto] [varchar](50) NULL,
+        [persona] [varchar](200) NULL,
+        [uaa_nombre] [varchar](150) NULL,
         [cur_codigo] [int] NULL,
-        [rds_horas] [decimal](5,2) NOT NULL,
-        [rds_estado] [tinyint] NOT NULL CONSTRAINT [DF_resumen_docencia_sem_rds_estado] DEFAULT (1),
+        [eso_subgrupo] [char](2) NULL,
+        [cur_grupo] [varchar](10) NULL,
+        [uap_codigo] [int] NOT NULL,
         CONSTRAINT [PK_resumen_docencia_sem] PRIMARY KEY CLUSTERED ([rds_codigo] ASC)
     );
 END
