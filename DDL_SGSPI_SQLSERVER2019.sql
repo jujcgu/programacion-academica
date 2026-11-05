@@ -31,59 +31,61 @@
   - [esp] : dbo.espacio ([esp_codigo])              - [gru] : dbo.grupo ([gru_codigo])
   - [uaa] : dbo.uaa ([uaa_codigo])                  - [usg] : dbo.usuario_grupo ([usg_codigo])
 ==================================================================================================*/
-
 SET NOCOUNT ON;
+
 SET XACT_ABORT ON;
-GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'sgspi')
-BEGIN
-    EXEC(N'CREATE SCHEMA sgspi AUTHORIZATION dbo;');
-END
-GO
 
+GO
+IF NOT EXISTS (SELECT 1
+               FROM   sys.schemas
+               WHERE  name = N'sgspi')
+    BEGIN
+        EXECUTE (N'CREATE SCHEMA sgspi AUTHORIZATION dbo;');
+    END
+
+
+GO
 /*==================================================================================================
   1. DOMINIO TRANSVERSAL, GOBERNANZA SGC Y ARTICULACIÓN CON [dbo]
 ==================================================================================================*/
-
 -- 1.1 [pev] Periodos de Vigencia Anual del SGSPI
 CREATE TABLE sgspi.periodo_vigencia (
-    pev_codigo              SMALLINT IDENTITY(1,1) NOT NULL,
-    pev_anio                SMALLINT NOT NULL,
-    pev_fecha_apertura      DATE NOT NULL,
-    pev_fecha_cierre        DATE NULL,
-    pev_estado_vigencia     NVARCHAR(20) NOT NULL DEFAULT N'ABIERTA',
-    pev_fecha_creacion      DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    pev_codigo          SMALLINT      IDENTITY (1, 1) NOT NULL,
+    pev_anio            SMALLINT      NOT NULL,
+    pev_fecha_apertura  DATE          NOT NULL,
+    pev_fecha_cierre    DATE          NULL,
+    pev_estado_vigencia NVARCHAR (20) DEFAULT N'ABIERTA' NOT NULL,
+    pev_fecha_creacion  DATETIME2 (0) DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_pev_periodo_vigencia PRIMARY KEY CLUSTERED (pev_codigo),
     CONSTRAINT UQ_pev_anio UNIQUE (pev_anio),
     CONSTRAINT CK_pev_estado_vigencia CHECK (pev_estado_vigencia IN (N'EN_CONFIGURACION', N'ABIERTA', N'CERRADA', N'HISTORICA')),
-    CONSTRAINT CK_pev_fechas CHECK (pev_fecha_cierre IS NULL OR pev_fecha_cierre >= pev_fecha_apertura)
+    CONSTRAINT CK_pev_fechas CHECK (pev_fecha_cierre IS NULL
+                                    OR pev_fecha_cierre >= pev_fecha_apertura)
 );
 
 -- 1.2 [fdv] Control Documental de Versiones de Formatos SGC/SGSPI por Vigencia
 CREATE TABLE sgspi.formato_documental_version (
-    fdv_codigo                  SMALLINT IDENTITY(1,1) NOT NULL,
-    pev_codigo                  SMALLINT NOT NULL,
-    fdv_dominio_funcional       NVARCHAR(40) NOT NULL, -- 'CONTEXTO_DOFA', 'PARTES_INTERESADAS', 'INVENTARIO_ACTIVOS', 'RIESGOS_Y_OPORTUNIDADES'
-    fdv_codigo_formato          NVARCHAR(20) NOT NULL, -- 'ES-GSPI-MR-01', 'ES-GSPI-MR-03', 'ES-GSPI-MR-05', 'ES-GSPI-MR-06'
-    fdv_numero_version          NVARCHAR(10) NOT NULL, -- '02', '04', '01', '02'
-    fdv_nombre_oficial_formato  NVARCHAR(200) NOT NULL,
-    fdv_fecha_emision_formato   DATE NULL,
-    fdv_es_version_activa       BIT NOT NULL DEFAULT 1,
+    fdv_codigo                 SMALLINT       IDENTITY (1, 1) NOT NULL,
+    pev_codigo                 SMALLINT       NOT NULL,
+    fdv_dominio_funcional      NVARCHAR (40)  NOT NULL, -- 'CONTEXTO_DOFA', 'PARTES_INTERESADAS', 'INVENTARIO_ACTIVOS', 'RIESGOS_Y_OPORTUNIDADES'
+    fdv_codigo_formato         NVARCHAR (20)  NOT NULL, -- 'ES-GSPI-MR-01', 'ES-GSPI-MR-03', 'ES-GSPI-MR-05', 'ES-GSPI-MR-06'
+    fdv_numero_version         NVARCHAR (10)  NOT NULL, -- '02', '04', '01', '02'
+    fdv_nombre_oficial_formato NVARCHAR (200) NOT NULL,
+    fdv_fecha_emision_formato  DATE           NULL,
+    fdv_es_version_activa      BIT            DEFAULT 1 NOT NULL,
     CONSTRAINT PK_fdv_formato_documental_version PRIMARY KEY CLUSTERED (fdv_codigo),
     CONSTRAINT UQ_fdv_vigencia_dominio UNIQUE (pev_codigo, fdv_dominio_funcional),
     CONSTRAINT FK_fdv_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
-    CONSTRAINT CK_fdv_dominio_funcional CHECK (fdv_dominio_funcional IN (
-        N'CONTEXTO_DOFA', N'PARTES_INTERESADAS', N'INVENTARIO_ACTIVOS', N'RIESGOS_Y_OPORTUNIDADES'
-    ))
+    CONSTRAINT CK_fdv_dominio_funcional CHECK (fdv_dominio_funcional IN (N'CONTEXTO_DOFA', N'PARTES_INTERESADAS', N'INVENTARIO_ACTIVOS', N'RIESGOS_Y_OPORTUNIDADES'))
 );
 
 -- 1.3 [tpr] Catálogo de Tipos de Proceso del Sistema Integrado de Gestión (MIPG / SGC)
 CREATE TABLE sgspi.tipo_proceso_catalogo (
-    tpr_codigo              TINYINT IDENTITY(1,1) NOT NULL,
-    tpr_identificador       NVARCHAR(20) NOT NULL,
-    tpr_nombre              NVARCHAR(50) NOT NULL, -- 'ESTRATÉGICO', 'MISIONAL', 'APOYO', 'EVALUACIÓN'
-    tpr_descripcion         NVARCHAR(255) NULL,
+    tpr_codigo        TINYINT        IDENTITY (1, 1) NOT NULL,
+    tpr_identificador NVARCHAR (20)  NOT NULL,
+    tpr_nombre        NVARCHAR (50)  NOT NULL, -- 'ESTRATÉGICO', 'MISIONAL', 'APOYO', 'EVALUACIÓN'
+    tpr_descripcion   NVARCHAR (255) NULL,
     CONSTRAINT PK_tpr_tipo_proceso_catalogo PRIMARY KEY CLUSTERED (tpr_codigo),
     CONSTRAINT UQ_tpr_identificador UNIQUE (tpr_identificador),
     CONSTRAINT CK_tpr_nombre CHECK (tpr_nombre IN (N'ESTRATÉGICO', N'MISIONAL', N'APOYO', N'EVALUACIÓN'))
@@ -91,13 +93,13 @@ CREATE TABLE sgspi.tipo_proceso_catalogo (
 
 -- 1.4 [pri] Procesos Institucionales (Los 21 procesos del SGC / SGSPI USCO)
 CREATE TABLE sgspi.proceso_institucional (
-    pri_codigo              INT IDENTITY(1,1) NOT NULL,
-    pri_identificador       NVARCHAR(20) NOT NULL,
-    pri_nombre              NVARCHAR(150) NOT NULL,
-    tpr_codigo              TINYINT NOT NULL,
-    pri_uaa_codigo_lider    INT NULL, -- FK a [dbo].[uaa]([uaa_codigo])
-    pri_car_codigo_lider    INT NULL, -- FK a [dbo].[cargo]([car_codigo])
-    pri_esta_activo         BIT NOT NULL DEFAULT 1,
+    pri_codigo           INT            IDENTITY (1, 1) NOT NULL,
+    pri_identificador    NVARCHAR (20)  NOT NULL,
+    pri_nombre           NVARCHAR (150) NOT NULL,
+    tpr_codigo           TINYINT        NOT NULL,
+    pri_uaa_codigo_lider INT            NULL, -- FK a [dbo].[uaa]([uaa_codigo])
+    pri_car_codigo_lider INT            NULL, -- FK a [dbo].[cargo]([car_codigo])
+    pri_esta_activo      BIT            DEFAULT 1 NOT NULL,
     CONSTRAINT PK_pri_proceso_institucional PRIMARY KEY CLUSTERED (pri_codigo),
     CONSTRAINT UQ_pri_nombre UNIQUE (pri_nombre),
     CONSTRAINT FK_pri_tipo_proceso FOREIGN KEY (tpr_codigo) REFERENCES sgspi.tipo_proceso_catalogo (tpr_codigo),
@@ -107,27 +109,27 @@ CREATE TABLE sgspi.proceso_institucional (
 
 -- 1.5 [pru] Tabla Puente N:M Proceso SGC <-> Unidades Académico-Administrativas ([dbo].[uaa])
 CREATE TABLE sgspi.proceso_uaa (
-    pru_codigo                      INT IDENTITY(1,1) NOT NULL,
-    pri_codigo                      INT NOT NULL,
-    uaa_codigo                      INT NOT NULL, -- FK a [dbo].[uaa]([uaa_codigo])
-    pru_es_responsable_principal    BIT NOT NULL DEFAULT 0,
+    pru_codigo                   INT IDENTITY (1, 1) NOT NULL,
+    pri_codigo                   INT NOT NULL,
+    uaa_codigo                   INT NOT NULL, -- FK a [dbo].[uaa]([uaa_codigo])
+    pru_es_responsable_principal BIT DEFAULT 0 NOT NULL,
     CONSTRAINT PK_pru_proceso_uaa PRIMARY KEY CLUSTERED (pru_codigo),
     CONSTRAINT UQ_pru_proceso_uaa UNIQUE (pri_codigo, uaa_codigo),
     CONSTRAINT FK_pru_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo) ON DELETE CASCADE,
     CONSTRAINT FK_pru_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo)
 );
-GO
 
+
+GO
 /*==================================================================================================
   2. DOMINIO DE CONTEXTO ORGANIZACIONAL — MATRIZ DOFA (DOCUMENTOS 1 Y 2: ES-GSPI-MR-01)
 ==================================================================================================*/
-
 -- 2.1 [fec] Catálogo de Factores de Entorno (Variables Internas y Externas)
 CREATE TABLE sgspi.factor_entorno_catalogo (
-    fec_codigo              SMALLINT IDENTITY(1,1) NOT NULL,
-    fec_nombre_factor       NVARCHAR(100) NOT NULL,
-    fec_ambito_entorno      NVARCHAR(15) NOT NULL, -- 'INTERNO', 'EXTERNO'
-    fec_descripcion         NVARCHAR(255) NULL,
+    fec_codigo         SMALLINT       IDENTITY (1, 1) NOT NULL,
+    fec_nombre_factor  NVARCHAR (100) NOT NULL,
+    fec_ambito_entorno NVARCHAR (15)  NOT NULL, -- 'INTERNO', 'EXTERNO'
+    fec_descripcion    NVARCHAR (255) NULL,
     CONSTRAINT PK_fec_factor_entorno_catalogo PRIMARY KEY CLUSTERED (fec_codigo),
     CONSTRAINT UQ_fec_nombre_ambito UNIQUE (fec_nombre_factor, fec_ambito_entorno),
     CONSTRAINT CK_fec_ambito_entorno CHECK (fec_ambito_entorno IN (N'INTERNO', N'EXTERNO'))
@@ -135,21 +137,21 @@ CREATE TABLE sgspi.factor_entorno_catalogo (
 
 -- 2.2 [acf] Análisis de Factores de Contexto por Proceso (DOFA por Proceso y Consolidado)
 CREATE TABLE sgspi.analisis_contexto_factor (
-    acf_codigo                  INT IDENTITY(1,1) NOT NULL,
-    pev_codigo                  SMALLINT NOT NULL,
-    pri_codigo                  INT NOT NULL,
-    fec_codigo                  SMALLINT NOT NULL,
-    acf_ambito_entorno          NVARCHAR(15) NOT NULL, -- 'INTERNO', 'EXTERNO'
-    acf_naturaleza_factor       NVARCHAR(15) NOT NULL, -- 'DEBILIDAD', 'FORTALEZA', 'AMENAZA', 'OPORTUNIDAD'
-    acf_descripcion_situacion   NVARCHAR(MAX) NOT NULL,
-    acf_nivel_prioridad         NVARCHAR(10) NOT NULL, -- 'Alta', 'Media', 'Baja'
-    acf_impacto_sistema_gestion NVARCHAR(MAX) NULL,
-    acf_accion_propuesta        NVARCHAR(MAX) NULL,
-    acf_estado_registro         NVARCHAR(30) NOT NULL DEFAULT N'BORRADOR',
-    acf_per_codigo_creador      INT NOT NULL, -- FK a [dbo].[persona]([per_codigo])
-    acf_per_codigo_aprobador    INT NULL,     -- FK a [dbo].[persona]([per_codigo])
-    acf_fecha_creacion          DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
-    acf_fecha_actualizacion     DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    acf_codigo                  INT            IDENTITY (1, 1) NOT NULL,
+    pev_codigo                  SMALLINT       NOT NULL,
+    pri_codigo                  INT            NOT NULL,
+    fec_codigo                  SMALLINT       NOT NULL,
+    acf_ambito_entorno          NVARCHAR (15)  NOT NULL, -- 'INTERNO', 'EXTERNO'
+    acf_naturaleza_factor       NVARCHAR (15)  NOT NULL, -- 'DEBILIDAD', 'FORTALEZA', 'AMENAZA', 'OPORTUNIDAD'
+    acf_descripcion_situacion   NVARCHAR (MAX) NOT NULL,
+    acf_nivel_prioridad         NVARCHAR (10)  NOT NULL, -- 'Alta', 'Media', 'Baja'
+    acf_impacto_sistema_gestion NVARCHAR (MAX) NULL,
+    acf_accion_propuesta        NVARCHAR (MAX) NULL,
+    acf_estado_registro         NVARCHAR (30)  DEFAULT N'BORRADOR' NOT NULL,
+    acf_per_codigo_creador      INT            NOT NULL, -- FK a [dbo].[persona]([per_codigo])
+    acf_per_codigo_aprobador    INT            NULL, -- FK a [dbo].[persona]([per_codigo])
+    acf_fecha_creacion          DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
+    acf_fecha_actualizacion     DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_acf_analisis_contexto_factor PRIMARY KEY CLUSTERED (acf_codigo),
     CONSTRAINT FK_acf_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_acf_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo),
@@ -157,33 +159,31 @@ CREATE TABLE sgspi.analisis_contexto_factor (
     CONSTRAINT FK_acf_dbo_persona_creador FOREIGN KEY (acf_per_codigo_creador) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_acf_dbo_persona_aprobador FOREIGN KEY (acf_per_codigo_aprobador) REFERENCES dbo.persona (per_codigo),
     -- RN-DOFA-01 y RN-DOFA-02: Coherencia estricta entre ámbito (Interno/Externo) y naturaleza (DOFA)
-    CONSTRAINT CK_acf_ambito_naturaleza CHECK (
-        (acf_ambito_entorno = N'INTERNO' AND acf_naturaleza_factor IN (N'DEBILIDAD', N'FORTALEZA')) OR
-        (acf_ambito_entorno = N'EXTERNO' AND acf_naturaleza_factor IN (N'AMENAZA', N'OPORTUNIDAD'))
-    ),
+    CONSTRAINT CK_acf_ambito_naturaleza CHECK ((acf_ambito_entorno = N'INTERNO'
+                                                AND acf_naturaleza_factor IN (N'DEBILIDAD', N'FORTALEZA'))
+                                               OR (acf_ambito_entorno = N'EXTERNO'
+                                                   AND acf_naturaleza_factor IN (N'AMENAZA', N'OPORTUNIDAD'))),
     CONSTRAINT CK_acf_nivel_prioridad CHECK (acf_nivel_prioridad IN (N'Alta', N'Media', N'Baja')),
     -- RN-DOFA-03: Si la prioridad es Alta y no está en borrador, exige Impacto y Acción Propuesta
-    CONSTRAINT CK_acf_prioridad_alta_campos CHECK (
-        acf_estado_registro = N'BORRADOR' OR acf_nivel_prioridad <> N'Alta' OR
-        (LEN(TRIM(ISNULL(acf_impacto_sistema_gestion, N''))) > 0 AND LEN(TRIM(ISNULL(acf_accion_propuesta, N''))) > 0)
-    ),
-    CONSTRAINT CK_acf_estado_registro CHECK (acf_estado_registro IN (
-        N'BORRADOR', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'OBSERVADO', N'VIGENTE', N'HISTORICO'
-    ))
+    CONSTRAINT CK_acf_prioridad_alta_campos CHECK (acf_estado_registro = N'BORRADOR'
+                                                   OR acf_nivel_prioridad <> N'Alta'
+                                                   OR (LEN(TRIM(ISNULL(acf_impacto_sistema_gestion, N''))) > 0
+                                                       AND LEN(TRIM(ISNULL(acf_accion_propuesta, N''))) > 0)),
+    CONSTRAINT CK_acf_estado_registro CHECK (acf_estado_registro IN (N'BORRADOR', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'OBSERVADO', N'VIGENTE', N'HISTORICO'))
 );
-GO
 
+
+GO
 /*==================================================================================================
   3. DOMINIO DE PARTES INTERESADAS (DOCUMENTO 3: ES-GSPI-MR-03)
 ==================================================================================================*/
-
 -- 3.1 [pai] Catálogo de Partes Interesadas (Internas y Externas)
 CREATE TABLE sgspi.parte_interesada (
-    pai_codigo                  INT IDENTITY(1,1) NOT NULL,
-    pai_nombre                  NVARCHAR(150) NOT NULL,
-    pai_origen                  NVARCHAR(15) NOT NULL, -- 'Interna', 'Externa'
-    pai_descripcion_rol         NVARCHAR(255) NULL,
-    pai_esta_activa             BIT NOT NULL DEFAULT 1,
+    pai_codigo          INT            IDENTITY (1, 1) NOT NULL,
+    pai_nombre          NVARCHAR (150) NOT NULL,
+    pai_origen          NVARCHAR (15)  NOT NULL, -- 'Interna', 'Externa'
+    pai_descripcion_rol NVARCHAR (255) NULL,
+    pai_esta_activa     BIT            DEFAULT 1 NOT NULL,
     CONSTRAINT PK_pai_parte_interesada PRIMARY KEY CLUSTERED (pai_codigo),
     CONSTRAINT UQ_pai_nombre UNIQUE (pai_nombre),
     CONSTRAINT CK_pai_origen CHECK (pai_origen IN (N'Interna', N'Externa'))
@@ -191,144 +191,123 @@ CREATE TABLE sgspi.parte_interesada (
 
 -- 3.2 [rpi] Necesidades, Expectativas y Requisitos por Parte Interesada
 CREATE TABLE sgspi.requisito_parte_interesada (
-    rpi_codigo                  INT IDENTITY(1,1) NOT NULL,
-    pev_codigo                  SMALLINT NOT NULL,
-    pai_codigo                  INT NOT NULL,
-    rpi_referencia_cuestionario NVARCHAR(30) NULL, -- Ej: '6-7-8', 'N/A'
-    rpi_necesidad_expectativa   NVARCHAR(MAX) NOT NULL,
-    rpi_nivel_poder             NVARCHAR(10) NOT NULL, -- 'Alto', 'Medio', 'Bajo'
-    rpi_nivel_interes           NVARCHAR(10) NOT NULL, -- 'Alto', 'Medio', 'Bajo'
+    rpi_codigo                  INT            IDENTITY (1, 1) NOT NULL,
+    pev_codigo                  SMALLINT       NOT NULL,
+    pai_codigo                  INT            NOT NULL,
+    rpi_referencia_cuestionario NVARCHAR (30)  NULL, -- Ej: '6-7-8', 'N/A'
+    rpi_necesidad_expectativa   NVARCHAR (MAX) NOT NULL,
+    rpi_nivel_poder             NVARCHAR (10)  NOT NULL, -- 'Alto', 'Medio', 'Bajo'
+    rpi_nivel_interes           NVARCHAR (10)  NOT NULL, -- 'Alto', 'Medio', 'Bajo'
     -- Campo Calculado en Tiempo de Ejecución #3: Clasificación según Poder vs Interés
-    rpi_clasificacion_impacto AS (
-        CASE
-            WHEN rpi_nivel_poder = N'Alto' AND rpi_nivel_interes IN (N'Alto', N'Medio')
-                THEN N'CUIDADO "Tratar como requisito legal y otros requisitos"'
-            WHEN (rpi_nivel_poder = N'Alto' AND rpi_nivel_interes = N'Bajo')
-              OR (rpi_nivel_poder = N'Medio' AND rpi_nivel_interes IN (N'Alto', N'Medio'))
-                THEN N'ATENCIÓN "Mantener Satisfecho"'
-            WHEN (rpi_nivel_poder = N'Medio' AND rpi_nivel_interes = N'Bajo')
-              OR (rpi_nivel_poder = N'Bajo' AND rpi_nivel_interes = N'Alto')
-                THEN N'MITIGANTE "Mantener Informado"'
-            ELSE N'SIN PROBLEMA "Monitorear por si cambia de categoria"'
-        END
-    ),
-    rpi_nivel_cumplimiento      NVARCHAR(10) NULL, -- 'Alto', 'Medio', 'Bajo'
+    rpi_clasificacion_impacto   AS             (CASE WHEN rpi_nivel_poder = N'Alto'
+                                                          AND rpi_nivel_interes IN (N'Alto', N'Medio') THEN N'CUIDADO "Tratar como requisito legal y otros requisitos"' WHEN (rpi_nivel_poder = N'Alto'
+                                                                                                                                                                              AND rpi_nivel_interes = N'Bajo')
+                                                                                                                                                                             OR (rpi_nivel_poder = N'Medio'
+                                                                                                                                                                                 AND rpi_nivel_interes IN (N'Alto', N'Medio')) THEN N'ATENCIÓN "Mantener Satisfecho"' WHEN (rpi_nivel_poder = N'Medio'
+                                                                                                                                                                                                                                                                            AND rpi_nivel_interes = N'Bajo')
+                                                                                                                                                                                                                                                                           OR (rpi_nivel_poder = N'Bajo'
+                                                                                                                                                                                                                                                                               AND rpi_nivel_interes = N'Alto') THEN N'MITIGANTE "Mantener Informado"' ELSE N'SIN PROBLEMA "Monitorear por si cambia de categoria"' END),
+    rpi_nivel_cumplimiento      NVARCHAR (10)  NULL, -- 'Alto', 'Medio', 'Bajo'
     -- Campo Calculado en Tiempo de Ejecución #4: Prioridad de Acción
-    rpi_prioridad_accion AS (
-        CASE rpi_nivel_cumplimiento
-            WHEN N'Alto'  THEN N'Prioridad alta'
-            WHEN N'Medio' THEN N'Prioridad media'
-            WHEN N'Bajo'  THEN N'Prioridad baja'
-            ELSE NULL
-        END
-    ),
-    rpi_mecanismo_seguimiento   NVARCHAR(255) NULL,
-    rpi_estado_registro         NVARCHAR(30) NOT NULL DEFAULT N'VIGENTE',
-    rpi_fecha_creacion          DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    rpi_prioridad_accion        AS             (CASE rpi_nivel_cumplimiento WHEN N'Alto' THEN N'Prioridad alta' WHEN N'Medio' THEN N'Prioridad media' WHEN N'Bajo' THEN N'Prioridad baja' ELSE NULL END),
+    rpi_mecanismo_seguimiento   NVARCHAR (255) NULL,
+    rpi_estado_registro         NVARCHAR (30)  DEFAULT N'VIGENTE' NOT NULL,
+    rpi_fecha_creacion          DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_rpi_requisito_parte_interesada PRIMARY KEY CLUSTERED (rpi_codigo),
     CONSTRAINT FK_rpi_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_rpi_parte_interesada FOREIGN KEY (pai_codigo) REFERENCES sgspi.parte_interesada (pai_codigo),
     CONSTRAINT CK_rpi_nivel_poder CHECK (rpi_nivel_poder IN (N'Alto', N'Medio', N'Bajo')),
     CONSTRAINT CK_rpi_nivel_interes CHECK (rpi_nivel_interes IN (N'Alto', N'Medio', N'Bajo')),
-    CONSTRAINT CK_rpi_nivel_cumplimiento CHECK (rpi_nivel_cumplimiento IS NULL OR rpi_nivel_cumplimiento IN (N'Alto', N'Medio', N'Bajo'))
+    CONSTRAINT CK_rpi_nivel_cumplimiento CHECK (rpi_nivel_cumplimiento IS NULL
+                                                OR rpi_nivel_cumplimiento IN (N'Alto', N'Medio', N'Bajo'))
 );
 
 -- 3.3 [rpa] Relación N:M Requisito de Parte Interesada <-> Procesos Afectados
 CREATE TABLE sgspi.requisito_proceso_afectado (
-    rpa_codigo                  INT IDENTITY(1,1) NOT NULL,
-    rpi_codigo                  INT NOT NULL,
-    pri_codigo                  INT NOT NULL,
-    rpa_fecha_registro          DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    rpa_codigo         INT           IDENTITY (1, 1) NOT NULL,
+    rpi_codigo         INT           NOT NULL,
+    pri_codigo         INT           NOT NULL,
+    rpa_fecha_registro DATETIME2 (0) DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_rpa_requisito_proceso_afectado PRIMARY KEY CLUSTERED (rpa_codigo),
     CONSTRAINT UQ_rpa_requisito_proceso UNIQUE (rpi_codigo, pri_codigo),
     CONSTRAINT FK_rpa_requisito_parte_interesada FOREIGN KEY (rpi_codigo) REFERENCES sgspi.requisito_parte_interesada (rpi_codigo) ON DELETE CASCADE,
     CONSTRAINT FK_rpa_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo)
 );
-GO
 
+
+GO
 /*==================================================================================================
   4. DOMINIO DE INVENTARIO Y CLASIFICACIÓN DE ACTIVOS (DOCUMENTO 4: ES-GSPI-MR-05)
      Articulado con [dbo].[uaa], [dbo].[sede], [dbo].[sub_sede], [dbo].[espacio], [dbo].[cargo] y [dbo].[persona]
 ==================================================================================================*/
-
 -- 4.1 [tac] Taxonomía Jerárquica de Activos ISO/IEC 27005 (Categoría -> Tipo -> Subtipo)
 CREATE TABLE sgspi.tipo_activo_catalogo (
-    tac_codigo                  SMALLINT IDENTITY(1,1) NOT NULL,
-    tac_categoria_iso27005      NVARCHAR(20) NOT NULL, -- 'Primario', 'Soporte'
-    tac_tipo_activo             NVARCHAR(80) NOT NULL, -- 'Información', 'Procesos y Actividades del Negocio', 'Hardware', 'Software', 'Red', 'Personal', 'Sitio', 'Estructura de la organización', 'Ubicación'
-    tac_subtipo_activo          NVARCHAR(120) NOT NULL, -- 'Servidor de Aplicaciones', 'Equipo de Computo', 'Aplicaciones Específicas del Negocio', etc.
-    tac_ejemplos_referencia     NVARCHAR(255) NULL,
+    tac_codigo              SMALLINT       IDENTITY (1, 1) NOT NULL,
+    tac_categoria_iso27005  NVARCHAR (20)  NOT NULL, -- 'Primario', 'Soporte'
+    tac_tipo_activo         NVARCHAR (80)  NOT NULL, -- 'Información', 'Procesos y Actividades del Negocio', 'Hardware', 'Software', 'Red', 'Personal', 'Sitio', 'Estructura de la organización', 'Ubicación'
+    tac_subtipo_activo      NVARCHAR (120) NOT NULL, -- 'Servidor de Aplicaciones', 'Equipo de Computo', 'Aplicaciones Específicas del Negocio', etc.
+    tac_ejemplos_referencia NVARCHAR (255) NULL,
     CONSTRAINT PK_tac_tipo_activo_catalogo PRIMARY KEY CLUSTERED (tac_codigo),
     CONSTRAINT UQ_tac_jerarquia UNIQUE (tac_categoria_iso27005, tac_tipo_activo, tac_subtipo_activo),
     -- RN-ACT-01: Integridad Taxonómica Primario vs Soporte
-    CONSTRAINT CK_tac_categoria_coherencia CHECK (
-        (tac_categoria_iso27005 = N'Primario' AND tac_tipo_activo IN (N'Información', N'Procesos y Actividades del Negocio')) OR
-        (tac_categoria_iso27005 = N'Soporte'  AND tac_tipo_activo IN (N'Hardware', N'Software', N'Red', N'Personal', N'Sitio', N'Estructura de la organización', N'Ubicación'))
-    )
+    CONSTRAINT CK_tac_categoria_coherencia CHECK ((tac_categoria_iso27005 = N'Primario'
+                                                   AND tac_tipo_activo IN (N'Información', N'Procesos y Actividades del Negocio'))
+                                                  OR (tac_categoria_iso27005 = N'Soporte'
+                                                      AND tac_tipo_activo IN (N'Hardware', N'Software', N'Red', N'Personal', N'Sitio', N'Estructura de la organización', N'Ubicación')))
 );
 
 -- 4.2 [cet] Catálogo de Causales de Excepción de Transparencia (Desacoplado de Ley 1712 de 2014)
 CREATE TABLE sgspi.causal_excepcion_transparencia (
-    cet_codigo                  SMALLINT IDENTITY(1,1) NOT NULL,
-    cet_nivel_reserva_aplicable NVARCHAR(20) NOT NULL, -- 'CLASIFICADA' (3 causales) o 'RESERVADA' (9 causales)
-    cet_numeral_causal          NVARCHAR(10) NOT NULL,
-    cet_descripcion_causal      NVARCHAR(500) NOT NULL,
-    cet_norma_referencia        NVARCHAR(100) NOT NULL DEFAULT N'Ley 1712 de 2014',
+    cet_codigo                  SMALLINT       IDENTITY (1, 1) NOT NULL,
+    cet_nivel_reserva_aplicable NVARCHAR (20)  NOT NULL, -- 'CLASIFICADA' (3 causales) o 'RESERVADA' (9 causales)
+    cet_numeral_causal          NVARCHAR (10)  NOT NULL,
+    cet_descripcion_causal      NVARCHAR (500) NOT NULL,
+    cet_norma_referencia        NVARCHAR (100) DEFAULT N'Ley 1712 de 2014' NOT NULL,
     CONSTRAINT PK_cet_causal_excepcion_transparencia PRIMARY KEY CLUSTERED (cet_codigo),
     CONSTRAINT CK_cet_nivel_reserva CHECK (cet_nivel_reserva_aplicable IN (N'CLASIFICADA', N'RESERVADA'))
 );
 
 -- 4.3 [aci] Inventario Maestro de Activos de Información (511 activos base)
 CREATE TABLE sgspi.activo_informacion (
-    aci_codigo                          INT IDENTITY(1,1) NOT NULL,
-    aci_codigo_inventario               NVARCHAR(30) NOT NULL,
-    aci_nombre_activo                   NVARCHAR(255) NOT NULL,
-    aci_descripcion_detallada           NVARCHAR(MAX) NULL,
-    tac_codigo                          SMALLINT NOT NULL,
-    uaa_codigo                          INT NULL, -- FK a [dbo].[uaa]([uaa_codigo])
-    esp_codigo                          INT NULL, -- FK a [dbo].[espacio]([esp_codigo])
-    aci_es_transversal_sedes            BIT NOT NULL DEFAULT 0,
-    aci_cantidad_unidades               INT NOT NULL DEFAULT 1,
+    aci_codigo                         INT            IDENTITY (1, 1) NOT NULL,
+    aci_codigo_inventario              NVARCHAR (30)  NOT NULL,
+    aci_nombre_activo                  NVARCHAR (255) NOT NULL,
+    aci_descripcion_detallada          NVARCHAR (MAX) NULL,
+    tac_codigo                         SMALLINT       NOT NULL,
+    uaa_codigo                         INT            NULL, -- FK a [dbo].[uaa]([uaa_codigo])
+    esp_codigo                         INT            NULL, -- FK a [dbo].[espacio]([esp_codigo])
+    aci_es_transversal_sedes           BIT            DEFAULT 0 NOT NULL,
+    aci_cantidad_unidades              INT            DEFAULT 1 NOT NULL,
     -- Clasificación de Transparencia y Privacidad
-    aci_clasificacion_transparencia     NVARCHAR(20) NOT NULL, -- 'PÚBLICA', 'CLASIFICADA', 'RESERVADA', 'NO CLASIFICADA'
-    cet_codigo                          SMALLINT NULL,
-    aci_alcance_excepcion               NVARCHAR(15) NOT NULL DEFAULT N'No aplica', -- 'Parcial', 'Total', 'No aplica'
-    aci_contiene_datos_personales       BIT NOT NULL DEFAULT 0,
-    aci_contiene_datos_menores          BIT NULL,
-    aci_categoria_dato_personal         NVARCHAR(20) NULL, -- 'PRIVADOS', 'SEMIPRIVADOS', 'PUBLICOS'
+    aci_clasificacion_transparencia    NVARCHAR (20)  NOT NULL, -- 'PÚBLICA', 'CLASIFICADA', 'RESERVADA', 'NO CLASIFICADA'
+    cet_codigo                         SMALLINT       NULL,
+    aci_alcance_excepcion              NVARCHAR (15)  DEFAULT N'No aplica' NOT NULL, -- 'Parcial', 'Total', 'No aplica'
+    aci_contiene_datos_personales      BIT            DEFAULT 0 NOT NULL,
+    aci_contiene_datos_menores         BIT            NULL,
+    aci_categoria_dato_personal        NVARCHAR (20)  NULL, -- 'PRIVADOS', 'SEMIPRIVADOS', 'PUBLICOS'
     -- Valoración CID almacenada como entero (1=Baja, 2=Media, 3=Alta)
-    aci_valor_confidencialidad          TINYINT NOT NULL,
-    aci_valor_integridad                TINYINT NOT NULL,
-    aci_valor_disponibilidad            TINYINT NOT NULL,
+    aci_valor_confidencialidad         TINYINT        NOT NULL,
+    aci_valor_integridad               TINYINT        NOT NULL,
+    aci_valor_disponibilidad           TINYINT        NOT NULL,
     -- Campos Calculados en Tiempo de Ejecución #5: Etiquetas CID, Puntaje y Nivel de Criticidad
-    aci_nivel_confidencialidad AS (CASE aci_valor_confidencialidad WHEN 3 THEN N'Alta' WHEN 2 THEN N'Media' ELSE N'Baja' END),
-    aci_nivel_integridad       AS (CASE aci_valor_integridad       WHEN 3 THEN N'Alta' WHEN 2 THEN N'Media' ELSE N'Baja' END),
-    aci_nivel_disponibilidad   AS (CASE aci_valor_disponibilidad   WHEN 3 THEN N'Alta' WHEN 2 THEN N'Media' ELSE N'Baja' END),
-    aci_puntaje_criticidad     AS (CAST(aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad AS TINYINT)) PERSISTED,
-    aci_nivel_criticidad       AS (
-        CASE
-            WHEN (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad) >= 7 THEN N'Alta'
-            WHEN (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad) >= 5 THEN N'Media'
-            ELSE N'Baja'
-        END
-    ) PERSISTED,
+    aci_nivel_confidencialidad         AS             (CASE aci_valor_confidencialidad WHEN 3 THEN N'Alta' WHEN 2 THEN N'Media' ELSE N'Baja' END),
+    aci_nivel_integridad               AS             (CASE aci_valor_integridad WHEN 3 THEN N'Alta' WHEN 2 THEN N'Media' ELSE N'Baja' END),
+    aci_nivel_disponibilidad           AS             (CASE aci_valor_disponibilidad WHEN 3 THEN N'Alta' WHEN 2 THEN N'Media' ELSE N'Baja' END),
+    aci_puntaje_criticidad             AS             (CAST (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad AS TINYINT)) PERSISTED,
+    aci_nivel_criticidad               AS             (CASE WHEN (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad) >= 7 THEN N'Alta' WHEN (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad) >= 5 THEN N'Media' ELSE N'Baja' END) PERSISTED,
     -- Infraestructura Crítica Cibernética (ICC)
-    aci_supera_umbral_social_icc        BIT NOT NULL DEFAULT 0, -- > 250.000 personas
-    aci_supera_umbral_economico_icc     BIT NOT NULL DEFAULT 0, -- > $464.619.736 COP
-    aci_supera_umbral_ambiental_icc     BIT NOT NULL DEFAULT 0, -- >= 3 años en recuperación
-    aci_es_infraestructura_critica_icc  AS (
-        CASE
-            WHEN aci_supera_umbral_social_icc = 1 OR aci_supera_umbral_economico_icc = 1 OR aci_supera_umbral_ambiental_icc = 1
-                THEN CAST(1 AS BIT)
-            ELSE CAST(0 AS BIT)
-        END
-    ),
+    aci_supera_umbral_social_icc       BIT            DEFAULT 0 NOT NULL, -- > 250.000 personas
+    aci_supera_umbral_economico_icc    BIT            DEFAULT 0 NOT NULL, -- > $464.619.736 COP
+    aci_supera_umbral_ambiental_icc    BIT            DEFAULT 0 NOT NULL, -- >= 3 años en recuperación
+    aci_es_infraestructura_critica_icc AS             (CASE WHEN aci_supera_umbral_social_icc = 1
+                                                                 OR aci_supera_umbral_economico_icc = 1
+                                                                 OR aci_supera_umbral_ambiental_icc = 1 THEN CAST (1 AS BIT) ELSE CAST (0 AS BIT) END),
     -- Control de ciclo de vida y auditoría (Apuntando a [dbo].[persona])
-    aci_estado_registro                 NVARCHAR(30) NOT NULL DEFAULT N'VIGENTE',
-    aci_per_codigo_creador              INT NOT NULL, -- FK a [dbo].[persona]([per_codigo])
-    aci_per_codigo_aprobador            INT NULL,     -- FK a [dbo].[persona]([per_codigo])
-    aci_fecha_creacion                  DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
-    aci_fecha_actualizacion             DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    aci_estado_registro                NVARCHAR (30)  DEFAULT N'VIGENTE' NOT NULL,
+    aci_per_codigo_creador             INT            NOT NULL, -- FK a [dbo].[persona]([per_codigo])
+    aci_per_codigo_aprobador           INT            NULL, -- FK a [dbo].[persona]([per_codigo])
+    aci_fecha_creacion                 DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
+    aci_fecha_actualizacion            DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_aci_activo_informacion PRIMARY KEY CLUSTERED (aci_codigo),
     CONSTRAINT UQ_aci_codigo_inventario UNIQUE (aci_codigo_inventario),
     CONSTRAINT FK_aci_tipo_activo FOREIGN KEY (tac_codigo) REFERENCES sgspi.tipo_activo_catalogo (tac_codigo),
@@ -337,40 +316,30 @@ CREATE TABLE sgspi.activo_informacion (
     CONSTRAINT FK_aci_causal_excepcion FOREIGN KEY (cet_codigo) REFERENCES sgspi.causal_excepcion_transparencia (cet_codigo),
     CONSTRAINT FK_aci_dbo_persona_creador FOREIGN KEY (aci_per_codigo_creador) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_aci_dbo_persona_aprobador FOREIGN KEY (aci_per_codigo_aprobador) REFERENCES dbo.persona (per_codigo),
-    CONSTRAINT CK_aci_valores_cid CHECK (
-        aci_valor_confidencialidad IN (1, 2, 3) AND
-        aci_valor_integridad       IN (1, 2, 3) AND
-        aci_valor_disponibilidad   IN (1, 2, 3)
-    ),
-    CONSTRAINT CK_aci_transparencia CHECK (
-        aci_clasificacion_transparencia IN (N'PÚBLICA', N'CLASIFICADA', N'RESERVADA', N'NO CLASIFICADA')
-    ),
-    CONSTRAINT CK_aci_alcance_excepcion CHECK (
-        aci_alcance_excepcion IN (N'Parcial', N'Total', N'No aplica')
-    ),
+    CONSTRAINT CK_aci_valores_cid CHECK (aci_valor_confidencialidad IN (1, 2, 3)
+                                         AND aci_valor_integridad IN (1, 2, 3)
+                                         AND aci_valor_disponibilidad IN (1, 2, 3)),
+    CONSTRAINT CK_aci_transparencia CHECK (aci_clasificacion_transparencia IN (N'PÚBLICA', N'CLASIFICADA', N'RESERVADA', N'NO CLASIFICADA')),
+    CONSTRAINT CK_aci_alcance_excepcion CHECK (aci_alcance_excepcion IN (N'Parcial', N'Total', N'No aplica')),
     -- RN-ACT-02: Si es RESERVADA, la confidencialidad no puede ser Baja (1)
-    CONSTRAINT CK_aci_reserva_confidencialidad CHECK (
-        aci_clasificacion_transparencia <> N'RESERVADA' OR aci_valor_confidencialidad >= 2
-    ),
+    CONSTRAINT CK_aci_reserva_confidencialidad CHECK (aci_clasificacion_transparencia <> N'RESERVADA'
+                                                      OR aci_valor_confidencialidad >= 2),
     -- RN-ACT-03: Coherencia de Datos Personales
-    CONSTRAINT CK_aci_categoria_pii CHECK (
-        aci_categoria_dato_personal IS NULL OR aci_categoria_dato_personal IN (N'PRIVADOS', N'SEMIPRIVADOS', N'PUBLICOS')
-    ),
-    CONSTRAINT CK_aci_pii_privados_no_publico_bajo CHECK (
-        aci_contiene_datos_personales = 0 OR
-        (ISNULL(aci_categoria_dato_personal, N'') <> N'PRIVADOS' AND ISNULL(aci_contiene_datos_menores, 0) = 0) OR
-        NOT (aci_clasificacion_transparencia = N'PÚBLICA' AND aci_valor_confidencialidad = 1)
-    ),
-    CONSTRAINT CK_aci_estado_registro CHECK (aci_estado_registro IN (
-        N'BORRADOR', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'OBSERVADO', N'VIGENTE', N'INACTIVO', N'HISTORICO'
-    ))
+    CONSTRAINT CK_aci_categoria_pii CHECK (aci_categoria_dato_personal IS NULL
+                                           OR aci_categoria_dato_personal IN (N'PRIVADOS', N'SEMIPRIVADOS', N'PUBLICOS')),
+    CONSTRAINT CK_aci_pii_privados_no_publico_bajo CHECK (aci_contiene_datos_personales = 0
+                                                          OR (ISNULL(aci_categoria_dato_personal, N'') <> N'PRIVADOS'
+                                                              AND ISNULL(aci_contiene_datos_menores, 0) = 0)
+                                                          OR NOT (aci_clasificacion_transparencia = N'PÚBLICA'
+                                                                  AND aci_valor_confidencialidad = 1)),
+    CONSTRAINT CK_aci_estado_registro CHECK (aci_estado_registro IN (N'BORRADOR', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'OBSERVADO', N'VIGENTE', N'INACTIVO', N'HISTORICO'))
 );
 
 -- 4.4 [acp], [acs], [acr] Tablas Asociativas N:M de Activos
 CREATE TABLE sgspi.activo_proceso (
-    acp_codigo              INT IDENTITY(1,1) NOT NULL,
-    aci_codigo              INT NOT NULL,
-    pri_codigo              INT NOT NULL,
+    acp_codigo INT IDENTITY (1, 1) NOT NULL,
+    aci_codigo INT NOT NULL,
+    pri_codigo INT NOT NULL,
     CONSTRAINT PK_acp_activo_proceso PRIMARY KEY CLUSTERED (acp_codigo),
     CONSTRAINT UQ_acp_activo_proceso UNIQUE (aci_codigo, pri_codigo),
     CONSTRAINT FK_acp_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo) ON DELETE CASCADE,
@@ -378,10 +347,10 @@ CREATE TABLE sgspi.activo_proceso (
 );
 
 CREATE TABLE sgspi.activo_sede (
-    acs_codigo              INT IDENTITY(1,1) NOT NULL,
-    aci_codigo              INT NOT NULL,
-    sed_codigo              INT NOT NULL, -- FK a [dbo].[sede]([sed_codigo])
-    sus_codigo              INT NULL,     -- FK a [dbo].[sub_sede]([sus_codigo])
+    acs_codigo INT IDENTITY (1, 1) NOT NULL,
+    aci_codigo INT NOT NULL,
+    sed_codigo INT NOT NULL, -- FK a [dbo].[sede]([sed_codigo])
+    sus_codigo INT NULL, -- FK a [dbo].[sub_sede]([sus_codigo])
     CONSTRAINT PK_acs_activo_sede PRIMARY KEY CLUSTERED (acs_codigo),
     CONSTRAINT UQ_acs_activo_sede_subsede UNIQUE (aci_codigo, sed_codigo, sus_codigo),
     CONSTRAINT FK_acs_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo) ON DELETE CASCADE,
@@ -390,77 +359,84 @@ CREATE TABLE sgspi.activo_sede (
 );
 
 CREATE TABLE sgspi.activo_responsable (
-    acr_codigo                  INT IDENTITY(1,1) NOT NULL,
-    aci_codigo                  INT NOT NULL,
-    car_codigo                  INT NOT NULL, -- FK a [dbo].[cargo]([car_codigo])
-    uaa_codigo                  INT NULL,     -- FK a [dbo].[uaa]([uaa_codigo])
-    acr_tipo_responsabilidad    NVARCHAR(20) NOT NULL, -- 'PROPIETARIO', 'CUSTODIO'
+    acr_codigo               INT           IDENTITY (1, 1) NOT NULL,
+    aci_codigo               INT           NOT NULL,
+    car_codigo               INT           NOT NULL, -- FK a [dbo].[cargo]([car_codigo]): Cargo responsable (ISO 27001)
+    uaa_codigo               INT           NOT NULL, -- FK a [dbo].[uaa]([uaa_codigo]): Dependencia del cargo
+    uac_codigo               INT           NULL, -- FK opcional a [dbo].[uaa_cargo]([uac_codigo]): Plaza de planta
+    uap_codigo               INT           NULL, -- FK opcional a [dbo].[uaa_personal]([uap_codigo]): Vinculación del funcionario actual
+    acr_tipo_responsabilidad NVARCHAR (20) NOT NULL, -- 'PROPIETARIO', 'CUSTODIO'
+    acr_esta_activo          BIT           DEFAULT 1 NOT NULL,
     CONSTRAINT PK_acr_activo_responsable PRIMARY KEY CLUSTERED (acr_codigo),
-    CONSTRAINT UQ_acr_activo_cargo_tipo UNIQUE (aci_codigo, car_codigo, acr_tipo_responsabilidad),
+    -- Incluye uaa_codigo y uap_codigo para permitir el mismo cargo en distintas UAA o distintos funcionarios
+    CONSTRAINT UQ_acr_activo_responsable UNIQUE (aci_codigo, car_codigo, uaa_codigo, uap_codigo, acr_tipo_responsabilidad),
     CONSTRAINT FK_acr_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo) ON DELETE CASCADE,
     CONSTRAINT FK_acr_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo),
     CONSTRAINT FK_acr_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo),
+    CONSTRAINT FK_acr_dbo_uaa_cargo FOREIGN KEY (uac_codigo) REFERENCES dbo.uaa_cargo (uac_codigo),
+    CONSTRAINT FK_acr_dbo_uaa_personal FOREIGN KEY (uap_codigo) REFERENCES dbo.uaa_personal (uap_codigo),
     CONSTRAINT CK_acr_tipo_responsabilidad CHECK (acr_tipo_responsabilidad IN (N'PROPIETARIO', N'CUSTODIO'))
 );
 
 -- 4.5 [sif] y [msi] Ficha Técnica de Sistemas de Información y sus Módulos (Los 17 Sistemas USCO)
 CREATE TABLE sgspi.sistema_informacion_ficha (
-    sif_codigo                  INT IDENTITY(1,1) NOT NULL,
-    aci_codigo                  INT NULL,
-    sif_nombre_sistema          NVARCHAR(150) NOT NULL,
-    sif_modalidad_desarrollo    NVARCHAR(50) NOT NULL, -- 'PROPIO', 'PROPIO EN DESARROLLO', 'CODIGO ABIERTO ADAPTADO', 'COMERCIAL TERCERO'
-    sif_fabricante_proveedor    NVARCHAR(150) NULL,
-    sif_descripcion_general     NVARCHAR(MAX) NOT NULL,
+    sif_codigo               INT            IDENTITY (1, 1) NOT NULL,
+    aci_codigo               INT            NULL,
+    sif_nombre_sistema       NVARCHAR (150) NOT NULL,
+    sif_modalidad_desarrollo NVARCHAR (50)  NOT NULL, -- 'PROPIO', 'PROPIO EN DESARROLLO', 'CODIGO ABIERTO ADAPTADO', 'COMERCIAL TERCERO'
+    sif_fabricante_proveedor NVARCHAR (150) NULL,
+    sif_descripcion_general  NVARCHAR (MAX) NOT NULL,
     CONSTRAINT PK_sif_sistema_informacion_ficha PRIMARY KEY CLUSTERED (sif_codigo),
     CONSTRAINT FK_sif_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo)
 );
 
 CREATE TABLE sgspi.modulo_sistema_informacion (
-    msi_codigo                  INT IDENTITY(1,1) NOT NULL,
-    sif_codigo                  INT NOT NULL,
-    msi_nombre_modulo           NVARCHAR(200) NOT NULL,
-    msi_usuarios_objetivo       NVARCHAR(150) NULL,
+    msi_codigo            INT            IDENTITY (1, 1) NOT NULL,
+    sif_codigo            INT            NOT NULL,
+    msi_nombre_modulo     NVARCHAR (200) NOT NULL,
+    msi_usuarios_objetivo NVARCHAR (150) NULL,
     CONSTRAINT PK_msi_modulo_sistema_informacion PRIMARY KEY CLUSTERED (msi_codigo),
     CONSTRAINT FK_msi_sistema_informacion FOREIGN KEY (sif_codigo) REFERENCES sgspi.sistema_informacion_ficha (sif_codigo) ON DELETE CASCADE
 );
-GO
 
+
+GO
 /*==================================================================================================
   5. DOMINIO DE RIESGOS, OPORTUNIDADES, PLAN DE TRATAMIENTO Y SOA (DOCUMENTO 5: ES-GSPI-MR-06)
      Articulado con [dbo].[persona], [dbo].[cargo], [dbo].[uaa], [dbo].[grupo] y [dbo].[usuario_grupo]
 ==================================================================================================*/
-
 -- 5.1 [epr], [eim], [mvr] Tablas Paramétricas del Mapa de Calor 5x5 (Probabilidad A..E x Impacto 1..5)
 CREATE TABLE sgspi.escala_probabilidad (
-    epr_codigo                  TINYINT NOT NULL, -- 5=A (Casi seguro), 4=B (Probable), 3=C (Posible), 2=D (Improbable), 1=E (Raro)
-    epr_codigo_letra            CHAR(1) NOT NULL, -- 'A', 'B', 'C', 'D', 'E'
-    epr_nombre_nivel            NVARCHAR(30) NOT NULL,
-    epr_descripcion_criterio    NVARCHAR(255) NOT NULL,
-    epr_frecuencia_referencia   NVARCHAR(100) NOT NULL,
+    epr_codigo                TINYINT        NOT NULL, -- 5=A (Casi seguro), 4=B (Probable), 3=C (Posible), 2=D (Improbable), 1=E (Raro)
+    epr_codigo_letra          CHAR (1)       NOT NULL, -- 'A', 'B', 'C', 'D', 'E'
+    epr_nombre_nivel          NVARCHAR (30)  NOT NULL,
+    epr_descripcion_criterio  NVARCHAR (255) NOT NULL,
+    epr_frecuencia_referencia NVARCHAR (100) NOT NULL,
     CONSTRAINT PK_epr_escala_probabilidad PRIMARY KEY CLUSTERED (epr_codigo),
     CONSTRAINT UQ_epr_codigo_letra UNIQUE (epr_codigo_letra),
-    CONSTRAINT CK_epr_rango CHECK (epr_codigo BETWEEN 1 AND 5 AND epr_codigo_letra IN ('A','B','C','D','E'))
+    CONSTRAINT CK_epr_rango CHECK (epr_codigo BETWEEN 1 AND 5
+                                   AND epr_codigo_letra IN ('A', 'B', 'C', 'D', 'E'))
 );
 
 CREATE TABLE sgspi.escala_impacto (
-    eim_codigo                      TINYINT NOT NULL, -- 1=Insignificante, 2=Menor, 3=Moderado, 4=Mayor, 5=Catastrófico / Altamente beneficioso
-    eim_nombre_impacto_negativo     NVARCHAR(30) NOT NULL,
-    eim_nombre_impacto_positivo     NVARCHAR(40) NOT NULL,
-    eim_descripcion_organizacional  NVARCHAR(MAX) NOT NULL,
-    eim_descripcion_operativa       NVARCHAR(MAX) NULL,
+    eim_codigo                     TINYINT        NOT NULL, -- 1=Insignificante, 2=Menor, 3=Moderado, 4=Mayor, 5=Catastrófico / Altamente beneficioso
+    eim_nombre_impacto_negativo    NVARCHAR (30)  NOT NULL,
+    eim_nombre_impacto_positivo    NVARCHAR (40)  NOT NULL,
+    eim_descripcion_organizacional NVARCHAR (MAX) NOT NULL,
+    eim_descripcion_operativa      NVARCHAR (MAX) NULL,
     CONSTRAINT PK_eim_escala_impacto PRIMARY KEY CLUSTERED (eim_codigo),
     CONSTRAINT CK_eim_rango CHECK (eim_codigo BETWEEN 1 AND 5)
 );
 
 CREATE TABLE sgspi.matriz_valoracion_riesgo (
-    epr_codigo                          TINYINT NOT NULL,
-    eim_codigo                          TINYINT NOT NULL,
-    mvr_codigo_posicion                 CHAR(2) NOT NULL, -- 'A1'..'E5'
-    mvr_codigo_zona                     CHAR(1) NOT NULL, -- 'B' (Bajo), 'M' (Moderado), 'A' (Alto), 'E' (Extremo)
-    mvr_nivel_valoracion                NVARCHAR(30) NOT NULL, -- 'Riesgo Inferior', 'Riesgo Moderado', 'Riesgo Alto', 'Riesgo Extremo'
-    mvr_directriz_tratamiento_riesgo      NVARCHAR(255) NOT NULL,
-    mvr_directriz_tratamiento_oportunidad NVARCHAR(255) NOT NULL,
-    mvr_requiere_aprobacion_comite      BIT NOT NULL DEFAULT 0,
+    epr_codigo                            TINYINT        NOT NULL,
+    eim_codigo                            TINYINT        NOT NULL,
+    mvr_codigo_posicion                   CHAR (2)       NOT NULL, -- 'A1'..'E5'
+    mvr_codigo_zona                       CHAR (1)       NOT NULL, -- 'B' (Bajo), 'M' (Moderado), 'A' (Alto), 'E' (Extremo)
+    mvr_nivel_valoracion                  NVARCHAR (30)  NOT NULL, -- 'Riesgo Inferior', 'Riesgo Moderado', 'Riesgo Alto', 'Riesgo Extremo'
+    mvr_directriz_tratamiento_riesgo      NVARCHAR (255) NOT NULL,
+    mvr_directriz_tratamiento_oportunidad NVARCHAR (255) NOT NULL,
+    mvr_requiere_aprobacion_comite        BIT            DEFAULT 0 NOT NULL,
     CONSTRAINT PK_mvr_matriz_valoracion_riesgo PRIMARY KEY CLUSTERED (epr_codigo, eim_codigo),
     CONSTRAINT UQ_mvr_codigo_posicion UNIQUE (mvr_codigo_posicion),
     CONSTRAINT FK_mvr_escala_probabilidad FOREIGN KEY (epr_codigo) REFERENCES sgspi.escala_probabilidad (epr_codigo),
@@ -470,112 +446,96 @@ CREATE TABLE sgspi.matriz_valoracion_riesgo (
 
 -- 5.2 [eia] Escenarios de Incertidumbre sobre Activos (Riesgos RA-XX y Oportunidades OA-XX)
 CREATE TABLE sgspi.evento_incertidumbre_activo (
-    eia_codigo                      INT IDENTITY(1,1) NOT NULL,
-    pev_codigo                      SMALLINT NOT NULL,
-    eia_identificador_evento        NVARCHAR(15) NOT NULL, -- 'RA-01'..'RA-15', 'OA-01'..'OA-09'
-    eia_naturaleza_evento           NVARCHAR(15) NOT NULL, -- 'RIESGO' (-), 'OPORTUNIDAD' (+)
-    pri_codigo                      INT NOT NULL,
-    eia_aci_codigo_primario         INT NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
-    eia_aci_codigo_soporte          INT NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
-    eia_tipo_componente_afectado    NVARCHAR(50) NOT NULL, -- 'Información', 'Software', 'Servicio', 'Infraestructura', 'Hardware'
-    eia_fuente_generadora           NVARCHAR(255) NOT NULL,
-    eia_controles_existentes        NVARCHAR(MAX) NULL,
-    eia_condicion_vulnerabilidad    NVARCHAR(MAX) NOT NULL,
-    eia_efecto_consecuencia         NVARCHAR(MAX) NOT NULL,
-    eia_escenario_operacional       NVARCHAR(255) NOT NULL,
+    eia_codigo                      INT            IDENTITY (1, 1) NOT NULL,
+    pev_codigo                      SMALLINT       NOT NULL,
+    eia_identificador_evento        NVARCHAR (15)  NOT NULL, -- 'RA-01'..'RA-15', 'OA-01'..'OA-09'
+    eia_naturaleza_evento           NVARCHAR (15)  NOT NULL, -- 'RIESGO' (-), 'OPORTUNIDAD' (+)
+    pri_codigo                      INT            NOT NULL,
+    eia_aci_codigo_primario         INT            NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
+    eia_aci_codigo_soporte          INT            NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
+    eia_tipo_componente_afectado    NVARCHAR (50)  NOT NULL, -- 'Información', 'Software', 'Servicio', 'Infraestructura', 'Hardware'
+    eia_fuente_generadora           NVARCHAR (255) NOT NULL,
+    eia_controles_existentes        NVARCHAR (MAX) NULL,
+    eia_condicion_vulnerabilidad    NVARCHAR (MAX) NOT NULL,
+    eia_efecto_consecuencia         NVARCHAR (MAX) NOT NULL,
+    eia_escenario_operacional       NVARCHAR (255) NOT NULL,
     -- Valoración Inherente / Actual
-    eia_epr_codigo_inherente        TINYINT NOT NULL,
-    eia_eim_codigo_inherente        TINYINT NOT NULL,
+    eia_epr_codigo_inherente        TINYINT        NOT NULL,
+    eia_eim_codigo_inherente        TINYINT        NOT NULL,
     -- Máquina de Estados Principal y Firmas sobre [dbo].[persona]
-    eia_estado_registro             NVARCHAR(30) NOT NULL DEFAULT N'BORRADOR',
-    eia_per_codigo_creador          INT NOT NULL, -- FK a [dbo].[persona]([per_codigo])
-    eia_per_codigo_validador_lider  INT NULL,     -- FK a [dbo].[persona]([per_codigo])
-    eia_per_codigo_revisor_sgspi    INT NULL,     -- FK a [dbo].[persona]([per_codigo])
-    eia_per_codigo_aprobador_comite INT NULL,     -- FK a [dbo].[persona]([per_codigo])
-    eia_fecha_creacion              DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
-    eia_fecha_actualizacion         DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    eia_estado_registro             NVARCHAR (30)  DEFAULT N'BORRADOR' NOT NULL,
+    eia_per_codigo_creador          INT            NOT NULL, -- FK a [dbo].[persona]([per_codigo])
+    eia_per_codigo_validador_lider  INT            NULL, -- FK a [dbo].[persona]([per_codigo])
+    eia_per_codigo_revisor_sgspi    INT            NULL, -- FK a [dbo].[persona]([per_codigo])
+    eia_per_codigo_aprobador_comite INT            NULL, -- FK a [dbo].[persona]([per_codigo])
+    eia_fecha_creacion              DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
+    eia_fecha_actualizacion         DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_eia_evento_incertidumbre_activo PRIMARY KEY CLUSTERED (eia_codigo),
     CONSTRAINT UQ_eia_vigencia_identificador UNIQUE (pev_codigo, eia_identificador_evento),
     CONSTRAINT FK_eia_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_eia_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo),
     CONSTRAINT FK_eia_activo_primario FOREIGN KEY (eia_aci_codigo_primario) REFERENCES sgspi.activo_informacion (aci_codigo),
     CONSTRAINT FK_eia_activo_soporte FOREIGN KEY (eia_aci_codigo_soporte) REFERENCES sgspi.activo_informacion (aci_codigo),
-    CONSTRAINT FK_eia_valoracion_inherente FOREIGN KEY (eia_epr_codigo_inherente, eia_eim_codigo_inherente)
-        REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
+    CONSTRAINT FK_eia_valoracion_inherente FOREIGN KEY (eia_epr_codigo_inherente, eia_eim_codigo_inherente) REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
     CONSTRAINT FK_eia_dbo_persona_creador FOREIGN KEY (eia_per_codigo_creador) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_eia_dbo_persona_validador FOREIGN KEY (eia_per_codigo_validador_lider) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_eia_dbo_persona_revisor FOREIGN KEY (eia_per_codigo_revisor_sgspi) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_eia_dbo_persona_comite FOREIGN KEY (eia_per_codigo_aprobador_comite) REFERENCES dbo.persona (per_codigo),
     -- RN-RSG-01: Exclusión Mutua Riesgo (RA-) vs Oportunidad (OA-)
-    CONSTRAINT CK_eia_naturaleza_prefijo CHECK (
-        (eia_naturaleza_evento = N'RIESGO'      AND eia_identificador_evento LIKE N'RA-%') OR
-        (eia_naturaleza_evento = N'OPORTUNIDAD' AND eia_identificador_evento LIKE N'OA-%')
-    ),
+    CONSTRAINT CK_eia_naturaleza_prefijo CHECK ((eia_naturaleza_evento = N'RIESGO'
+                                                 AND eia_identificador_evento LIKE N'RA-%')
+                                                OR (eia_naturaleza_evento = N'OPORTUNIDAD'
+                                                    AND eia_identificador_evento LIKE N'OA-%')),
     -- Máquina de Estados (Sección 10)
-    CONSTRAINT CK_eia_estado_maquina CHECK (eia_estado_registro IN (
-        N'BORRADOR', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'OBSERVADO',
-        N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'EN_EJECUCION',
-        N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'HISTORICO'
-    )),
+    CONSTRAINT CK_eia_estado_maquina CHECK (eia_estado_registro IN (N'BORRADOR', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'OBSERVADO', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'HISTORICO')),
     -- Segregación de funciones ISO 27001 A.5.3: Quien aprueba en SGSPI no puede ser el creador en borrador
-    CONSTRAINT CK_eia_sod_revision CHECK (
-        eia_per_codigo_revisor_sgspi IS NULL OR eia_per_codigo_revisor_sgspi <> eia_per_codigo_creador
-    )
+    CONSTRAINT CK_eia_sod_revision CHECK (eia_per_codigo_revisor_sgspi IS NULL
+                                          OR eia_per_codigo_revisor_sgspi <> eia_per_codigo_creador)
 );
 
 -- 5.3 [plt] Plan de Tratamiento de Riesgos y Oportunidades
 CREATE TABLE sgspi.plan_tratamiento (
-    plt_codigo                      INT IDENTITY(1,1) NOT NULL,
-    eia_codigo                      INT NOT NULL,
-    plt_estrategia_tratamiento      NVARCHAR(80) NOT NULL,
-    plt_justificacion_estrategia    NVARCHAR(MAX) NOT NULL,
+    plt_codigo                     INT             IDENTITY (1, 1) NOT NULL,
+    eia_codigo                     INT             NOT NULL,
+    plt_estrategia_tratamiento     NVARCHAR (80)   NOT NULL,
+    plt_justificacion_estrategia   NVARCHAR (MAX)  NOT NULL,
     -- Valoración Residual Esperada (Meta)
-    plt_epr_codigo_residual_meta    TINYINT NOT NULL,
-    plt_eim_codigo_residual_meta    TINYINT NOT NULL,
-    plt_fecha_inicio                DATE NOT NULL,
-    plt_fecha_fin                   DATE NOT NULL,
-    plt_recursos_humanos_tecnicos   NVARCHAR(MAX) NOT NULL,
-    plt_recursos_economicos_desc    NVARCHAR(500) NOT NULL,
-    plt_presupuesto_estimado_cop    DECIMAL(18,2) NULL,
-    plt_restricciones_limitaciones  NVARCHAR(MAX) NULL,
-    plt_nombre_indicador_kpi        NVARCHAR(255) NOT NULL,
-    plt_meta_indicador_kpi          NVARCHAR(100) NULL,
-    plt_valor_alcanzado_kpi         NVARCHAR(100) NULL,
-    plt_es_tratamiento_eficaz       BIT NULL,
-    plt_dictamen_eficacia           NVARCHAR(MAX) NULL,
-    plt_per_codigo_evaluador        INT NULL, -- FK a [dbo].[persona]([per_codigo])
-    plt_fecha_evaluacion_eficacia   DATETIME2(0) NULL,
+    plt_epr_codigo_residual_meta   TINYINT         NOT NULL,
+    plt_eim_codigo_residual_meta   TINYINT         NOT NULL,
+    plt_fecha_inicio               DATE            NOT NULL,
+    plt_fecha_fin                  DATE            NOT NULL,
+    plt_recursos_humanos_tecnicos  NVARCHAR (MAX)  NOT NULL,
+    plt_recursos_economicos_desc   NVARCHAR (500)  NOT NULL,
+    plt_presupuesto_estimado_cop   DECIMAL (18, 2) NULL,
+    plt_restricciones_limitaciones NVARCHAR (MAX)  NULL,
+    plt_nombre_indicador_kpi       NVARCHAR (255)  NOT NULL,
+    plt_meta_indicador_kpi         NVARCHAR (100)  NULL,
+    plt_valor_alcanzado_kpi        NVARCHAR (100)  NULL,
+    plt_es_tratamiento_eficaz      BIT             NULL,
+    plt_dictamen_eficacia          NVARCHAR (MAX)  NULL,
+    plt_per_codigo_evaluador       INT             NULL, -- FK a [dbo].[persona]([per_codigo])
+    plt_fecha_evaluacion_eficacia  DATETIME2 (0)   NULL,
     CONSTRAINT PK_plt_plan_tratamiento PRIMARY KEY CLUSTERED (plt_codigo),
     CONSTRAINT UQ_plt_evento UNIQUE (eia_codigo),
     CONSTRAINT FK_plt_evento_incertidumbre FOREIGN KEY (eia_codigo) REFERENCES sgspi.evento_incertidumbre_activo (eia_codigo) ON DELETE CASCADE,
-    CONSTRAINT FK_plt_valoracion_meta FOREIGN KEY (plt_epr_codigo_residual_meta, plt_eim_codigo_residual_meta)
-        REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
+    CONSTRAINT FK_plt_valoracion_meta FOREIGN KEY (plt_epr_codigo_residual_meta, plt_eim_codigo_residual_meta) REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
     CONSTRAINT FK_plt_dbo_persona_evaluador FOREIGN KEY (plt_per_codigo_evaluador) REFERENCES dbo.persona (per_codigo),
     -- RN-RSG-06: Validación de cronogramas
     CONSTRAINT CK_plt_cronograma CHECK (plt_fecha_fin >= plt_fecha_inicio),
-    CONSTRAINT CK_plt_estrategia_catalogo CHECK (plt_estrategia_tratamiento IN (
-        N'Mitigar o reducir',
-        N'Mitigar o reducir y compartir el riesgo',
-        N'Compartir o transferir el riesgo',
-        N'Evitar el riesgo',
-        N'Asumir el riesgo',
-        N'Potenciar o explotar la oportunidad',
-        N'Potenciar o explotar y compartir la oportunidad',
-        N'Asumir la oportunidad'
-    ))
+    CONSTRAINT CK_plt_estrategia_catalogo CHECK (plt_estrategia_tratamiento IN (N'Mitigar o reducir', N'Mitigar o reducir y compartir el riesgo', N'Compartir o transferir el riesgo', N'Evitar el riesgo', N'Asumir el riesgo', N'Potenciar o explotar la oportunidad', N'Potenciar o explotar y compartir la oportunidad', N'Asumir la oportunidad'))
 );
 
 -- 5.4 [act] y [sga] Desglose de Actividades del Plan de Tratamiento y Seguimiento con Evidencias
 CREATE TABLE sgspi.actividad_tratamiento (
-    act_codigo                  INT IDENTITY(1,1) NOT NULL,
-    plt_codigo                  INT NOT NULL,
-    act_numero_orden            SMALLINT NOT NULL DEFAULT 1,
-    act_descripcion_actividad   NVARCHAR(500) NOT NULL,
-    car_codigo                  INT NULL, -- FK a [dbo].[cargo]([car_codigo])
-    uaa_codigo                  INT NULL, -- FK a [dbo].[uaa]([uaa_codigo])
-    act_fecha_compromiso        DATE NOT NULL,
-    act_porcentaje_avance       TINYINT NOT NULL DEFAULT 0,
-    act_estado_actividad        NVARCHAR(20) NOT NULL DEFAULT N'PENDIENTE',
+    act_codigo                INT            IDENTITY (1, 1) NOT NULL,
+    plt_codigo                INT            NOT NULL,
+    act_numero_orden          SMALLINT       DEFAULT 1 NOT NULL,
+    act_descripcion_actividad NVARCHAR (500) NOT NULL,
+    car_codigo                INT            NULL, -- FK a [dbo].[cargo]([car_codigo])
+    uaa_codigo                INT            NULL, -- FK a [dbo].[uaa]([uaa_codigo])
+    act_fecha_compromiso      DATE           NOT NULL,
+    act_porcentaje_avance     TINYINT        DEFAULT 0 NOT NULL,
+    act_estado_actividad      NVARCHAR (20)  DEFAULT N'PENDIENTE' NOT NULL,
     CONSTRAINT PK_act_actividad_tratamiento PRIMARY KEY CLUSTERED (act_codigo),
     CONSTRAINT FK_act_plan_tratamiento FOREIGN KEY (plt_codigo) REFERENCES sgspi.plan_tratamiento (plt_codigo) ON DELETE CASCADE,
     CONSTRAINT FK_act_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo),
@@ -585,15 +545,15 @@ CREATE TABLE sgspi.actividad_tratamiento (
 );
 
 CREATE TABLE sgspi.seguimiento_actividad (
-    sga_codigo                          INT IDENTITY(1,1) NOT NULL,
-    act_codigo                          INT NOT NULL,
-    per_codigo                          INT NOT NULL, -- FK a [dbo].[persona]([per_codigo])
-    sga_fecha_registro                  DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
-    sga_porcentaje_reportado            TINYINT NOT NULL,
-    sga_descripcion_avance              NVARCHAR(MAX) NOT NULL,
-    sga_nombre_archivo_evidencia        NVARCHAR(255) NULL,
-    sga_uri_almacenamiento_evidencia    NVARCHAR(500) NULL,
-    sga_hash_sha256_evidencia           CHAR(64) NULL,
+    sga_codigo                       INT            IDENTITY (1, 1) NOT NULL,
+    act_codigo                       INT            NOT NULL,
+    per_codigo                       INT            NOT NULL, -- FK a [dbo].[persona]([per_codigo])
+    sga_fecha_registro               DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
+    sga_porcentaje_reportado         TINYINT        NOT NULL,
+    sga_descripcion_avance           NVARCHAR (MAX) NOT NULL,
+    sga_nombre_archivo_evidencia     NVARCHAR (255) NULL,
+    sga_uri_almacenamiento_evidencia NVARCHAR (500) NULL,
+    sga_hash_sha256_evidencia        CHAR (64)      NULL,
     CONSTRAINT PK_sga_seguimiento_actividad PRIMARY KEY CLUSTERED (sga_codigo),
     CONSTRAINT FK_sga_actividad_tratamiento FOREIGN KEY (act_codigo) REFERENCES sgspi.actividad_tratamiento (act_codigo) ON DELETE CASCADE,
     CONSTRAINT FK_sga_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
@@ -602,17 +562,17 @@ CREATE TABLE sgspi.seguimiento_actividad (
 
 -- 5.5 [crn] Catálogo Maestro de Controles Normativos (ISO/IEC 27001:2022 [93] e ISO/IEC 27701:2025 [71])
 CREATE TABLE sgspi.control_referencia_normativa (
-    crn_codigo                  SMALLINT IDENTITY(1,1) NOT NULL,
-    crn_estandar_normativo      NVARCHAR(30) NOT NULL, -- 'ISO/IEC 27001:2022', 'ISO/IEC 27701:2025'
-    crn_rol_privacidad_pii      NVARCHAR(20) NOT NULL DEFAULT N'NO_APLICA', -- 'NO_APLICA', 'CONTROLADOR', 'PROCESADOR', 'COMUN'
-    crn_identificador_control   NVARCHAR(20) NOT NULL, -- 'A.5.1'..'A.8.34', 'A.1.2.2'..'A.3.31'
-    crn_nombre_control          NVARCHAR(200) NOT NULL,
-    crn_objetivo_requisito      NVARCHAR(MAX) NOT NULL,
-    crn_tipo_control            NVARCHAR(50) NULL, -- 'Preventivo', 'Detectivo', 'Correctivo'
-    crn_propiedades_seguridad   NVARCHAR(100) NULL, -- 'Confidencialidad, Integridad, Disponibilidad'
-    crn_concepto_ciberseguridad NVARCHAR(100) NULL, -- 'Identificar, Proteger, Detectar, Responder, Recuperar'
-    crn_capacidad_operacional   NVARCHAR(150) NULL,
-    crn_dominio_seguridad       NVARCHAR(100) NULL, -- 'Gobierno y Ecosistema', 'Protección', 'Defensa', 'Resiliencia'
+    crn_codigo                  SMALLINT       IDENTITY (1, 1) NOT NULL,
+    crn_estandar_normativo      NVARCHAR (30)  NOT NULL, -- 'ISO/IEC 27001:2022', 'ISO/IEC 27701:2025'
+    crn_rol_privacidad_pii      NVARCHAR (20)  DEFAULT N'NO_APLICA' NOT NULL, -- 'NO_APLICA', 'CONTROLADOR', 'PROCESADOR', 'COMUN'
+    crn_identificador_control   NVARCHAR (20)  NOT NULL, -- 'A.5.1'..'A.8.34', 'A.1.2.2'..'A.3.31'
+    crn_nombre_control          NVARCHAR (200) NOT NULL,
+    crn_objetivo_requisito      NVARCHAR (MAX) NOT NULL,
+    crn_tipo_control            NVARCHAR (50)  NULL, -- 'Preventivo', 'Detectivo', 'Correctivo'
+    crn_propiedades_seguridad   NVARCHAR (100) NULL, -- 'Confidencialidad, Integridad, Disponibilidad'
+    crn_concepto_ciberseguridad NVARCHAR (100) NULL, -- 'Identificar, Proteger, Detectar, Responder, Recuperar'
+    crn_capacidad_operacional   NVARCHAR (150) NULL,
+    crn_dominio_seguridad       NVARCHAR (100) NULL, -- 'Gobierno y Ecosistema', 'Protección', 'Defensa', 'Resiliencia'
     CONSTRAINT PK_crn_control_referencia_normativa PRIMARY KEY CLUSTERED (crn_codigo),
     CONSTRAINT UQ_crn_estandar_identificador UNIQUE (crn_estandar_normativo, crn_identificador_control),
     CONSTRAINT CK_crn_estandar_normativo CHECK (crn_estandar_normativo IN (N'ISO/IEC 27001:2022', N'ISO/IEC 27701:2025')),
@@ -621,9 +581,9 @@ CREATE TABLE sgspi.control_referencia_normativa (
 
 -- 5.6 [ptc] Relación N:M Plan de Tratamiento <-> Controles Normativos (ISO 27001 e ISO 27701)
 CREATE TABLE sgspi.plan_tratamiento_control (
-    ptc_codigo              INT IDENTITY(1,1) NOT NULL,
-    plt_codigo              INT NOT NULL,
-    crn_codigo              SMALLINT NOT NULL,
+    ptc_codigo INT      IDENTITY (1, 1) NOT NULL,
+    plt_codigo INT      NOT NULL,
+    crn_codigo SMALLINT NOT NULL,
     CONSTRAINT PK_ptc_plan_tratamiento_control PRIMARY KEY CLUSTERED (ptc_codigo),
     CONSTRAINT UQ_ptc_plan_control UNIQUE (plt_codigo, crn_codigo),
     CONSTRAINT FK_ptc_plan_tratamiento FOREIGN KEY (plt_codigo) REFERENCES sgspi.plan_tratamiento (plt_codigo) ON DELETE CASCADE,
@@ -632,18 +592,18 @@ CREATE TABLE sgspi.plan_tratamiento_control (
 
 -- 5.7 [eac] Declaración de Aplicabilidad (SoA) y Evaluación de Cumplimiento por Vigencia
 CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
-    eac_codigo                      INT IDENTITY(1,1) NOT NULL,
-    pev_codigo                      SMALLINT NOT NULL,
-    crn_codigo                      SMALLINT NOT NULL,
-    eac_es_aplicable                BIT NOT NULL DEFAULT 1,
-    eac_justificacion_aplicabilidad NVARCHAR(MAX) NULL,
-    eac_documento_soporte_normativo NVARCHAR(500) NULL,
-    car_codigo                      INT NULL, -- FK a [dbo].[cargo]([car_codigo])
-    eac_frecuencia_revision         NVARCHAR(100) NOT NULL DEFAULT N'Anual y cuando se presenten cambios',
-    eac_evidencia_objetiva_esperada NVARCHAR(500) NULL,
-    eac_estado_implementacion       NVARCHAR(20) NOT NULL DEFAULT N'NO_CUMPLE', -- 'CUMPLE', 'CUMPLE_PARCIAL', 'NO_CUMPLE', 'NO_APLICA'
-    eac_observaciones_auditoria     NVARCHAR(MAX) NULL,
-    eac_fecha_actualizacion         DATETIME2(0) NOT NULL DEFAULT SYSDATETIME(),
+    eac_codigo                      INT            IDENTITY (1, 1) NOT NULL,
+    pev_codigo                      SMALLINT       NOT NULL,
+    crn_codigo                      SMALLINT       NOT NULL,
+    eac_es_aplicable                BIT            DEFAULT 1 NOT NULL,
+    eac_justificacion_aplicabilidad NVARCHAR (MAX) NULL,
+    eac_documento_soporte_normativo NVARCHAR (500) NULL,
+    car_codigo                      INT            NULL, -- FK a [dbo].[cargo]([car_codigo])
+    eac_frecuencia_revision         NVARCHAR (100) DEFAULT N'Anual y cuando se presenten cambios' NOT NULL,
+    eac_evidencia_objetiva_esperada NVARCHAR (500) NULL,
+    eac_estado_implementacion       NVARCHAR (20)  DEFAULT N'NO_CUMPLE' NOT NULL, -- 'CUMPLE', 'CUMPLE_PARCIAL', 'NO_CUMPLE', 'NO_APLICA'
+    eac_observaciones_auditoria     NVARCHAR (MAX) NULL,
+    eac_fecha_actualizacion         DATETIME2 (0)  DEFAULT SYSDATETIME() NOT NULL,
     CONSTRAINT PK_eac_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (eac_codigo),
     CONSTRAINT UQ_eac_vigencia_control UNIQUE (pev_codigo, crn_codigo),
     CONSTRAINT FK_eac_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
@@ -651,182 +611,207 @@ CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
     CONSTRAINT FK_eac_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo),
     CONSTRAINT CK_eac_estado_implementacion CHECK (eac_estado_implementacion IN (N'CUMPLE', N'CUMPLE_PARCIAL', N'NO_CUMPLE', N'NO_APLICA')),
     -- RN-SOA-01: Un control NO puede marcarse como CUMPLE si el documento soporte o la evidencia esperada están vacíos o dicen 'PENDIENTE'
-    CONSTRAINT CK_eac_cumple_requiere_evidencia CHECK (
-        eac_estado_implementacion <> N'CUMPLE' OR (
-            LEN(TRIM(ISNULL(eac_documento_soporte_normativo, N''))) > 0 AND
-            UPPER(TRIM(ISNULL(eac_documento_soporte_normativo, N''))) <> N'PENDIENTE' AND
-            LEN(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) > 0 AND
-            UPPER(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) <> N'PENDIENTE'
-        )
-    )
+    CONSTRAINT CK_eac_cumple_requiere_evidencia CHECK (eac_estado_implementacion <> N'CUMPLE'
+                                                       OR (LEN(TRIM(ISNULL(eac_documento_soporte_normativo, N''))) > 0
+                                                           AND UPPER(TRIM(ISNULL(eac_documento_soporte_normativo, N''))) <> N'PENDIENTE'
+                                                           AND LEN(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) > 0
+                                                           AND UPPER(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) <> N'PENDIENTE'))
 );
 
 -- 5.8 [bas] Bitácora de Auditoría Inmutable (Control ISO 27001 A.8.15) articulada con [dbo].[persona] y [dbo].[grupo]
 CREATE TABLE sgspi.bitacora_auditoria_sistema (
-    bas_codigo                  BIGINT IDENTITY(1,1) NOT NULL,
-    bas_fecha_evento_utc        DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
-    per_codigo                  INT NOT NULL, -- FK a [dbo].[persona]([per_codigo])
-    gru_codigo                  INT NULL,     -- FK a [dbo].[grupo]([gru_codigo])
-    usg_codigo                  INT NULL,     -- FK a [dbo].[usuario_grupo]([usg_codigo])
-    bas_direccion_ip            VARCHAR(45) NULL,
-    bas_entidad_afectada        NVARCHAR(80) NOT NULL,
-    bas_registro_afectado_codigo NVARCHAR(50) NOT NULL,
-    bas_accion_ejecutada        NVARCHAR(30) NOT NULL, -- 'CREAR', 'ACTUALIZAR', 'TRANSICION_ESTADO', 'APROBAR', 'OBSERVAR'
-    bas_estado_anterior         NVARCHAR(30) NULL,
-    bas_estado_nuevo            NVARCHAR(30) NULL,
-    bas_valores_anteriores_json NVARCHAR(MAX) NULL,
-    bas_valores_nuevos_json     NVARCHAR(MAX) NULL,
-    bas_motivo_observacion      NVARCHAR(500) NULL,
+    bas_codigo                   BIGINT         IDENTITY (1, 1) NOT NULL,
+    bas_fecha_evento_utc         DATETIME2 (3)  DEFAULT SYSUTCDATETIME() NOT NULL,
+    per_codigo                   INT            NOT NULL, -- FK a [dbo].[persona]([per_codigo])
+    gru_codigo                   INT            NULL, -- FK a [dbo].[grupo]([gru_codigo])
+    usg_codigo                   INT            NULL, -- FK a [dbo].[usuario_grupo]([usg_codigo])
+    bas_direccion_ip             VARCHAR (45)   NULL,
+    bas_entidad_afectada         NVARCHAR (80)  NOT NULL,
+    bas_registro_afectado_codigo NVARCHAR (50)  NOT NULL,
+    bas_accion_ejecutada         NVARCHAR (30)  NOT NULL, -- 'CREAR', 'ACTUALIZAR', 'TRANSICION_ESTADO', 'APROBAR', 'OBSERVAR'
+    bas_estado_anterior          NVARCHAR (30)  NULL,
+    bas_estado_nuevo             NVARCHAR (30)  NULL,
+    bas_valores_anteriores_json  NVARCHAR (MAX) NULL,
+    bas_valores_nuevos_json      NVARCHAR (MAX) NULL,
+    bas_motivo_observacion       NVARCHAR (500) NULL,
     CONSTRAINT PK_bas_bitacora_auditoria_sistema PRIMARY KEY CLUSTERED (bas_codigo),
     CONSTRAINT FK_bas_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_bas_dbo_grupo FOREIGN KEY (gru_codigo) REFERENCES dbo.grupo (gru_codigo),
     CONSTRAINT FK_bas_dbo_usuario_grupo FOREIGN KEY (usg_codigo) REFERENCES dbo.usuario_grupo (usg_codigo),
-    CONSTRAINT CK_bas_json_ant CHECK (bas_valores_anteriores_json IS NULL OR ISJSON(bas_valores_anteriores_json) = 1),
-    CONSTRAINT CK_bas_json_nue CHECK (bas_valores_nuevos_json IS NULL OR ISJSON(bas_valores_nuevos_json) = 1)
+    CONSTRAINT CK_bas_json_ant CHECK (bas_valores_anteriores_json IS NULL
+                                      OR ISJSON(bas_valores_anteriores_json) = 1),
+    CONSTRAINT CK_bas_json_nue CHECK (bas_valores_nuevos_json IS NULL
+                                      OR ISJSON(bas_valores_nuevos_json) = 1)
 );
-GO
 
+
+GO
 /*==================================================================================================
   6. VISTAS DINÁMICAS PARA CAMPOS CALCULADOS E INTEGRACIÓN CON [dbo]
 ==================================================================================================*/
-
 -- 6.0 Vista de Integración de Seguridad y Alcance por Proceso/UAA
 CREATE OR ALTER VIEW sgspi.vw_usuario_rol_alcance_sgspi
 AS
-SELECT
-    p.per_codigo,
-    p.per_identificacion,
-    CONCAT(RTRIM(ISNULL(p.per_nombre, '')), ' ', RTRIM(ISNULL(p.per_apellido, ''))) AS per_nombre_completo,
-    p.per_email_interno AS per_correo_institucional,
-    ug.usg_codigo,
-    ug.usg_usuario AS uge_codigo_usuario,
-    g.gru_codigo,
-    g.gru_nombre AS gru_rol_seguridad,
-    u.uaa_codigo,
-    u.uaa_nombre AS uaa_dependencia,
-    pu.pri_codigo,
-    pr.pri_nombre AS pri_nombre_proceso
-FROM dbo.usuario_grupo AS ug
-INNER JOIN dbo.grupo AS g ON g.gru_codigo = ug.usg_grupo
-INNER JOIN dbo.uaa AS u ON u.uaa_codigo = ug.usg_uaa
-INNER JOIN dbo.usuario_general AS ugen ON ugen.uid = ug.usg_usuario
-INNER JOIN dbo.persona AS p ON p.per_codigo = ugen.up
-LEFT JOIN sgspi.proceso_uaa AS pu ON pu.uaa_codigo = u.uaa_codigo
-LEFT JOIN sgspi.proceso_institucional AS pr ON pr.pri_codigo = pu.pri_codigo
-WHERE ug.usg_estado = 1
-  AND g.gru_estado = 1;
-GO
+SELECT p.per_codigo,
+       p.per_identificacion,
+       CONCAT(RTRIM(ISNULL(p.per_nombre, '')), ' ', RTRIM(ISNULL(p.per_apellido, ''))) AS per_nombre_completo,
+       p.per_email_interno AS per_correo_institucional,
+       ug.usg_codigo,
+       ug.usg_usuario AS uge_codigo_usuario,
+       g.gru_codigo,
+       g.gru_nombre AS gru_rol_seguridad,
+       u.uaa_codigo,
+       u.uaa_nombre AS uaa_dependencia,
+       pu.pri_codigo,
+       pr.pri_nombre AS pri_nombre_proceso
+FROM   dbo.usuario_grupo AS ug
+       INNER JOIN
+       dbo.grupo AS g
+       ON g.gru_codigo = ug.usg_grupo
+       INNER JOIN
+       dbo.uaa AS u
+       ON u.uaa_codigo = ug.usg_uaa
+       INNER JOIN
+       dbo.usuario_general AS ugen
+       ON ugen.uid = ug.usg_usuario
+       INNER JOIN
+       dbo.persona AS p
+       ON p.per_codigo = ugen.up
+       LEFT OUTER JOIN
+       sgspi.proceso_uaa AS pu
+       ON pu.uaa_codigo = u.uaa_codigo
+       LEFT OUTER JOIN
+       sgspi.proceso_institucional AS pr
+       ON pr.pri_codigo = pu.pri_codigo
+WHERE  ug.usg_estado = 1
+       AND g.gru_estado = 1;
 
+
+GO
 -- 6.1 Vista Consolidado DOFA (Genera dinámicamente los códigos D1..Dn, F1..Fn, A1..An, O1..On)
 CREATE OR ALTER VIEW sgspi.vw_consolidado_dofa
 AS
-SELECT
-    acf.acf_codigo,
-    pv.pev_anio AS pev_vigencia,
-    tpc.tpr_nombre AS tpr_tipo_proceso,
-    pr.pri_nombre AS pri_proceso,
-    fec.fec_nombre_factor AS fec_variable_entorno,
-    acf.acf_ambito_entorno,
-    acf.acf_naturaleza_factor,
-    CONCAT(
-        LEFT(acf.acf_naturaleza_factor, 1),
-        ROW_NUMBER() OVER (
-            PARTITION BY acf.pev_codigo, acf.acf_naturaleza_factor
-            ORDER BY tpc.tpr_codigo, pr.pri_codigo, acf.acf_codigo
-        )
-    ) AS acf_codigo_autogenerado,
-    acf.acf_descripcion_situacion,
-    acf.acf_nivel_prioridad,
-    acf.acf_impacto_sistema_gestion,
-    acf.acf_accion_propuesta,
-    acf.acf_estado_registro
-FROM sgspi.analisis_contexto_factor AS acf
-INNER JOIN sgspi.periodo_vigencia AS pv ON pv.pev_codigo = acf.pev_codigo
-INNER JOIN sgspi.proceso_institucional AS pr ON pr.pri_codigo = acf.pri_codigo
-INNER JOIN sgspi.tipo_proceso_catalogo AS tpc ON tpc.tpr_codigo = pr.tpr_codigo
-INNER JOIN sgspi.factor_entorno_catalogo AS fec ON fec.fec_codigo = acf.fec_codigo;
-GO
+SELECT acf.acf_codigo,
+       pv.pev_anio AS pev_vigencia,
+       tpc.tpr_nombre AS tpr_tipo_proceso,
+       pr.pri_nombre AS pri_proceso,
+       fec.fec_nombre_factor AS fec_variable_entorno,
+       acf.acf_ambito_entorno,
+       acf.acf_naturaleza_factor,
+       CONCAT(LEFT(acf.acf_naturaleza_factor, 1), ROW_NUMBER() OVER (PARTITION BY acf.pev_codigo, acf.acf_naturaleza_factor ORDER BY tpc.tpr_codigo, pr.pri_codigo, acf.acf_codigo)) AS acf_codigo_autogenerado,
+       acf.acf_descripcion_situacion,
+       acf.acf_nivel_prioridad,
+       acf.acf_impacto_sistema_gestion,
+       acf.acf_accion_propuesta,
+       acf.acf_estado_registro
+FROM   sgspi.analisis_contexto_factor AS acf
+       INNER JOIN
+       sgspi.periodo_vigencia AS pv
+       ON pv.pev_codigo = acf.pev_codigo
+       INNER JOIN
+       sgspi.proceso_institucional AS pr
+       ON pr.pri_codigo = acf.pri_codigo
+       INNER JOIN
+       sgspi.tipo_proceso_catalogo AS tpc
+       ON tpc.tpr_codigo = pr.tpr_codigo
+       INNER JOIN
+       sgspi.factor_entorno_catalogo AS fec
+       ON fec.fec_codigo = acf.fec_codigo;
 
+
+GO
 -- 6.2 Vista Resumen de Activos por Categoría, Tipo y Criticidad (Reemplaza Tabla Dinámica de ES-GSPI-MR-05)
 CREATE OR ALTER VIEW sgspi.vw_resumen_activos_criticidad
 AS
-SELECT
-    ISNULL(tac.tac_categoria_iso27005, N'Total general') AS tac_categoria_activo,
-    ISNULL(tac.tac_tipo_activo, N'Subtotal categoría')   AS tac_tipo_activo,
-    SUM(CASE WHEN ai.aci_nivel_criticidad = N'Alta'  THEN 1 ELSE 0 END) AS aci_criticidad_alta,
-    SUM(CASE WHEN ai.aci_nivel_criticidad = N'Media' THEN 1 ELSE 0 END) AS aci_criticidad_media,
-    SUM(CASE WHEN ai.aci_nivel_criticidad = N'Baja'  THEN 1 ELSE 0 END) AS aci_criticidad_baja,
-    COUNT(ai.aci_codigo) AS aci_total_general
-FROM sgspi.activo_informacion AS ai
-INNER JOIN sgspi.tipo_activo_catalogo AS tac ON tac.tac_codigo = ai.tac_codigo
-WHERE ai.aci_estado_registro = N'VIGENTE'
-GROUP BY GROUPING SETS (
-    (tac.tac_categoria_iso27005, tac.tac_tipo_activo),
-    (tac.tac_categoria_iso27005),
-    ()
-);
-GO
+SELECT   ISNULL(tac.tac_categoria_iso27005, N'Total general') AS tac_categoria_activo,
+         ISNULL(tac.tac_tipo_activo, N'Subtotal categoría') AS tac_tipo_activo,
+         SUM(CASE WHEN ai.aci_nivel_criticidad = N'Alta' THEN 1 ELSE 0 END) AS aci_criticidad_alta,
+         SUM(CASE WHEN ai.aci_nivel_criticidad = N'Media' THEN 1 ELSE 0 END) AS aci_criticidad_media,
+         SUM(CASE WHEN ai.aci_nivel_criticidad = N'Baja' THEN 1 ELSE 0 END) AS aci_criticidad_baja,
+         COUNT(ai.aci_codigo) AS aci_total_general
+FROM     sgspi.activo_informacion AS ai
+         INNER JOIN
+         sgspi.tipo_activo_catalogo AS tac
+         ON tac.tac_codigo = ai.tac_codigo
+WHERE    ai.aci_estado_registro = N'VIGENTE'
+GROUP BY GROUPING SETS((tac.tac_categoria_iso27005, tac.tac_tipo_activo), (tac.tac_categoria_iso27005), ());
 
+
+GO
 -- 6.3 Vista Matriz de Tratamiento de Riesgos y Oportunidades (Calcula concatenaciones y cruces en tiempo real)
 CREATE OR ALTER VIEW sgspi.vw_matriz_tratamiento_riesgos
 AS
-WITH cte_controles_27001 AS (
-    SELECT
-        ptc.plt_codigo,
-        STRING_AGG(crn.crn_identificador_control, N', ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27001
-    FROM sgspi.plan_tratamiento_control AS ptc
-    INNER JOIN sgspi.control_referencia_normativa AS crn ON crn.crn_codigo = ptc.crn_codigo
-    WHERE crn.crn_estandar_normativo = N'ISO/IEC 27001:2022'
-    GROUP BY ptc.plt_codigo
-),
-cte_controles_27701 AS (
-    SELECT
-        ptc.plt_codigo,
-        STRING_AGG(CONCAT(crn.crn_rol_privacidad_pii, N': ', crn.crn_identificador_control), N' | ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27701
-    FROM sgspi.plan_tratamiento_control AS ptc
-    INNER JOIN sgspi.control_referencia_normativa AS crn ON crn.crn_codigo = ptc.crn_codigo
-    WHERE crn.crn_estandar_normativo = N'ISO/IEC 27701:2025'
-    GROUP BY ptc.plt_codigo
-)
-SELECT
-    eia.eia_identificador_evento AS eia_codigo_riesgo_oportunidad,
-    eia.eia_escenario_operacional AS eia_riesgo_oportunidad,
-    pr.pri_nombre AS pri_proceso,
-    CONCAT(N'Activo primario: ', ap.aci_nombre_activo, N' | Activo secundario: ', asop.aci_nombre_activo) AS eia_detalle_del_riesgo,
-    CONCAT(
-        N'Posibilidad: ', ep_inh.epr_nombre_nivel, N' (', ep_inh.epr_codigo_letra, N') | Impacto: ',
-        CASE WHEN eia.eia_naturaleza_evento = N'RIESGO' THEN ei_inh.eim_nombre_impacto_negativo ELSE ei_inh.eim_nombre_impacto_positivo END,
-        N' (', ei_inh.eim_codigo, N') | Nivel actual: ', mvr_inh.mvr_nivel_valoracion
-    ) AS eia_resultado_actual,
-    CONCAT(
-        N'Posibilidad: ', ep_meta.epr_nombre_nivel, N' (', ep_meta.epr_codigo_letra, N') | Impacto: ',
-        CASE WHEN eia.eia_naturaleza_evento = N'RIESGO' THEN ei_meta.eim_nombre_impacto_negativo ELSE ei_meta.eim_nombre_impacto_positivo END,
-        N' (', ei_meta.eim_codigo, N') | Nivel esperado: ', mvr_meta.mvr_nivel_valoracion
-    ) AS plt_resultado_esperado,
-    c27001.crn_controles_iso27001,
-    c27701.crn_controles_iso27701,
-    pt.plt_estrategia_tratamiento AS plt_opcion_tratamiento,
-    pt.plt_justificacion_estrategia,
-    CONCAT(FORMAT(pt.plt_fecha_inicio, 'dd/MM/yyyy'), N' – ', FORMAT(pt.plt_fecha_fin, 'dd/MM/yyyy')) AS plt_cronograma,
-    pt.plt_recursos_humanos_tecnicos,
-    pt.plt_recursos_economicos_desc,
-    pt.plt_restricciones_limitaciones AS plt_limitaciones,
-    pt.plt_nombre_indicador_kpi AS plt_indicador_rendimiento,
-    pt.plt_es_tratamiento_eficaz AS plt_eficacia,
-    eia.eia_estado_registro
-FROM sgspi.evento_incertidumbre_activo AS eia
-INNER JOIN sgspi.plan_tratamiento AS pt ON pt.eia_codigo = eia.eia_codigo
-INNER JOIN sgspi.proceso_institucional AS pr ON pr.pri_codigo = eia.pri_codigo
-INNER JOIN sgspi.activo_informacion AS ap ON ap.aci_codigo = eia.eia_aci_codigo_primario
-INNER JOIN sgspi.activo_informacion AS asop ON asop.aci_codigo = eia.eia_aci_codigo_soporte
-INNER JOIN sgspi.escala_probabilidad AS ep_inh ON ep_inh.epr_codigo = eia.eia_epr_codigo_inherente
-INNER JOIN sgspi.escala_impacto AS ei_inh ON ei_inh.eim_codigo = eia.eia_eim_codigo_inherente
-INNER JOIN sgspi.matriz_valoracion_riesgo AS mvr_inh
-    ON mvr_inh.epr_codigo = eia.eia_epr_codigo_inherente AND mvr_inh.eim_codigo = eia.eia_eim_codigo_inherente
-INNER JOIN sgspi.escala_probabilidad AS ep_meta ON ep_meta.epr_codigo = pt.plt_epr_codigo_residual_meta
-INNER JOIN sgspi.escala_impacto AS ei_meta ON ei_meta.eim_codigo = pt.plt_eim_codigo_residual_meta
-INNER JOIN sgspi.matriz_valoracion_riesgo AS mvr_meta
-    ON mvr_meta.epr_codigo = pt.plt_epr_codigo_residual_meta AND mvr_meta.eim_codigo = pt.plt_eim_codigo_residual_meta
-LEFT JOIN cte_controles_27001 AS c27001 ON c27001.plt_codigo = pt.plt_codigo
-LEFT JOIN cte_controles_27701 AS c27701 ON c27701.plt_codigo = pt.plt_codigo;
-GO
+WITH   cte_controles_27001
+AS     (SELECT   ptc.plt_codigo,
+                 STRING_AGG(crn.crn_identificador_control, N', ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27001
+        FROM     sgspi.plan_tratamiento_control AS ptc
+                 INNER JOIN
+                 sgspi.control_referencia_normativa AS crn
+                 ON crn.crn_codigo = ptc.crn_codigo
+        WHERE    crn.crn_estandar_normativo = N'ISO/IEC 27001:2022'
+        GROUP BY ptc.plt_codigo),
+       cte_controles_27701
+AS     (SELECT   ptc.plt_codigo,
+                 STRING_AGG(CONCAT(crn.crn_rol_privacidad_pii, N': ', crn.crn_identificador_control), N' | ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27701
+        FROM     sgspi.plan_tratamiento_control AS ptc
+                 INNER JOIN
+                 sgspi.control_referencia_normativa AS crn
+                 ON crn.crn_codigo = ptc.crn_codigo
+        WHERE    crn.crn_estandar_normativo = N'ISO/IEC 27701:2025'
+        GROUP BY ptc.plt_codigo)
+SELECT eia.eia_identificador_evento AS eia_codigo_riesgo_oportunidad,
+       eia.eia_escenario_operacional AS eia_riesgo_oportunidad,
+       pr.pri_nombre AS pri_proceso,
+       CONCAT(N'Activo primario: ', ap.aci_nombre_activo, N' | Activo secundario: ', asop.aci_nombre_activo) AS eia_detalle_del_riesgo,
+       CONCAT(N'Posibilidad: ', ep_inh.epr_nombre_nivel, N' (', ep_inh.epr_codigo_letra, N') | Impacto: ', CASE WHEN eia.eia_naturaleza_evento = N'RIESGO' THEN ei_inh.eim_nombre_impacto_negativo ELSE ei_inh.eim_nombre_impacto_positivo END, N' (', ei_inh.eim_codigo, N') | Nivel actual: ', mvr_inh.mvr_nivel_valoracion) AS eia_resultado_actual,
+       CONCAT(N'Posibilidad: ', ep_meta.epr_nombre_nivel, N' (', ep_meta.epr_codigo_letra, N') | Impacto: ', CASE WHEN eia.eia_naturaleza_evento = N'RIESGO' THEN ei_meta.eim_nombre_impacto_negativo ELSE ei_meta.eim_nombre_impacto_positivo END, N' (', ei_meta.eim_codigo, N') | Nivel esperado: ', mvr_meta.mvr_nivel_valoracion) AS plt_resultado_esperado,
+       c27001.crn_controles_iso27001,
+       c27701.crn_controles_iso27701,
+       pt.plt_estrategia_tratamiento AS plt_opcion_tratamiento,
+       pt.plt_justificacion_estrategia,
+       CONCAT(FORMAT(pt.plt_fecha_inicio, 'dd/MM/yyyy'), N' – ', FORMAT(pt.plt_fecha_fin, 'dd/MM/yyyy')) AS plt_cronograma,
+       pt.plt_recursos_humanos_tecnicos,
+       pt.plt_recursos_economicos_desc,
+       pt.plt_restricciones_limitaciones AS plt_limitaciones,
+       pt.plt_nombre_indicador_kpi AS plt_indicador_rendimiento,
+       pt.plt_es_tratamiento_eficaz AS plt_eficacia,
+       eia.eia_estado_registro
+FROM   sgspi.evento_incertidumbre_activo AS eia
+       INNER JOIN
+       sgspi.plan_tratamiento AS pt
+       ON pt.eia_codigo = eia.eia_codigo
+       INNER JOIN
+       sgspi.proceso_institucional AS pr
+       ON pr.pri_codigo = eia.pri_codigo
+       INNER JOIN
+       sgspi.activo_informacion AS ap
+       ON ap.aci_codigo = eia.eia_aci_codigo_primario
+       INNER JOIN
+       sgspi.activo_informacion AS asop
+       ON asop.aci_codigo = eia.eia_aci_codigo_soporte
+       INNER JOIN
+       sgspi.escala_probabilidad AS ep_inh
+       ON ep_inh.epr_codigo = eia.eia_epr_codigo_inherente
+       INNER JOIN
+       sgspi.escala_impacto AS ei_inh
+       ON ei_inh.eim_codigo = eia.eia_eim_codigo_inherente
+       INNER JOIN
+       sgspi.matriz_valoracion_riesgo AS mvr_inh
+       ON mvr_inh.epr_codigo = eia.eia_epr_codigo_inherente
+          AND mvr_inh.eim_codigo = eia.eia_eim_codigo_inherente
+       INNER JOIN
+       sgspi.escala_probabilidad AS ep_meta
+       ON ep_meta.epr_codigo = pt.plt_epr_codigo_residual_meta
+       INNER JOIN
+       sgspi.escala_impacto AS ei_meta
+       ON ei_meta.eim_codigo = pt.plt_eim_codigo_residual_meta
+       INNER JOIN
+       sgspi.matriz_valoracion_riesgo AS mvr_meta
+       ON mvr_meta.epr_codigo = pt.plt_epr_codigo_residual_meta
+          AND mvr_meta.eim_codigo = pt.plt_eim_codigo_residual_meta
+       LEFT OUTER JOIN
+       cte_controles_27001 AS c27001
+       ON c27001.plt_codigo = pt.plt_codigo
+       LEFT OUTER JOIN
+       cte_controles_27701 AS c27701
+       ON c27701.plt_codigo = pt.plt_codigo;

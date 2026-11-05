@@ -108,7 +108,7 @@ flowchart LR
 | `Proceso al que pertenece` | `activo_proceso (acp_codigo, aci_codigo, pri_codigo)` | Tabla Puente N:M | `FORMACIÓN`, `GESTIÓN FINANCIERA Y DE RECURSOS FÍSICOS` |
 | `Dependencia` | `activo_informacion.uaa_codigo` $\rightarrow$ `dbo.uaa (uaa_codigo)` | `INT (FK a dbo.uaa)` | `Oficina Asesora Jurídica`, `Centro de Información, Tecnología y Control documental` |
 | `Sede` | `activo_sede (acs_codigo, aci_codigo, sed_codigo, sus_codigo)` $\rightarrow$ `dbo.sede` / `dbo.sub_sede` | Tabla Puente N:M | `Sede Central`, `Sede Postgrados`, `Todas las sedes` |
-| `Propietario del Activo` / `Custodio del Activo` | `activo_responsable (acr_codigo, aci_codigo, car_codigo, acr_tipo_responsabilidad)` $\rightarrow$ `dbo.cargo` | Tabla Puente N:M | `PROPIETARIO`: `Vicerrector Académico` \| `CUSTODIO`: `Director Registro y Control` |
+| `Propietario del Activo` / `Custodio del Activo` | `activo_responsable (acr_codigo, aci_codigo, car_codigo, uaa_codigo, uac_codigo, uap_codigo, acr_tipo_responsabilidad)` | Tabla Puente N:M | `PROPIETARIO`: `Vicerrector Académico` \| `CUSTODIO`: `Director Registro y Control` |
 | `Tipo de Información Ley 1712 de 2014` | `activo_informacion.aci_clasificacion_transparencia` | `NVARCHAR(20)` | `PÚBLICA`, `CLASIFICADA`, `RESERVADA`, `NO CLASIFICADA` |
 | `¿Contiene datos personales (Ley 1581)?` | `activo_informacion.aci_contiene_datos_personales` | `BIT` | `1 (SI)`, `0 (NO)` |
 | `Confidencialidad` / `Integridad` / `Disponibilidad` | `aci_valor_confidencialidad`, `aci_valor_integridad`, `aci_valor_disponibilidad` | `TINYINT (3, 2, 1)` | `3 (Alta)`, `2 (Media)`, `1 (Baja)` |
@@ -134,6 +134,8 @@ flowchart LR
 | **`esp`** | `dbo.espacio` | `esp_codigo` (`INT`) | Espacios físicos, centros de cómputo, cuartos de cableado y oficinas. |
 | **`uaa`** | `dbo.uaa` | `uaa_codigo` (`INT`) | Unidades Académico-Administrativas (Facultades, Oficinas, Vicerrectorías, Centros). |
 | **`car`** | `dbo.cargo` | `car_codigo` (`INT`) | Catálogo oficial de cargos institucionales (Propietarios, Custodios, Líderes). |
+| **`uac`** | `dbo.uaa_cargo` | `uac_codigo` (`INT`) | Planta de cargos asignados a cada UAA. |
+| **`uap`** | `dbo.uaa_personal` | `uap_codigo` (`INT`) | Vinculación activa del funcionario/contratista en una UAA y cargo. |
 | **`per`** | `dbo.persona` | `per_codigo` (`INT`) | Maestro único de personas (Funcionarios, Docentes, Contratistas). |
 | **`gru`** | `dbo.grupo` | `gru_codigo` (`INT`) | Grupos/Roles de seguridad RBAC institucionales. |
 | **`usg`** | `dbo.usuario_grupo` | `usg_codigo` (`INT`) | Asignación de usuarios a grupos RBAC por UAA (Row-Level Security). |
@@ -156,7 +158,7 @@ flowchart LR
 | 13 | **`aci`** | `sgspi.activo_informacion` | `aci_codigo` | `aci_nombre_activo`, `aci_valor_confidencialidad`, `aci_puntaje_criticidad`... |
 | 14 | **`acp`** | `sgspi.activo_proceso` | `acp_codigo` | `aci_codigo`, `pri_codigo` |
 | 15 | **`acs`** | `sgspi.activo_sede` | `acs_codigo` | `aci_codigo`, `sed_codigo`, `sus_codigo` |
-| 16 | **`acr`** | `sgspi.activo_responsable` | `acr_codigo` | `aci_codigo`, `car_codigo`, `uaa_codigo`, `acr_tipo_responsabilidad` |
+| 16 | **`acr`** | `sgspi.activo_responsable` | `acr_codigo` | `aci_codigo`, `car_codigo`, `uaa_codigo`, `uac_codigo`, `uap_codigo`, `acr_tipo_responsabilidad`, `acr_esta_activo` |
 | 17 | **`sif`** | `sgspi.sistema_informacion_ficha` | `sif_codigo` | `sif_nombre_sistema`, `sif_modalidad_desarrollo`, `sif_fabricante_proveedor` |
 | 18 | **`msi`** | `sgspi.modulo_sistema_informacion` | `msi_codigo` | `sif_codigo`, `msi_nombre_modulo`, `msi_usuarios_objetivo` |
 | 19 | **`epr`** | `sgspi.escala_probabilidad` | `epr_codigo` | `epr_codigo_letra`, `epr_nombre_nivel`, `epr_frecuencia_referencia` |
@@ -648,14 +650,21 @@ CREATE TABLE sgspi.activo_sede (
 CREATE TABLE sgspi.activo_responsable (
     acr_codigo                  INT IDENTITY(1,1) NOT NULL,
     aci_codigo                  INT NOT NULL,
-    car_codigo                  INT NOT NULL, -- FK a [dbo].[cargo]([car_codigo])
-    uaa_codigo                  INT NULL,     -- FK a [dbo].[uaa]([uaa_codigo])
-    acr_tipo_responsabilidad    NVARCHAR(20) NOT NULL,
+    car_codigo                  INT NOT NULL, -- FK a [dbo].[cargo]([car_codigo]): Cargo responsable (ISO 27001)
+    uaa_codigo                  INT NOT NULL, -- FK a [dbo].[uaa]([uaa_codigo]): Dependencia del cargo
+    uac_codigo                  INT NULL,     -- FK opcional a [dbo].[uaa_cargo]([uac_codigo]): Plaza de planta
+    uap_codigo                  INT NULL,     -- FK opcional a [dbo].[uaa_personal]([uap_codigo]): Vinculación del funcionario actual
+    acr_tipo_responsabilidad    NVARCHAR(20) NOT NULL, -- 'PROPIETARIO', 'CUSTODIO'
+    acr_esta_activo             BIT NOT NULL DEFAULT 1,
     CONSTRAINT PK_acr_activo_responsable PRIMARY KEY CLUSTERED (acr_codigo),
-    CONSTRAINT UQ_acr_activo_cargo_tipo UNIQUE (aci_codigo, car_codigo, acr_tipo_responsabilidad),
+    -- Incluye uaa_codigo y uap_codigo para permitir el mismo cargo en distintas UAA o distintos funcionarios
+    CONSTRAINT UQ_acr_activo_responsable UNIQUE (aci_codigo, car_codigo, uaa_codigo, uap_codigo, acr_tipo_responsabilidad),
     CONSTRAINT FK_acr_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo) ON DELETE CASCADE,
     CONSTRAINT FK_acr_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo),
-    CONSTRAINT FK_acr_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo)
+    CONSTRAINT FK_acr_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo),
+    CONSTRAINT FK_acr_dbo_uaa_cargo FOREIGN KEY (uac_codigo) REFERENCES dbo.uaa_cargo (uac_codigo),
+    CONSTRAINT FK_acr_dbo_uaa_personal FOREIGN KEY (uap_codigo) REFERENCES dbo.uaa_personal (uap_codigo),
+    CONSTRAINT CK_acr_tipo_responsabilidad CHECK (acr_tipo_responsabilidad IN (N'PROPIETARIO', N'CUSTODIO'))
 );
 
 CREATE TABLE sgspi.sistema_informacion_ficha (
