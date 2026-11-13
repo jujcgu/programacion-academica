@@ -118,6 +118,43 @@ EXEC #espera N'Vista vw_desglose_ccd_trd_mr04', N'SELECT * INTO #v5 FROM sgspi.v
 EXEC #espera N'Vista vw_inventario_activo_documental_mr04 (formatos agregados)', N'IF (SELECT ado_formato_documental FROM sgspi.vw_inventario_activo_documental_mr04 WHERE ado_codigo = 1) NOT IN (N''PDF/Documento de texto'', N''Documento de texto/PDF'') THROW 51000, N''formato no agregado'', 1;', 0;
 EXEC #espera N'Vista vw_controles_atributos_iso27002', N'SELECT * INTO #v7 FROM sgspi.vw_controles_atributos_iso27002;', 0;
 GO
+-- ======================= 7. Roles y permisos (AP-02) =======================
+-- 229 = permiso denegado sobre el objeto; 230 = sobre la columna. EXECUTE AS se revierte solo al terminar cada lote dinámico.
+CREATE USER sgspi_prueba_consulta WITHOUT LOGIN;
+CREATE USER sgspi_prueba_custodio WITHOUT LOGIN;
+CREATE USER sgspi_prueba_oficial WITHOUT LOGIN;
+CREATE USER sgspi_prueba_auditor WITHOUT LOGIN;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_prueba_consulta;
+ALTER ROLE sgspi_rol_custodio_operador ADD MEMBER sgspi_prueba_custodio;
+ALTER ROLE sgspi_rol_oficial_seguridad_privacidad ADD MEMBER sgspi_prueba_oficial;
+ALTER ROLE sgspi_rol_auditor_control ADD MEMBER sgspi_prueba_auditor;
+GO
+EXEC #espera N'AP-02 la vista de alcance no expone la identificación', N'IF COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_identificacion'') IS NOT NULL THROW 51000, N''per_identificacion sigue expuesta'', 1;', 0;
+EXEC #espera N'AP-02 base lee vistas que cruzan a [dbo]', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p1 FROM sgspi.vw_usuario_rol_alcance_sgspi;', 0;
+EXEC #espera N'AP-02 base no escribe', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; INSERT sgspi.parte_interesada (pai_nombre, pai_origen) VALUES (N''X'', N''INTERNA'');', 229;
+EXEC #espera N'AP-02 ni el oficial escribe la máquina de estados', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; INSERT sgspi.transicion_estado_flujo (efc_dominio, efc_identificador_origen, efc_identificador_destino) VALUES (N''ACF'', N''BORRADOR'', N''VIGENTE'');', 229;
+EXEC #espera N'AP-02 el oficial sí administra catálogos', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.parte_interesada SET pai_descripcion_rol = N''Comunidad estudiantil'' WHERE pai_codigo = 1;', 0;
+EXEC #espera N'AP-02 custodio no escribe configuración', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.periodo_vigencia SET pev_estado_vigencia = N''CERRADA'' WHERE 1 = 0;', 229;
+EXEC #espera N'AP-02 custodio no escribe planes de tratamiento', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE 1 = 0;', 229;
+EXEC #espera N'AP-02 custodio no borra tablas con flujo', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; DELETE sgspi.analisis_contexto_factor WHERE 1 = 0;', 229;
+EXEC #espera N'AP-02 el creador es inmutable', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.analisis_contexto_factor SET per_codigo_creador = 2 WHERE 1 = 0;', 230;
+EXEC #espera N'AP-02 el avance no se edita a mano', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.actividad_tratamiento SET act_porcentaje_avance = 100 WHERE act_codigo = 1;', 230;
+EXEC #espera N'AP-02 el trigger sincroniza el avance pese al DENY de columna', N'EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES (1, 1, 60, N''Avance'');
+IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 60 THROW 51000, N''avance no sincronizado'', 1;', 0;
+EXEC #espera N'AP-02 custodio asocia y desasocia procesos de un activo', N'EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo) VALUES (1, 1);
+DELETE sgspi.activo_informacion_proceso_institucional WHERE aci_codigo = 1 AND pri_codigo = 1;', 0;
+EXEC #espera N'AP-02 auditor registra el dictamen de eficacia', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'', per_codigo_evaluador = 2, plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 0;
+EXEC #espera N'AP-02 auditor no edita el resto del plan', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE 1 = 0;', 230;
+EXEC #espera N'AP-02 auditor registra observaciones en el SoA', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''Hallazgo'' WHERE eac_codigo = 1;', 0;
+EXEC #espera N'AP-02 auditor no cambia el estado de implementación del SoA', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_estado_implementacion = N''CUMPLE'' WHERE 1 = 0;', 230;
+GO
+DROP USER sgspi_prueba_consulta;
+DROP USER sgspi_prueba_custodio;
+DROP USER sgspi_prueba_oficial;
+DROP USER sgspi_prueba_auditor;
+GO
 SELECT n, IIF(ok = 1, N'PASA', N'FALLA') AS r, prueba, esperado, obtenido FROM #resultado ORDER BY n;
 SELECT CONCAT(SUM(CONVERT (INT, ok)), N' de ', COUNT(*), N' pruebas pasan') AS resumen FROM #resultado;
 GO

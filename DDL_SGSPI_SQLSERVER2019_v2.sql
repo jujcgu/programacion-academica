@@ -53,8 +53,9 @@
   AP-01  RETIRADO. La bitácora [bas] con cadena de hash, sus triggers y usp_verificar_cadena_bitacora se
          eliminaron junto con las tablas temporales (SYSTEM_VERSIONING) de ado, eia y eac. El script no
          registra quién cambió qué: solo conserva <acr>_fecha_creacion y <acr>_fecha_actualizacion.
-  AP-02  Rol sgspi_rol_aplicacion con SELECT/INSERT/UPDATE sobre el esquema y DENY ALTER (ALTER es lo que
-         habilita TRUNCATE y DISABLE TRIGGER). sgspi_rol_administrador se crea sin permisos (reservado).
+  AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
+         columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
+         tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion.
   AP-03  RETIRADO. Ya no se exige contexto de sesión: creador, aprobador y firmantes son los per_codigo que
          envía la aplicación, y la base de datos no puede verificar quién ejecuta la operación.
   AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
@@ -120,7 +121,7 @@ DECLARE @dependencias TABLE (tabla SYSNAME, columna SYSNAME);
 INSERT INTO @dependencias (tabla, columna)
 VALUES (N'dbo.uaa', N'uaa_codigo'), (N'dbo.uaa', N'uaa_nombre'),
        (N'dbo.cargo', N'car_codigo'), (N'dbo.cargo', N'car_nombre'),
-       (N'dbo.persona', N'per_codigo'), (N'dbo.persona', N'per_identificacion'), (N'dbo.persona', N'per_nombre'),
+       (N'dbo.persona', N'per_codigo'), (N'dbo.persona', N'per_nombre'),
        (N'dbo.persona', N'per_apellido'), (N'dbo.persona', N'per_email_interno'),
        (N'dbo.espacio', N'esp_codigo'), (N'dbo.sub_sede', N'sus_codigo'),
        (N'dbo.grupo', N'gru_codigo'), (N'dbo.grupo', N'gru_nombre'), (N'dbo.grupo', N'gru_estado'),
@@ -2015,16 +2016,111 @@ END;
 GO
 IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
--- 5.10.10 Roles y permisos [AP-02]: las reglas no pueden depender solo de triggers (TRUNCATE / DISABLE TRIGGER los evaden),
--- por eso se deniega ALTER al rol de aplicación. dbo / db_owner / sysadmin NO se pueden restringir con DENY.
--- [sgspi_rol_administrador] se crea sin permisos: queda reservado hasta definir sus privilegios.
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sgspi_rol_aplicacion' AND type = N'R')
-    CREATE ROLE sgspi_rol_aplicacion;
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sgspi_rol_administrador' AND type = N'R')
-    CREATE ROLE sgspi_rol_administrador;
+-- 5.10.10 Roles y permisos [AP-02]: privilegios mínimos por actor.
+-- Cada persona escribe con su login SQL real, miembro de UN rol de actor (uno por grupo SGSPI_* de [dbo].[grupo]);
+-- la cuenta compartida de consulta es miembro solo de sgspi_rol_base. Los seis roles de actor son miembros de
+-- sgspi_rol_base y heredan su SELECT y sus DENY. Este script NO asigna personas a roles (lo hace el DBA).
+-- Los triggers no se ven afectados por los DENY: [sgspi] es de dbo y el encadenamiento de propiedad omite la verificación.
+-- dbo / db_owner / sysadmin NO se pueden restringir con DENY; un login en db_datawriter anula estos GRANT.
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_base') IS NULL CREATE ROLE sgspi_rol_base;
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_custodio_operador') IS NULL CREATE ROLE sgspi_rol_custodio_operador;                       -- SGSPI_CUSTODIO_OPERADOR
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_lider_propietario') IS NULL CREATE ROLE sgspi_rol_lider_propietario;                       -- SGSPI_LIDER_PROPIETARIO
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_gestor_documental') IS NULL CREATE ROLE sgspi_rol_gestor_documental;                       -- SGSPI_GESTOR_DOCUMENTAL
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_oficial_seguridad_privacidad') IS NULL CREATE ROLE sgspi_rol_oficial_seguridad_privacidad; -- SGSPI_ADMIN_OPDP
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_comite_direccion') IS NULL CREATE ROLE sgspi_rol_comite_direccion;                         -- SGSPI_COMITE_DIRECCION
+IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_auditor_control') IS NULL CREATE ROLE sgspi_rol_auditor_control;                           -- SGSPI_AUDITOR_CONTROL
 
-GRANT SELECT, INSERT, UPDATE ON SCHEMA::sgspi TO sgspi_rol_aplicacion;
-DENY ALTER ON SCHEMA::sgspi TO sgspi_rol_aplicacion;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_custodio_operador;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_lider_propietario;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_gestor_documental;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_oficial_seguridad_privacidad;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_comite_direccion;
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_auditor_control;
+
+-- Base: lectura de todo el esquema. ALTER es lo que habilita TRUNCATE y DISABLE TRIGGER.
+GRANT SELECT ON SCHEMA::sgspi TO sgspi_rol_base;
+DENY ALTER ON SCHEMA::sgspi TO sgspi_rol_base;
+-- La máquina de estados solo cambia por script de migración: quien la escribe se salta los triggers de flujo.
+DENY INSERT, UPDATE, DELETE ON sgspi.estado_flujo_catalogo TO sgspi_rol_base;
+DENY INSERT, UPDATE, DELETE ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
+-- Columnas inmutables para la aplicación: creador, fechas de control (las mantienen DEFAULT y triggers) y avance derivado de [sga].
+DENY UPDATE ON sgspi.periodo_vigencia (pev_fecha_creacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.analisis_contexto_factor (per_codigo_creador, acf_fecha_creacion, acf_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.requisito_parte_interesada (per_codigo_creador, rpi_fecha_creacion, rpi_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.activo_informacion (per_codigo_creador, aci_fecha_creacion, aci_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.activo_documental (ado_fecha_creacion, ado_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.evento_incertidumbre_activo (per_codigo_creador, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.plan_tratamiento (plt_fecha_creacion, plt_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.actividad_tratamiento (act_porcentaje_avance, act_fecha_creacion, act_fecha_actualizacion) TO sgspi_rol_base;
+DENY UPDATE ON sgspi.evaluacion_aplicabilidad_control (eac_fecha_creacion, eac_fecha_actualizacion) TO sgspi_rol_base;
+
+-- Configuración y catálogos del SGSPI: solo el oficial de seguridad y privacidad.
+GRANT INSERT, UPDATE ON sgspi.periodo_vigencia TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.tipo_proceso_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.proceso_institucional TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.factor_entorno_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.dominio_formato_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.formato_documental_version TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.tipo_activo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.causal_excepcion_transparencia TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.parte_interesada TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.escala_probabilidad TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.escala_impacto TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.zona_riesgo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.estandar_normativo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.control_referencia_normativa TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.atributo_control_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
+
+-- Catálogos documentales (CCD/TRD): solo el gestor documental.
+GRANT INSERT, UPDATE ON sgspi.serie_documental_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.subserie_documental_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.periodicidad_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.estado_publicacion_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.soporte_registro_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.medio_conservacion_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.idioma_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.formato_archivo_catalogo TO sgspi_rol_gestor_documental;
+GRANT INSERT, UPDATE ON sgspi.activo_documental_unidad_productora TO sgspi_rol_gestor_documental;
+
+-- Tablas con datos del negocio. El comité solo actualiza donde el DDL tiene su transición y su firma ([rpi], [eia]).
+GRANT INSERT, UPDATE ON sgspi.analisis_contexto_factor TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario;
+GRANT UPDATE ON sgspi.analisis_contexto_factor TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.requisito_parte_interesada TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT UPDATE ON sgspi.requisito_parte_interesada TO sgspi_rol_lider_propietario, sgspi_rol_comite_direccion;
+GRANT INSERT, UPDATE ON sgspi.activo_informacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.activo_informacion_responsable TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.sistema_informacion_ficha TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.modulo_sistema_informacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.activo_documental TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
+GRANT UPDATE ON sgspi.activo_documental TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT ON sgspi.evento_incertidumbre_activo TO sgspi_rol_custodio_operador;
+GRANT INSERT, UPDATE ON sgspi.evento_incertidumbre_activo TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT UPDATE ON sgspi.evento_incertidumbre_activo TO sgspi_rol_comite_direccion;
+GRANT INSERT, UPDATE ON sgspi.plan_tratamiento TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, UPDATE ON sgspi.actividad_tratamiento TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
+GRANT UPDATE ON sgspi.actividad_tratamiento TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT ON sgspi.seguimiento_actividad TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental; -- append-only
+GRANT INSERT, UPDATE ON sgspi.evaluacion_aplicabilidad_control TO sgspi_rol_oficial_seguridad_privacidad;
+
+-- Tablas puente sin *_esta_activo: INSERT y DELETE (una asociación errada se quita; no hay nada que actualizar).
+GRANT INSERT, DELETE ON sgspi.proceso_institucional_uaa TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, DELETE ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, DELETE ON sgspi.requisito_parte_interesada_proceso_institucional TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, DELETE ON sgspi.requisito_parte_interesada_cuestionario TO sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, DELETE ON sgspi.activo_informacion_proceso_institucional TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, DELETE ON sgspi.activo_informacion_sede TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+GRANT INSERT, DELETE ON sgspi.activo_documental_soporte_registro TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
+GRANT INSERT, DELETE ON sgspi.activo_documental_medio_conservacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
+GRANT INSERT, DELETE ON sgspi.activo_documental_idioma TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
+GRANT INSERT, DELETE ON sgspi.activo_documental_formato_archivo TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
+GRANT INSERT, DELETE ON sgspi.plan_tratamiento_control_referencia_normativa TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+
+-- Auditor: solo lectura, salvo su dictamen de eficacia del plan y sus observaciones en el SoA.
+GRANT UPDATE ON sgspi.plan_tratamiento (plt_es_tratamiento_eficaz, plt_dictamen_eficacia, per_codigo_evaluador, plt_fecha_evaluacion_eficacia) TO sgspi_rol_auditor_control;
+GRANT UPDATE ON sgspi.evaluacion_aplicabilidad_control (eac_observaciones_auditoria) TO sgspi_rol_auditor_control;
 
 
 
@@ -2038,8 +2134,7 @@ GO
 -- CONCAT con literales Unicode (N'')
 CREATE OR ALTER VIEW sgspi.vw_usuario_rol_alcance_sgspi
 AS
-SELECT p.per_codigo,
-       p.per_identificacion,
+SELECT p.per_codigo, -- sin per_identificacion: la vista la lee todo sgspi_rol_base [AP-02]
        CONCAT(RTRIM(ISNULL(p.per_nombre, N'')), N' ', RTRIM(ISNULL(p.per_apellido, N''))) AS per_nombre_completo,
        p.per_email_interno AS per_correo_institucional,
        ug.usg_codigo,
