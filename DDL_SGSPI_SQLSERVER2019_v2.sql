@@ -13,7 +13,7 @@
                    - Llave foránea con rol: [<acr_local>_<acr_remoto>_codigo_<rol>] (ej. [aci_codigo_primario])
                 3. Toda restricción tiene nombre explícito: PK_, FK_, UQ_/UX_, CK_ y DF_<columna>.
 
-  MAPA DE ACRÓNIMOS DE TABLAS DEL ESQUEMA [sgspi] (53 TABLAS):
+  MAPA DE ACRÓNIMOS DE TABLAS DEL ESQUEMA [sgspi] (52 TABLAS):
   - [pev] : sgspi.periodo_vigencia                  - [epc] : sgspi.estado_publicacion_catalogo
   - [efc] : sgspi.estado_flujo_catalogo (NUEVA)     - [tef] : sgspi.transicion_estado_flujo (NUEVA)
   - [dfc] : sgspi.dominio_formato_catalogo          - [src] : sgspi.soporte_registro_catalogo
@@ -40,8 +40,8 @@
   - [upc] : sgspi.unidad_productora_cuadro_clasificacion_documental - [aac] : sgspi.atributo_control_catalogo (NUEVA)
   - [pdc] : sgspi.periodicidad_catalogo             - [cra] : sgspi.control_referencia_normativa_atributo (NUEVA)
   - [ptc] : sgspi.plan_tratamiento_control_referencia_normativa - [eac] : sgspi.evaluacion_aplicabilidad_control
-  - [bas] : sgspi.bitacora_auditoria_sistema
-  ELIMINADAS: [cps] control_propiedad_seguridad y [ccc] control_concepto_ciberseguridad (absorbidas por [aac]/[cra]).
+  ELIMINADAS: [cps] control_propiedad_seguridad y [ccc] control_concepto_ciberseguridad (absorbidas por [aac]/[cra]);
+              [bas] bitacora_auditoria_sistema y las tablas *_historial (auditoría retirada, ver AP-01).
 
   ACRÓNIMOS REUTILIZADOS DEL ESQUEMA CORPORATIVO [dbo]:
   - [sus] : dbo.sub_sede ([sus_codigo])             - [car] : dbo.cargo ([car_codigo])
@@ -50,17 +50,20 @@
                                                     - [usg] : dbo.usuario_grupo ([usg_codigo])
 
   REGISTRO DE CAMBIOS v2.0 (cada cambio está marcado en el código con -- [AP-xx]):
-  AP-01  Bitácora con cadena de hash SHA-256 almacenada (hash anterior + hash propio) calculada por un trigger
-         INSTEAD OF INSERT serializado; antes el hash era una columna calculada que se recalculaba sola si la
-         fila se alteraba. Verificación: EXEC sgspi.usp_verificar_cadena_bitacora.
-  AP-02  Roles sgspi_rol_aplicacion / sgspi_rol_administrador con DENY UPDATE/DELETE/ALTER sobre la bitácora
-         (ALTER es lo que habilita TRUNCATE y DISABLE TRIGGER).
-  AP-03  Sin suplantación en auditoría: se exige contexto de sesión en TODA operación (también INSERT); se
-         eliminan los COALESCE con creador/revisor/evaluador; la identidad de sesión es de solo lectura.
+  AP-01  RETIRADO. La bitácora [bas] con cadena de hash, sus triggers y usp_verificar_cadena_bitacora se
+         eliminaron junto con las tablas temporales (SYSTEM_VERSIONING) de ado, eia y eac. El script no
+         registra quién cambió qué: solo conserva <acr>_fecha_creacion y <acr>_fecha_actualizacion.
+  AP-02  Rol sgspi_rol_aplicacion con SELECT/INSERT/UPDATE sobre el esquema y DENY ALTER (ALTER es lo que
+         habilita TRUNCATE y DISABLE TRIGGER). sgspi_rol_administrador se crea sin permisos (reservado).
+  AP-03  RETIRADO. Ya no se exige contexto de sesión: creador, aprobador y firmantes son los per_codigo que
+         envía la aplicación, y la base de datos no puede verificar quién ejecuta la operación.
   AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
-         VIGENTE. Carga histórica controlada: sgspi.usp_habilitar_carga_inicial.
+         VIGENTE (error 50014). Carga histórica: un administrador (dbo) deshabilita temporalmente el trigger
+         TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carga_inicial.
   AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
-         listas y 5 bloques de transiciones copiados en los triggers.
+         listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
+         TR_<acr>_integridad_y_actualizacion de acf, rpi, aci, eia y act (error 50011).
+         [tef_accion_bitacora] quedó sin uso al retirarse la bitácora.
   AP-06  Integridad declarativa entre tablas: estrategia/naturaleza del evento, causal/nivel de reserva,
          nivel del padre en la taxonomía, componente afectado = categoría ISO 27005, serie con subseries.
   AP-07  Atributos ISO/IEC 27002:2022 normalizados ([aac]/[cra]) en vez de texto multivaluado.
@@ -69,8 +72,10 @@
   AP-09  Sin dependencias transitivas ni datos derivados sueltos: [zrc], mvr_codigo_posicion calculada,
          letra de probabilidad coherente, avance de actividad sincronizado desde [sga], UAA líder única.
   AP-10  [ado] usa PK compartida con [aci] (ado_codigo = aci_codigo).
-  AP-11  Se eliminan *_fecha_actualizacion de las tablas temporales (nunca se actualizaban).
-  AP-12  Marcas de auditoría en DATETIMEOFFSET(0) (bitácora y SYSTEM_TIME siguen en UTC).
+  AP-11  *_fecha_actualizacion ya no es una columna muerta: la mantiene el trigger
+         TR_<acr>_integridad_y_actualizacion en acf, rpi, aci, ado, eia, plt, act y eac (ado, eia y eac la
+         recuperan al retirarse las tablas temporales).
+  AP-12  Marcas de fecha en DATETIMEOFFSET(0) (zona horaria explícita).
   AP-13  Valores normalizados (PUBLICA, NO_CLASIFICADA, ...) y vistas filtradas por enc_familia_norma.
   AP-14  Claves naturales con UNIQUE (pri, cet, msi, act).
   AP-15  Segregación de funciones: aprobador/firmantes distintos del creador; aprobador obligatorio en
@@ -79,9 +84,9 @@
   AP-17  Todos los DEFAULT con nombre DF_<columna>.
   AP-18  Índices redundantes eliminados, INCLUDE de claves clustered retirados, índice para FK compuesta.
   AP-19  Verificación previa: el script se detiene sin cambios si [sgspi] ya tiene tablas o faltan
-         dependencias de [dbo].
+         dependencias de [dbo]. El despliegue corre en una sola transacción (todo o nada).
   AP-20  GROUPING() en lugar de ISNULL para rotular subtotales.
-  AP-21  Contexto de auditoría y hash centralizados en funciones reutilizadas por todos los triggers.
+  AP-21  RETIRADO (funciones de contexto de auditoría y de hash, eliminadas con AP-01 y AP-03).
 ==================================================================================================*/
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
@@ -92,8 +97,13 @@ SET XACT_ABORT ON;
 GO
 /*==================================================================================================
   0. VERIFICACIÓN PREVIA DE DESPLIEGUE [AP-19]
-     Si algo falla, SET NOEXEC ON hace que el resto del script se compile pero NO se ejecute, de modo que
-     nunca queda un despliegue a medias. El script termina con SET NOEXEC OFF.
+     Si la verificación falla, SET NOEXEC ON hace que el resto del script se compile pero NO se ejecute.
+     Si pasa, todo el despliegue corre en UNA transacción: ante un error, XACT_ABORT la revierte y la guarda
+     "IF @@TRANCOUNT = 0 SET NOEXEC ON" que abre cada lote impide que los lotes siguientes se ejecuten sueltos,
+     de modo que nunca queda un despliegue a medias. El script termina con COMMIT y SET NOEXEC OFF.
+     La transacción retiene bloqueos de esquema sobre las tablas de [dbo] referenciadas hasta el COMMIT:
+     desplegar en ventana de baja carga.
+     shortcut: un error de sintaxis en un lote no revierte la transacción, ejecutar con "sqlcmd -b" si se edita el script.
 ==================================================================================================*/
 DECLARE @errores NVARCHAR (2000) = N'';
 
@@ -132,6 +142,8 @@ IF LEN(@errores) > 0
 
 
 GO
+BEGIN TRANSACTION; -- [AP-19] No se ejecuta si la verificación previa activó NOEXEC
+
 IF NOT EXISTS (SELECT 1
                FROM   sys.schemas
                WHERE  name = N'sgspi')
@@ -140,6 +152,8 @@ IF NOT EXISTS (SELECT 1
     END
 
 
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 /*==================================================================================================
   1. DOMINIO TRANSVERSAL, GOBERNANZA SGC Y ARTICULACIÓN CON [dbo]
@@ -197,6 +211,8 @@ CREATE NONCLUSTERED INDEX IX_tef_estado_destino
     ON sgspi.transicion_estado_flujo (efc_dominio, efc_identificador_destino);
 
 -- Semilla de estados y transiciones de todos los dominios de flujo
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 -- [AP-05] Estados (se toman de los CHECK y triggers originales)
 INSERT INTO sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador, efc_nombre, efc_es_inicial, efc_permite_edicion)
@@ -317,6 +333,8 @@ FROM (VALUES
     (N'ACT', N'COMPLETADA', N'OBSERVADA',  N'OBSERVAR')
 ) AS v (dominio, origen, destino, accion);
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 
 -- 1.2 [dfc] y [fdv] Catálogo Extensible de Dominios de Formato y Control de Versiones SGC/SGSPI por Vigencia
 CREATE TABLE sgspi.dominio_formato_catalogo (
@@ -403,6 +421,8 @@ CREATE NONCLUSTERED INDEX IX_piu_uaa_codigo
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 /*==================================================================================================
   2. DOMINIO DE CONTEXTO ORGANIZACIONAL — MATRIZ DOFA (DOCUMENTOS 1 Y 2: ES-GSPI-MR-01)
 ==================================================================================================*/
@@ -474,6 +494,8 @@ CREATE NONCLUSTERED INDEX IX_acf_per_codigo_aprobador
     ON sgspi.analisis_contexto_factor (per_codigo_aprobador);
 
 
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 /*==================================================================================================
   3. DOMINIO DE PARTES INTERESADAS (DOCUMENTO 3: ES-GSPI-MR-03)
@@ -574,6 +596,8 @@ CREATE NONCLUSTERED INDEX IX_rpp_pri_codigo
     ON sgspi.requisito_parte_interesada_proceso_institucional (pri_codigo);
 
 
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 /*==================================================================================================
   4. DOMINIO DE INVENTARIO Y CLASIFICACIÓN DE ACTIVOS (DOCUMENTO 4: ES-GSPI-MR-05)
@@ -824,6 +848,8 @@ CREATE TABLE sgspi.modulo_sistema_informacion (
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 /*==================================================================================================
   4B. DOMINIO DE ACTIVOS DE LA INFORMACIÓN DOCUMENTAL Y ARCHIVÍSTICA (SUBTIPO DE [aci]: ES-GSPI-MR-04)
       Patrón Supertipo/Subtipo (Herencia de Tabla 1:1): Hereda valoración CID, criticidad, privacidad PII,
@@ -949,7 +975,7 @@ CREATE TABLE sgspi.formato_archivo_catalogo (
     CONSTRAINT CK_fac_nombre_no_vacio CHECK (LEN(TRIM(fac_nombre)) > 0)
 );
 
--- 4B.5 [ado] Subtipo 1:1 de Activo Documental (Especialización Archivística de [sgspi].[activo_informacion] para ES-GSPI-MR-04 con System-Versioned Temporal Table)
+-- 4B.5 [ado] Subtipo 1:1 de Activo Documental (Especialización Archivística de [sgspi].[activo_informacion] para ES-GSPI-MR-04)
 -- [AP-10] PK compartida: ado_codigo ES el aci_codigo del supertipo (sin IDENTITY propio ni columna FK separada).
 -- [AP-08] El tipo de activo documental se deriva de tac_codigo y el formato se modela en [adf] (4B.6).
 CREATE TABLE sgspi.activo_documental (
@@ -963,7 +989,8 @@ CREATE TABLE sgspi.activo_documental (
     epc_codigo                    SMALLINT                                    NOT NULL, -- FK a [sgspi].[estado_publicacion_catalogo]([epc_codigo])
     ado_lugar_consulta_ubicacion      NVARCHAR (255)                              NOT NULL, -- URL portal de transparencia o nombre de dependencia/archivo
     per_codigo_revisor_archivo    INT                                         NULL, -- FK a [dbo].[persona]([per_codigo]): Aval específico Gestión Documental / Secretaría General
-    ado_fecha_creacion                DATETIMEOFFSET (0)                          CONSTRAINT DF_ado_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17] (se elimina ado_fecha_actualizacion [AP-11]: ado_sys_inicio_utc es la fuente de verdad)
+    ado_fecha_creacion                DATETIMEOFFSET (0)                          CONSTRAINT DF_ado_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
+    ado_fecha_actualizacion           DATETIMEOFFSET (0)                          CONSTRAINT DF_ado_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-11] La mantiene TR_ado_integridad_y_actualizacion
     CONSTRAINT PK_ado_activo_documental PRIMARY KEY CLUSTERED (ado_codigo),
     CONSTRAINT FK_ado_activo_informacion FOREIGN KEY (ado_codigo) REFERENCES sgspi.activo_informacion (aci_codigo), -- [AP-10] PK compartida (reemplaza UQ_ado_activo_informacion)
     CONSTRAINT FK_ado_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
@@ -1048,6 +1075,8 @@ CREATE NONCLUSTERED INDEX IX_adu_upc_codigo
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 /*==================================================================================================
   5. DOMINIO DE RIESGOS, OPORTUNIDADES, PLAN DE TRATAMIENTO Y SOA (DOCUMENTO 5: ES-GSPI-MR-06)
      Articulado con [dbo].[persona], [dbo].[cargo], [dbo].[uaa], [dbo].[grupo] y [dbo].[usuario_grupo]
@@ -1087,6 +1116,8 @@ CREATE TABLE sgspi.zona_riesgo_catalogo (
     CONSTRAINT UQ_zrc_orden UNIQUE (zrc_orden)
 );
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 
 -- [AP-09] Semilla de zonas de riesgo (bloque propio: la tabla ya existe en el lote anterior)
 INSERT INTO sgspi.zona_riesgo_catalogo (zrc_codigo, zrc_nombre_nivel, zrc_orden)
@@ -1094,6 +1125,8 @@ VALUES ('B', N'Riesgo Inferior', 1),
        ('M', N'Riesgo Moderado', 2),
        ('A', N'Riesgo Alto', 3),
        ('E', N'Riesgo Extremo', 4);
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 
 CREATE TABLE sgspi.matriz_valoracion_riesgo (
@@ -1117,7 +1150,7 @@ CREATE NONCLUSTERED INDEX IX_mvr_eim_codigo
 CREATE NONCLUSTERED INDEX IX_mvr_zrc_codigo -- [AP-18] soporte de la FK a zrc
     ON sgspi.matriz_valoracion_riesgo (zrc_codigo);
 
--- 5.2 [eia] Escenarios de Incertidumbre sobre Activos (Riesgos RA-XX y Oportunidades OA-XX con System-Versioned Temporal Table)
+-- 5.2 [eia] Escenarios de Incertidumbre sobre Activos (Riesgos RA-XX y Oportunidades OA-XX)
 CREATE TABLE sgspi.evento_incertidumbre_activo (
     eia_codigo                      INT                                         IDENTITY (1, 1) NOT NULL,
     pev_codigo                  SMALLINT                                    NOT NULL, -- FK a [sgspi].[periodo_vigencia]([pev_codigo])
@@ -1144,7 +1177,8 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
     per_codigo_validador_lider  INT                                         NULL, -- FK a [dbo].[persona]([per_codigo])
     per_codigo_revisor_sgspi    INT                                         NULL, -- FK a [dbo].[persona]([per_codigo])
     per_codigo_aprobador_comite INT                                         NULL, -- FK a [dbo].[persona]([per_codigo])
-    eia_fecha_creacion              DATETIMEOFFSET (0)                          CONSTRAINT DF_eia_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17] [AP-11: se elimina eia_fecha_actualizacion]
+    eia_fecha_creacion              DATETIMEOFFSET (0)                          CONSTRAINT DF_eia_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
+    eia_fecha_actualizacion         DATETIMEOFFSET (0)                          CONSTRAINT DF_eia_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-11] La mantiene TR_eia_integridad_y_actualizacion
     CONSTRAINT PK_eia_evento_incertidumbre_activo PRIMARY KEY CLUSTERED (eia_codigo),
     CONSTRAINT UQ_eia_vigencia_identificador UNIQUE (pev_codigo, eia_identificador_evento),
     CONSTRAINT UQ_eia_codigo_naturaleza UNIQUE (eia_codigo, eia_naturaleza_evento), -- [AP-06] destino de la FK compuesta de plt
@@ -1410,7 +1444,7 @@ CREATE TABLE sgspi.plan_tratamiento_control_referencia_normativa (
 CREATE NONCLUSTERED INDEX IX_ptc_crn_codigo
     ON sgspi.plan_tratamiento_control_referencia_normativa (crn_codigo);
 
--- 5.8 [eac] Declaración de Aplicabilidad (SoA) y Evaluación de Cumplimiento por Vigencia (Con System-Versioned Temporal Table)
+-- 5.8 [eac] Declaración de Aplicabilidad (SoA) y Evaluación de Cumplimiento por Vigencia
 CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
     eac_codigo                      INT                                         IDENTITY (1, 1) NOT NULL,
     pev_codigo                  SMALLINT                                    NOT NULL, -- FK a [sgspi].[periodo_vigencia]([pev_codigo])
@@ -1423,7 +1457,8 @@ CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
     eac_evidencia_objetiva_esperada NVARCHAR (500)                              NULL,
     eac_estado_implementacion       NVARCHAR (20)                               NULL, -- 'CUMPLE', 'CUMPLE_PARCIAL', 'NO_CUMPLE' (NULL cuando eac_es_aplicable = 0)
     eac_observaciones_auditoria     NVARCHAR (1000)                             NULL,
-    eac_fecha_creacion              DATETIMEOFFSET (0)                          CONSTRAINT DF_eac_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17] [AP-11: se elimina eac_fecha_actualizacion]
+    eac_fecha_creacion              DATETIMEOFFSET (0)                          CONSTRAINT DF_eac_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
+    eac_fecha_actualizacion         DATETIMEOFFSET (0)                          CONSTRAINT DF_eac_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-11] La mantiene TR_eac_integridad_y_actualizacion
     CONSTRAINT PK_eac_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (eac_codigo),
     CONSTRAINT UQ_eac_vigencia_control UNIQUE (pev_codigo, crn_codigo),
     CONSTRAINT FK_eac_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
@@ -1455,11 +1490,488 @@ CREATE NONCLUSTERED INDEX IX_eac_car_codigo
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 /*==================================================================================================
-  5.10 PROCEDIMIENTO DE CONTEXTO SEGURO, CADENA DE HASH DE BITÁCORA, TRIGGERS DE INMUTABILIDAD,
-       INTEGRIDAD DE MÁQUINA DE ESTADOS Y ALIMENTACIÓN AUTOMÁTICA DE AUDITORÍA (ISO 27001 A.8.15)
+  5.10 TRIGGERS DE INTEGRIDAD: MÁQUINA DE ESTADOS DIRIGIDA POR DATOS, BORRADO LÓGICO, FECHA DE
+       ACTUALIZACIÓN Y SEGUIMIENTO APPEND-ONLY
+       Cada TR_<acr>_integridad_y_actualizacion: (a) impide el borrado físico (error 50010); (b) en las tablas
+       con flujo exige el estado inicial en INSERT (50014) y solo admite las transiciones de [tef] y la
+       edición en estados con efc_permite_edicion = 1 (50011); (c) mantiene <acr>_fecha_actualizacion.
+       No registran bitácora ni exigen contexto de sesión (auditoría retirada: AP-01, AP-03).
 ==================================================================================================*/
--- 5.10.12 Triggers sobre [sgspi].[seguimiento_actividad] ([sga]) [AP-16]
+-- 5.10.1 Trigger sobre [sgspi].[analisis_contexto_factor] ([acf])
+CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
+ON sgspi.analisis_contexto_factor
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- La actualización de la fecha que hace este mismo trigger no debe volver a validarse
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_acf_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[analisis_contexto_factor].', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted)
+        RETURN;
+
+    -- [AP-04] En INSERT el estado debe ser el inicial del dominio
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted AS i
+        WHERE  NOT EXISTS (SELECT 1 FROM deleted AS d WHERE d.acf_codigo = i.acf_codigo)
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM   sgspi.estado_flujo_catalogo AS efc
+                   WHERE  efc.efc_dominio = N'ACF'
+                          AND efc.efc_identificador = i.acf_estado_registro
+                          AND efc.efc_es_inicial = 1
+               )
+    )
+        THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[analisis_contexto_factor] solo puede crearse en el estado inicial del flujo.', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        -- [AP-05] Máquina de estados dirigida por datos: sin listas de estados codificadas
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN deleted AS d ON d.acf_codigo = i.acf_codigo
+            WHERE  (i.acf_estado_registro = d.acf_estado_registro
+                    AND EXISTS (
+                        SELECT 1
+                        FROM   sgspi.estado_flujo_catalogo AS efc
+                        WHERE  efc.efc_dominio = N'ACF'
+                               AND efc.efc_identificador = d.acf_estado_registro
+                               AND efc.efc_permite_edicion = 0
+                    ))
+                   OR (i.acf_estado_registro <> d.acf_estado_registro
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM   sgspi.transicion_estado_flujo AS tef
+                           WHERE  tef.efc_dominio = N'ACF'
+                                  AND tef.efc_identificador_origen = d.acf_estado_registro
+                                  AND tef.efc_identificador_destino = i.acf_estado_registro
+                       ))
+        )
+            THROW 50011, N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[analisis_contexto_factor].', 1;
+
+        IF NOT UPDATE(acf_fecha_actualizacion)
+            UPDATE t
+            SET    t.acf_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+            FROM   sgspi.analisis_contexto_factor AS t
+                   INNER JOIN inserted AS i ON i.acf_codigo = t.acf_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.2 Trigger sobre [sgspi].[requisito_parte_interesada] ([rpi])
+CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
+ON sgspi.requisito_parte_interesada
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[requisito_parte_interesada].', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted)
+        RETURN;
+
+    -- [AP-04] En INSERT el estado debe ser el inicial del dominio
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted AS i
+        WHERE  NOT EXISTS (SELECT 1 FROM deleted AS d WHERE d.rpi_codigo = i.rpi_codigo)
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM   sgspi.estado_flujo_catalogo AS efc
+                   WHERE  efc.efc_dominio = N'RPI'
+                          AND efc.efc_identificador = i.rpi_estado_registro
+                          AND efc.efc_es_inicial = 1
+               )
+    )
+        THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[requisito_parte_interesada] solo puede crearse en el estado inicial del flujo.', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        -- [AP-05] Máquina de estados dirigida por datos: sin listas de estados codificadas
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN deleted AS d ON d.rpi_codigo = i.rpi_codigo
+            WHERE  (i.rpi_estado_registro = d.rpi_estado_registro
+                    AND EXISTS (
+                        SELECT 1
+                        FROM   sgspi.estado_flujo_catalogo AS efc
+                        WHERE  efc.efc_dominio = N'RPI'
+                               AND efc.efc_identificador = d.rpi_estado_registro
+                               AND efc.efc_permite_edicion = 0
+                    ))
+                   OR (i.rpi_estado_registro <> d.rpi_estado_registro
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM   sgspi.transicion_estado_flujo AS tef
+                           WHERE  tef.efc_dominio = N'RPI'
+                                  AND tef.efc_identificador_origen = d.rpi_estado_registro
+                                  AND tef.efc_identificador_destino = i.rpi_estado_registro
+                       ))
+        )
+            THROW 50011, N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[requisito_parte_interesada].', 1;
+
+        IF NOT UPDATE(rpi_fecha_actualizacion)
+            UPDATE t
+            SET    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+            FROM   sgspi.requisito_parte_interesada AS t
+                   INNER JOIN inserted AS i ON i.rpi_codigo = t.rpi_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.3 Trigger sobre [sgspi].[activo_informacion] ([aci])
+CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
+ON sgspi.activo_informacion
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_aci_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente activos en [sgspi].[activo_informacion]. Utilice los estados INACTIVO o HISTORICO.', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted)
+        RETURN;
+
+    -- [AP-04] En INSERT el estado debe ser el inicial del dominio
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted AS i
+        WHERE  NOT EXISTS (SELECT 1 FROM deleted AS d WHERE d.aci_codigo = i.aci_codigo)
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM   sgspi.estado_flujo_catalogo AS efc
+                   WHERE  efc.efc_dominio = N'ACI'
+                          AND efc.efc_identificador = i.aci_estado_registro
+                          AND efc.efc_es_inicial = 1
+               )
+    )
+        THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[activo_informacion] solo puede crearse en el estado inicial del flujo.', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        -- [AP-05] Máquina de estados dirigida por datos: sin listas de estados codificadas
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo
+            WHERE  (i.aci_estado_registro = d.aci_estado_registro
+                    AND EXISTS (
+                        SELECT 1
+                        FROM   sgspi.estado_flujo_catalogo AS efc
+                        WHERE  efc.efc_dominio = N'ACI'
+                               AND efc.efc_identificador = d.aci_estado_registro
+                               AND efc.efc_permite_edicion = 0
+                    ))
+                   OR (i.aci_estado_registro <> d.aci_estado_registro
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM   sgspi.transicion_estado_flujo AS tef
+                           WHERE  tef.efc_dominio = N'ACI'
+                                  AND tef.efc_identificador_origen = d.aci_estado_registro
+                                  AND tef.efc_identificador_destino = i.aci_estado_registro
+                       ))
+        )
+            THROW 50011, N'Transición inválida o intento de modificar un activo no editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[activo_informacion].', 1;
+
+        IF NOT UPDATE(aci_fecha_actualizacion)
+            UPDATE t
+            SET    t.aci_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+            FROM   sgspi.activo_informacion AS t
+                   INNER JOIN inserted AS i ON i.aci_codigo = t.aci_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.4 Trigger sobre [sgspi].[activo_documental] ([ado]): sin flujo propio (hereda el estado de [aci])
+CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
+ON sgspi.activo_documental
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_ado_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente activos documentales en [sgspi].[activo_documental].', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted)
+        RETURN;
+
+    -- [AP-06] Una serie con subseries exige indicar la subserie (INSERT y UPDATE)
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted AS i
+               INNER JOIN sgspi.serie_documental_catalogo AS sdo ON sdo.sdo_codigo = i.sdo_codigo
+        WHERE  sdo.sdo_tiene_subseries = 1
+               AND i.sbd_codigo IS NULL
+    )
+        THROW 50015, N'Subserie requerida: la serie documental seleccionada tiene subseries y [sbd_codigo] no puede ser NULL en [sgspi].[activo_documental].', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN sgspi.activo_informacion AS aci ON aci.aci_codigo = i.ado_codigo
+            WHERE  aci.aci_estado_registro = N'HISTORICO'
+        )
+            THROW 50011, N'Operación denegada: No se permite modificar un activo documental cuyo activo de información se encuentra en estado HISTORICO en [sgspi].[activo_documental].', 1;
+
+        IF NOT UPDATE(ado_fecha_actualizacion)
+            UPDATE t
+            SET    t.ado_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+            FROM   sgspi.activo_documental AS t
+                   INNER JOIN inserted AS i ON i.ado_codigo = t.ado_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.5 Trigger sobre [sgspi].[evento_incertidumbre_activo] ([eia])
+CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
+ON sgspi.evento_incertidumbre_activo
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_eia_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente eventos en [sgspi].[evento_incertidumbre_activo].', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted)
+        RETURN;
+
+    -- [AP-04] En INSERT el estado debe ser el inicial del dominio
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted AS i
+        WHERE  NOT EXISTS (SELECT 1 FROM deleted AS d WHERE d.eia_codigo = i.eia_codigo)
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM   sgspi.estado_flujo_catalogo AS efc
+                   WHERE  efc.efc_dominio = N'EIA'
+                          AND efc.efc_identificador = i.eia_estado_registro
+                          AND efc.efc_es_inicial = 1
+               )
+    )
+        THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[evento_incertidumbre_activo] solo puede crearse en el estado inicial del flujo.', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        -- [AP-05] Máquina de estados dirigida por datos: sin listas de estados codificadas
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN deleted AS d ON d.eia_codigo = i.eia_codigo
+            WHERE  (i.eia_estado_registro = d.eia_estado_registro
+                    AND EXISTS (
+                        SELECT 1
+                        FROM   sgspi.estado_flujo_catalogo AS efc
+                        WHERE  efc.efc_dominio = N'EIA'
+                               AND efc.efc_identificador = d.eia_estado_registro
+                               AND efc.efc_permite_edicion = 0
+                    ))
+                   OR (i.eia_estado_registro <> d.eia_estado_registro
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM   sgspi.transicion_estado_flujo AS tef
+                           WHERE  tef.efc_dominio = N'EIA'
+                                  AND tef.efc_identificador_origen = d.eia_estado_registro
+                                  AND tef.efc_identificador_destino = i.eia_estado_registro
+                       ))
+        )
+            THROW 50011, N'Transición de estado inválida o intento de alterar un evento cerrado/histórico en [sgspi].[evento_incertidumbre_activo].', 1;
+
+        IF NOT UPDATE(eia_fecha_actualizacion)
+            UPDATE t
+            SET    t.eia_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+            FROM   sgspi.evento_incertidumbre_activo AS t
+                   INNER JOIN inserted AS i ON i.eia_codigo = t.eia_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.6 Trigger sobre [sgspi].[plan_tratamiento] ([plt]): sin flujo propio (depende del estado de su evento [eia])
+CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
+ON sgspi.plan_tratamiento
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_plt_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente planes de tratamiento en [sgspi].[plan_tratamiento].', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN sgspi.evento_incertidumbre_activo AS eia ON eia.eia_codigo = i.eia_codigo
+            WHERE  eia.eia_estado_registro IN (N'CERRADO_EFICAZ', N'HISTORICO')
+        )
+            THROW 50011, N'Operación denegada: No se permite modificar el plan de tratamiento de un evento CERRADO_EFICAZ o HISTORICO en [sgspi].[plan_tratamiento].', 1;
+
+        IF NOT UPDATE(plt_fecha_actualizacion)
+            UPDATE t
+            SET    t.plt_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+            FROM   sgspi.plan_tratamiento AS t
+                   INNER JOIN inserted AS i ON i.plt_codigo = t.plt_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.7 Trigger sobre [sgspi].[actividad_tratamiento] ([act])
+CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
+ON sgspi.actividad_tratamiento
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_act_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente actividades de tratamiento en [sgspi].[actividad_tratamiento].', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM inserted)
+        RETURN;
+
+    -- [AP-04] En INSERT el estado debe ser el inicial del dominio
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted AS i
+        WHERE  NOT EXISTS (SELECT 1 FROM deleted AS d WHERE d.act_codigo = i.act_codigo)
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM   sgspi.estado_flujo_catalogo AS efc
+                   WHERE  efc.efc_dominio = N'ACT'
+                          AND efc.efc_identificador = i.act_estado_actividad
+                          AND efc.efc_es_inicial = 1
+               )
+    )
+        THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[actividad_tratamiento] solo puede crearse en el estado inicial del flujo.', 1;
+
+    IF EXISTS (SELECT 1 FROM deleted)
+    BEGIN
+        -- [AP-05] Máquina de estados dirigida por datos: sin listas de estados codificadas
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN deleted AS d ON d.act_codigo = i.act_codigo
+            WHERE  (i.act_estado_actividad = d.act_estado_actividad
+                    AND EXISTS (
+                        SELECT 1
+                        FROM   sgspi.estado_flujo_catalogo AS efc
+                        WHERE  efc.efc_dominio = N'ACT'
+                               AND efc.efc_identificador = d.act_estado_actividad
+                               AND efc.efc_permite_edicion = 0
+                    ))
+                   OR (i.act_estado_actividad <> d.act_estado_actividad
+                       AND NOT EXISTS (
+                           SELECT 1
+                           FROM   sgspi.transicion_estado_flujo AS tef
+                           WHERE  tef.efc_dominio = N'ACT'
+                                  AND tef.efc_identificador_origen = d.act_estado_actividad
+                                  AND tef.efc_identificador_destino = i.act_estado_actividad
+                       ))
+        )
+            THROW 50011, N'Transición de estado inválida o intento de modificar una actividad en estado no editable (COMPLETADA) en [sgspi].[actividad_tratamiento].', 1;
+
+        -- No se tocan actividades de un evento CERRADO_EFICAZ o HISTORICO
+        IF EXISTS (
+            SELECT 1
+            FROM   inserted AS i
+                   INNER JOIN sgspi.plan_tratamiento AS plt ON plt.plt_codigo = i.plt_codigo
+                   INNER JOIN sgspi.evento_incertidumbre_activo AS eia ON eia.eia_codigo = plt.eia_codigo
+            WHERE  eia.eia_estado_registro IN (N'CERRADO_EFICAZ', N'HISTORICO')
+        )
+            THROW 50011, N'Operación denegada: No se permite modificar actividades de un evento CERRADO_EFICAZ o HISTORICO en [sgspi].[actividad_tratamiento].', 1;
+
+        IF NOT UPDATE(act_fecha_actualizacion)
+            UPDATE t
+            SET    t.act_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+            FROM   sgspi.actividad_tratamiento AS t
+                   INNER JOIN inserted AS i ON i.act_codigo = t.act_codigo;
+    END;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.8 Trigger sobre [sgspi].[evaluacion_aplicabilidad_control] ([eac]): sin flujo de estados
+CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
+ON sgspi.evaluacion_aplicabilidad_control
+AFTER UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_eac_integridad_y_actualizacion', N'TR')) > 1
+        RETURN;
+
+    IF EXISTS (SELECT 1 FROM deleted) AND NOT EXISTS (SELECT 1 FROM inserted)
+        THROW 50010, N'Operación denegada: No se permite eliminar físicamente evaluaciones de aplicabilidad (SoA) en [sgspi].[evaluacion_aplicabilidad_control].', 1;
+
+    IF NOT UPDATE(eac_fecha_actualizacion)
+        UPDATE t
+        SET    t.eac_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+        FROM   sgspi.evaluacion_aplicabilidad_control AS t
+               INNER JOIN inserted AS i ON i.eac_codigo = t.eac_codigo;
+END;
+
+
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.9 Triggers sobre [sgspi].[seguimiento_actividad] ([sga]) [AP-16]
 -- Inmutabilidad: el seguimiento con evidencia es append-only (INSTEAD OF UPDATE, DELETE)
 CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
 ON sgspi.seguimiento_actividad
@@ -1472,8 +1984,10 @@ END;
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 -- [AP-09] El avance de la actividad deja de ser un dato duplicado y desincronizado: se deriva del último seguimiento reportado.
--- El UPDATE sobre [act] dispara TR_act_auditoria_y_actualizacion (audita y aplica sus reglas de estado): es lo deseado.
+-- El UPDATE sobre [act] dispara TR_act_integridad_y_actualizacion (aplica sus reglas de estado): es lo deseado.
 CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
 ON sgspi.seguimiento_actividad
 AFTER INSERT
@@ -1499,9 +2013,11 @@ END;
 
 
 GO
--- 5.10.13 Roles y permisos [AP-02]: la inmutabilidad no puede depender solo de triggers (TRUNCATE / DISABLE TRIGGER los evaden)
--- Nota: dbo / db_owner / sysadmin NO se pueden restringir con DENY; frente a ellos la defensa es la cadena de hash
--- ([bas_hash_evento_anterior] + [sgspi].[usp_verificar_cadena_bitacora]), que detecta cualquier alteración o borrado intermedio.
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+-- 5.10.10 Roles y permisos [AP-02]: las reglas no pueden depender solo de triggers (TRUNCATE / DISABLE TRIGGER los evaden),
+-- por eso se deniega ALTER al rol de aplicación. dbo / db_owner / sysadmin NO se pueden restringir con DENY.
+-- [sgspi_rol_administrador] se crea sin permisos: queda reservado hasta definir sus privilegios.
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sgspi_rol_aplicacion' AND type = N'R')
     CREATE ROLE sgspi_rol_aplicacion;
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sgspi_rol_administrador' AND type = N'R')
@@ -1513,11 +2029,13 @@ DENY ALTER ON SCHEMA::sgspi TO sgspi_rol_aplicacion;
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 /*==================================================================================================
   6. VISTAS DINÁMICAS PARA CAMPOS CALCULADOS E INTEGRACIÓN CON [dbo]
 ==================================================================================================*/
 -- 6.0 Vista de Integración de Seguridad y Alcance por Proceso/UAA
--- [AP-21] CONCAT con literales Unicode (N'')
+-- CONCAT con literales Unicode (N'')
 CREATE OR ALTER VIEW sgspi.vw_usuario_rol_alcance_sgspi
 AS
 SELECT p.per_codigo,
@@ -1556,6 +2074,8 @@ WHERE  ug.usg_estado = 1
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 -- 6.1 Vista Consolidado DOFA (Proyecta los identificadores inmutables persistidos D1..Dn, F1..Fn, A1..An, O1..On)
 CREATE OR ALTER VIEW sgspi.vw_consolidado_dofa
 AS
@@ -1590,6 +2110,8 @@ FROM   sgspi.analisis_contexto_factor AS acf
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 -- 6.2 Vista Resumen de Activos por Categoría, Tipo y Criticidad (Reemplaza Tabla Dinámica de ES-GSPI-MR-05 sobre jerarquía normalizada [tac])
 CREATE OR ALTER VIEW sgspi.vw_resumen_activos_criticidad
 AS
@@ -1619,6 +2141,8 @@ FROM     cte_taxonomia_activo AS t
 GROUP BY GROUPING SETS((t.tac_categoria_iso27005, t.tac_tipo_activo), (t.tac_categoria_iso27005), ());
 
 
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 -- 6.3 Vista Matriz de Tratamiento de Riesgos y Oportunidades (Calcula concatenaciones y cruces en tiempo real)
 CREATE OR ALTER VIEW sgspi.vw_matriz_tratamiento_riesgos
@@ -1721,6 +2245,8 @@ FROM   sgspi.evento_incertidumbre_activo AS eia
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 -- 6.4 Vista de Desglose Jerárquico del Cuadro de Clasificación Documental CCD/TRD (ES-GSPI-MR-04: Resolución Jerárquica N-Niveles con HIERARCHYID)
 CREATE OR ALTER VIEW sgspi.vw_desglose_ccd_trd_mr04
 AS
@@ -1782,6 +2308,8 @@ FROM   sgspi.activo_documental_unidad_productora AS adu
 WHERE  adu.adu_esta_activo = 1;
 
 
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
 GO
 -- 6.5 Vista Matriz Consolidada de Inventario y Clasificación de Activos Documentales (Une Subtipo [ado] con Supertipo [aci] para ES-GSPI-MR-04)
 CREATE OR ALTER VIEW sgspi.vw_inventario_activo_documental_mr04
@@ -1968,6 +2496,8 @@ FROM   sgspi.activo_documental AS ado
 
 
 GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
 -- 6.6 Vista de Atributos de Controles ISO/IEC 27002:2022 (reemplaza las tablas cps/ccc y las columnas de texto de [crn]) [AP-07]
 CREATE OR ALTER VIEW sgspi.vw_controles_atributos_iso27002
 AS
@@ -1996,6 +2526,10 @@ GROUP BY crn.crn_codigo,
          crn.crn_nombre_control;
 
 
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+COMMIT TRANSACTION; -- [AP-19]
 GO
 SET NOEXEC OFF;
 GO

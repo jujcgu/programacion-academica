@@ -18,17 +18,13 @@ BEGIN
     VALUES (@nombre, CASE WHEN @error = 0 THEN N'OK' ELSE CONCAT(N'error ', @error) END, @msg, IIF(@obt = @error, 1, 0));
 END;
 GO
--- ======================= 1. Contexto de auditoría y flujo de estados (ACF) =======================
-EXEC #espera N'Datos maestros sin contexto: catálogos sin trigger funcionan', N'
+-- ======================= 1. Flujo de estados (ACF) =======================
+EXEC #espera N'Datos maestros', N'
 INSERT sgspi.periodo_vigencia (pev_anio, pev_fecha_apertura) VALUES (2026, ''2026-01-01'');
 INSERT sgspi.tipo_proceso_catalogo (tpr_identificador, tpr_nombre) VALUES (N''EST'', N''ESTRATÉGICO'');
 INSERT sgspi.proceso_institucional (pri_identificador, pri_nombre, tpr_codigo, uaa_codigo_lider) VALUES (N''P01'', N''Direccionamiento'', 1, 1);
 INSERT sgspi.factor_entorno_catalogo (fec_nombre_factor, fec_ambito_entorno) VALUES (N''Tecnológico'', N''INTERNO'');', 0;
 EXEC #espera N'AP-14 pri_identificador duplicado', N'INSERT sgspi.proceso_institucional (pri_identificador, pri_nombre, tpr_codigo) VALUES (N''P01'', N''Otro'', 1);', 2627;
-EXEC #espera N'AP-03 INSERT en acf sin contexto de sesión', N'INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, per_codigo_creador) VALUES (1,1,1,N''DEBILIDAD'',1,N''x'',1);', 50012;
-EXEC #espera N'AP-03 contexto con persona inexistente', N'EXEC sgspi.usp_establecer_contexto_auditoria @per_codigo = 999;', 50013;
-EXEC #espera N'Establecer contexto (persona 1)', N'EXEC sgspi.usp_establecer_contexto_auditoria @per_codigo = 1, @direccion_ip = ''10.0.0.1'';', 0;
-EXEC #espera N'AP-03 la identidad de sesión no se puede cambiar a mitad de sesión', N'EXEC sgspi.usp_establecer_contexto_auditoria @per_codigo = 2;', 15664;
 EXEC #espera N'AP-04 INSERT directo en VIGENTE', N'INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, acf_estado_registro, per_codigo_creador, per_codigo_aprobador) VALUES (1,1,1,N''DEBILIDAD'',1,N''x'',N''VIGENTE'',1,2);', 50014;
 EXEC #espera N'AP-05 estado inexistente en catálogo', N'INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, acf_estado_registro, per_codigo_creador) VALUES (1,1,1,N''DEBILIDAD'',1,N''x'',N''APROBADISIMO'',1);', 547;
 EXEC #espera N'INSERT acf en BORRADOR', N'INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, per_codigo_creador, acf_valor_prioridad) VALUES (1,1,1,N''DEBILIDAD'',1,N''Obsolescencia'',1,3);', 0;
@@ -40,11 +36,6 @@ EXEC #espera N'AP-15 aprobador = creador', N'UPDATE sgspi.analisis_contexto_fact
 EXEC #espera N'Aprobar con aprobador distinto', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'', per_codigo_aprobador = 2 WHERE acf_numero_factor = 1;', 0;
 EXEC #espera N'AP-05 editar VIGENTE sin cambiar estado', N'UPDATE sgspi.analisis_contexto_factor SET acf_descripcion_situacion = N''cambio'' WHERE acf_numero_factor = 1;', 50011;
 EXEC #espera N'Borrado físico bloqueado', N'DELETE sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1;', 50010;
-INSERT #resultado (prueba, esperado, obtenido, ok)
-SELECT N'Bitácora: acciones registradas para acf (CREAR, 2x TRANSICION, APROBAR)', N'CREAR,TRANSICION_ESTADO,TRANSICION_ESTADO,APROBAR',
-       STRING_AGG(bas_accion_ejecutada, N',') WITHIN GROUP (ORDER BY bas_codigo),
-       IIF(STRING_AGG(bas_accion_ejecutada, N',') WITHIN GROUP (ORDER BY bas_codigo) = N'CREAR,TRANSICION_ESTADO,TRANSICION_ESTADO,APROBAR' AND MIN(bas_per_codigo) = 1 AND MAX(bas_per_codigo) = 1, 1, 0)
-FROM sgspi.bitacora_auditoria_sistema WHERE bas_entidad_afectada = N'sgspi.analisis_contexto_factor';
 GO
 -- ======================= 2. RPI (nuevo creador/aprobador, ya no nace VIGENTE) =======================
 EXEC #espera N'AP-04 rpi nace en BORRADOR por defecto', N'
@@ -116,28 +107,9 @@ INSERT sgspi.control_referencia_normativa_atributo (crn_codigo, aac_codigo) VALU
 INSERT sgspi.plan_tratamiento_control_referencia_normativa (plt_codigo, crn_codigo) VALUES ((SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')),1);', 0;
 EXEC #espera N'AP-13 dos ediciones activas de la misma familia', N'INSERT sgspi.estandar_normativo_catalogo (enc_identificador, enc_familia_norma, enc_nombre) VALUES (N''ISO/IEC 27001:2013'', N''ISO27001'', N''SGSI viejo'');', 2601;
 EXEC #espera N'SoA aplicable', N'INSERT sgspi.evaluacion_aplicabilidad_control (pev_codigo, crn_codigo, eac_frecuencia_revision, eac_estado_implementacion) VALUES (1, 1, N''Anual'', N''CUMPLE_PARCIAL'');', 0;
+EXEC #espera N'AP-11 el trigger mantiene eac_fecha_actualizacion', N'UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_fecha_actualizacion = ''2000-01-01T00:00:00+00:00'' WHERE eac_codigo = 1; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''obs'' WHERE eac_codigo = 1; IF (SELECT YEAR(eac_fecha_actualizacion) FROM sgspi.evaluacion_aplicabilidad_control WHERE eac_codigo = 1) = 2000 THROW 51000, N''fecha de actualización no mantenida'', 1;', 0;
 GO
--- ======================= 6. Bitácora: inmutabilidad y cadena de hash =======================
-EXEC #espera N'AP-01 UPDATE sobre bitácora bloqueado', N'UPDATE sgspi.bitacora_auditoria_sistema SET bas_motivo_observacion = N''x'' WHERE bas_codigo = 1;', 50001;
-INSERT #resultado (prueba, esperado, obtenido, ok)
-SELECT N'AP-01 cadena: un solo génesis y cada evento enlaza con el anterior', N'1 génesis, 0 rotos',
-       CONCAT(SUM(IIF(bas_hash_evento_anterior IS NULL, 1, 0)), N' génesis, ', SUM(IIF(bas_hash_evento_anterior <> prev, 1, 0)), N' rotos de ', COUNT(*)),
-       IIF(SUM(IIF(bas_hash_evento_anterior IS NULL, 1, 0)) = 1 AND SUM(IIF(bas_hash_evento_anterior <> prev, 1, 0)) = 0 AND COUNT(*) > 5, 1, 0)
-FROM (SELECT bas_hash_evento_anterior, LAG(bas_hash_evento_sha256) OVER (ORDER BY bas_codigo) AS prev FROM sgspi.bitacora_auditoria_sistema) AS x;
-CREATE TABLE #verif (bas_codigo BIGINT, motivo_falla NVARCHAR (400));
-INSERT #verif EXEC sgspi.usp_verificar_cadena_bitacora;
-INSERT #resultado (prueba, esperado, obtenido, ok) SELECT N'AP-01 verificador sobre cadena íntegra', N'0 fallas', CONCAT(COUNT(*), N' fallas'), IIF(COUNT(*) = 0, 1, 0) FROM #verif;
--- Simula a un sysadmin que deshabilita el trigger y altera un evento
-DISABLE TRIGGER sgspi.TR_bas_inmutabilidad_bitacora ON sgspi.bitacora_auditoria_sistema;
-DECLARE @b2 BIGINT = (SELECT bas_codigo FROM (SELECT bas_codigo, ROW_NUMBER() OVER (ORDER BY bas_codigo) AS rn FROM sgspi.bitacora_auditoria_sistema) AS x WHERE rn = 2);
-UPDATE sgspi.bitacora_auditoria_sistema SET bas_per_codigo = 3 WHERE bas_codigo = @b2;
-CREATE TABLE #b2 (v BIGINT); INSERT #b2 VALUES (@b2);
-ENABLE TRIGGER sgspi.TR_bas_inmutabilidad_bitacora ON sgspi.bitacora_auditoria_sistema;
-DELETE #verif;
-INSERT #verif EXEC sgspi.usp_verificar_cadena_bitacora;
-INSERT #resultado (prueba, esperado, obtenido, ok) SELECT N'AP-01 verificador detecta alteración del evento 2', N'falla en el 2.º evento', CONCAT(N'fallas en: ', STRING_AGG(CONVERT (NVARCHAR (20), bas_codigo), N',')), IIF(MIN(bas_codigo) = (SELECT v FROM #b2), 1, 0) FROM #verif;
-GO
--- ======================= 7. Vistas =======================
+-- ======================= 6. Vistas =======================
 EXEC #espera N'Vista vw_usuario_rol_alcance_sgspi', N'SELECT * INTO #v1 FROM sgspi.vw_usuario_rol_alcance_sgspi;', 0;
 EXEC #espera N'Vista vw_consolidado_dofa', N'SELECT * INTO #v2 FROM sgspi.vw_consolidado_dofa;', 0;
 EXEC #espera N'Vista vw_resumen_activos_criticidad', N'SELECT * INTO #v3 FROM sgspi.vw_resumen_activos_criticidad;', 0;
