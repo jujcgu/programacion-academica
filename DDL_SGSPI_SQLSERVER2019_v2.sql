@@ -12,11 +12,10 @@ estrictamente con el acrónimo de 3 letras de su tabla local ([<acr>_...]):
 - Llave foránea simple: [<acr_local>_<acr_remoto>_codigo] (ej. [pev_codigo])
 - Llave foránea con rol: [<acr_local>_<acr_remoto>_codigo_<rol>] (ej. [aci_codigo_primario])
 3. Toda restricción tiene nombre explícito: PK_, FK_, UQ_/UX_, CK_ y DF_<columna>.
-MAPA DE ACRÓNIMOS DE TABLAS DEL ESQUEMA [sgspi] (52 TABLAS):
-- [pev] : sgspi.periodo_vigencia                  - [epc] : sgspi.estado_publicacion_catalogo
-- [efc] : sgspi.estado_flujo_catalogo (NUEVA)     - [tef] : sgspi.transicion_estado_flujo (NUEVA)
-- [dfc] : sgspi.dominio_formato_catalogo          - [src] : sgspi.soporte_registro_catalogo
-- [fdv] : sgspi.formato_documental_version        - [mcc] : sgspi.medio_conservacion_catalogo
+MAPA DE ACRÓNIMOS DE TABLAS DEL ESQUEMA [sgspi] (50 TABLAS):
+- [pev] : sgspi.periodo_vigencia                  - [src] : sgspi.soporte_registro_catalogo
+- [efc] : sgspi.estado_flujo_catalogo (NUEVA)     - [mcc] : sgspi.medio_conservacion_catalogo
+- [tef] : sgspi.transicion_estado_flujo (NUEVA)   - [epc] : sgspi.estado_publicacion_catalogo
 - [tpr] : sgspi.tipo_proceso_catalogo             - [idi] : sgspi.idioma_catalogo
 - [pri] : sgspi.proceso_institucional             - [fac] : sgspi.formato_archivo_catalogo (NUEVA)
 - [piu] : sgspi.proceso_institucional_uaa         - [ado] : sgspi.activo_documental (Subtipo 1:1 de [aci], PK compartida)
@@ -40,7 +39,8 @@ MAPA DE ACRÓNIMOS DE TABLAS DEL ESQUEMA [sgspi] (52 TABLAS):
 - [pdc] : sgspi.periodicidad_catalogo             - [cra] : sgspi.control_referencia_normativa_atributo (NUEVA)
 - [ptc] : sgspi.plan_tratamiento_control_referencia_normativa - [eac] : sgspi.evaluacion_aplicabilidad_control
 ELIMINADAS: [cps] control_propiedad_seguridad y [ccc] control_concepto_ciberseguridad (absorbidas por [aac]/[cra]);
-[bas] bitacora_auditoria_sistema y las tablas *_historial (auditoría retirada, ver AP-01).
+[bas] bitacora_auditoria_sistema y las tablas *_historial (auditoría retirada, ver AP-01);
+[dfc] dominio_formato_catalogo y [fdv] formato_documental_version.
 ACRÓNIMOS REUTILIZADOS DEL ESQUEMA CORPORATIVO [dbo]:
 - [sus] : dbo.sub_sede ([sus_codigo])             - [car] : dbo.cargo ([car_codigo])
 - [esp] : dbo.espacio ([esp_codigo])              - [per] : dbo.persona ([per_codigo])
@@ -573,44 +573,6 @@ IF CONVERT (INT,
                                 GO
                                 IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
                                     GO
-                                    -- 1.2 [dfc] y [fdv] Catálogo Extensible de Dominios de Formato y Control de Versiones SGC/SGSPI por Vigencia
-                                    CREATE TABLE sgspi.dominio_formato_catalogo
-                                        (
-                                            dfc_codigo        SMALLINT IDENTITY (1, 1) NOT NULL                          ,
-                                            dfc_identificador NVARCHAR (40) NOT NULL                                     , -- Ej: 'CONTEXTO_DOFA', 'PARTES_INTERESADAS', 'ACTIVOS_DOCUMENTALES', 'INVENTARIO_ACTIVOS', 'RIESGOS_Y_OPORTUNIDADES'
-                                            dfc_nombre        NVARCHAR (120) NOT NULL                                    ,
-                                            dfc_descripcion   NVARCHAR (255) NULL                                        ,
-                                            dfc_esta_activo   BIT CONSTRAINT DF_dfc_esta_activo DEFAULT 1 NOT NULL       , -- [AP-17]
-                                            CONSTRAINT PK_dfc_dominio_formato_catalogo PRIMARY KEY CLUSTERED (dfc_codigo),
-                                            CONSTRAINT UQ_dfc_identificador UNIQUE (dfc_identificador)                   ,
-                                            CONSTRAINT UQ_dfc_nombre UNIQUE (dfc_nombre)                                 ,
-                                            CONSTRAINT CK_dfc_identificador_no_vacio CHECK (LEN(TRIM(dfc_identificador)) > 0)
-                                        )
-                                    ;
-                                    CREATE TABLE sgspi.formato_documental_version
-                                        (
-                                            fdv_codigo                 SMALLINT IDENTITY (1, 1) NOT NULL                                                     ,
-                                            pev_codigo                 SMALLINT NOT NULL                                                                     , -- FK a [sgspi].[periodo_vigencia]([pev_codigo])
-                                            dfc_codigo                 SMALLINT NOT NULL                                                                     , -- FK a [sgspi].[dominio_formato_catalogo]([dfc_codigo])
-                                            fdv_codigo_formato         NVARCHAR (20) NOT NULL                                                                , -- 'ES-GSPI-MR-01', 'ES-GSPI-MR-03', 'ES-GSPI-MR-04', 'ES-GSPI-MR-05', 'ES-GSPI-MR-06'
-                                            fdv_numero_version         NVARCHAR (10) NOT NULL                                                                , -- '02', '04', '01', '01', '02'
-                                            fdv_nombre_oficial_formato NVARCHAR (200) NOT NULL                                                               ,
-                                            fdv_fecha_emision_formato  DATE NULL                                                                             ,
-                                            fdv_es_version_activa      BIT CONSTRAINT DF_fdv_es_version_activa DEFAULT 1 NOT NULL                            , -- [AP-17]
-                                            fdv_esta_activo            BIT CONSTRAINT DF_fdv_esta_activo DEFAULT 1 NOT NULL                                  , -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
-                                            CONSTRAINT PK_fdv_formato_documental_version PRIMARY KEY CLUSTERED (fdv_codigo)                                  ,
-                                            CONSTRAINT UQ_fdv_vigencia_dominio UNIQUE (pev_codigo, dfc_codigo)                                               ,
-                                            CONSTRAINT FK_fdv_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo)       ,
-                                            CONSTRAINT FK_fdv_dominio_formato FOREIGN KEY (dfc_codigo) REFERENCES sgspi.dominio_formato_catalogo (dfc_codigo),
-                                            CONSTRAINT CK_fdv_codigo_formato_no_vacio CHECK (LEN(TRIM(fdv_codigo_formato)) > 0) -- [AP-14] Código de formato no vacío
-                                        )
-                                    ;
-                                    CREATE NONCLUSTERED INDEX IX_fdv_dfc_codigo
-                                    ON sgspi.formato_documental_version
-                                        (
-                                            dfc_codigo
-                                        )
-                                    ;
                                     -- 1.3 [tpr] Catálogo Extensible de Tipos de Proceso del Sistema Integrado de Gestión (MIPG / SGC)
                                     CREATE TABLE sgspi.tipo_proceso_catalogo
                                         (
@@ -3079,12 +3041,6 @@ IF CONVERT (INT,
                                                                                                                                                                                                                                                                                                                     GRANT INSERT,
                                                                                                                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                                                                                                                         ON sgspi.factor_entorno_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-                                                                                                                                                                                                                                                                                                                    GRANT INSERT,
-                                                                                                                                                                                                                                                                                                                    UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.dominio_formato_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-                                                                                                                                                                                                                                                                                                                    GRANT INSERT,
-                                                                                                                                                                                                                                                                                                                    UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.formato_documental_version TO sgspi_rol_oficial_seguridad_privacidad;
                                                                                                                                                                                                                                                                                                                     GRANT INSERT,
                                                                                                                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                                                                                                                         ON sgspi.tipo_activo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
