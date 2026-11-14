@@ -18,6 +18,17 @@ BEGIN
     VALUES (@nombre, CASE WHEN @error = 0 THEN N'OK' ELSE CONCAT(N'error ', @error) END, @msg, IIF(@obt = @error, 1, 0));
 END;
 GO
+EXEC #espera N'AP-22 toda tabla tiene columna de borrado lógico BIT NOT NULL DEFAULT 1', N'
+IF EXISTS (SELECT 1 FROM sys.tables AS t
+           WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+                  AND NOT EXISTS (SELECT 1 FROM sys.columns AS c
+                                  INNER JOIN sys.default_constraints AS dc ON dc.object_id = c.default_object_id
+                                  WHERE c.object_id = t.object_id
+                                        AND c.name LIKE N''%[_]esta[_]activ[oa]''
+                                        AND c.is_nullable = 0
+                                        AND c.system_type_id = 104 -- BIT
+                                        AND dc.definition = N''((1))''))
+    THROW 51000, N''hay tablas sin <acr>_esta_activo'', 1;', 0;
 -- ======================= 1. Flujo de estados (ACF) =======================
 EXEC #espera N'Datos maestros', N'
 INSERT sgspi.periodo_vigencia (pev_anio, pev_fecha_apertura) VALUES (2026, ''2026-01-01'');
@@ -96,6 +107,8 @@ EXEC #espera N'AP-09 seguimiento sincroniza el avance de la actividad', N'
 INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 40, N''Avance parcial'');
 IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 40 THROW 51000, N''avance no sincronizado'', 1;', 0;
 EXEC #espera N'AP-16 seguimiento es append-only', N'UPDATE sgspi.seguimiento_actividad SET sga_porcentaje_reportado = 90 WHERE sga_porcentaje_reportado = 40;', 50016;
+EXEC #espera N'AP-22 seguimiento no se borra físicamente', N'DELETE sgspi.seguimiento_actividad WHERE sga_porcentaje_reportado = 40;', 50016;
+EXEC #espera N'AP-22 seguimiento admite borrado lógico', N'UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 40; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 1 WHERE sga_porcentaje_reportado = 40;', 0;
 EXEC #espera N'AP-16 completar sin llegar a 100%', N'UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''EN_CURSO'' WHERE act_codigo = 1; UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''COMPLETADA'' WHERE act_codigo = 1;', 547;
 GO
 -- ======================= 5. Controles ISO 27002 y SoA =======================
@@ -142,9 +155,11 @@ EXEC #espera N'AP-02 el avance no se edita a mano', N'EXECUTE AS USER = N''sgspi
 EXEC #espera N'AP-02 el trigger sincroniza el avance pese al DENY de columna', N'EXECUTE AS USER = N''sgspi_prueba_custodio'';
 INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES (1, 1, 60, N''Avance'');
 IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 60 THROW 51000, N''avance no sincronizado'', 1;', 0;
-EXEC #espera N'AP-02 custodio asocia y desasocia procesos de un activo', N'EXECUTE AS USER = N''sgspi_prueba_custodio'';
+EXEC #espera N'AP-22 custodio asocia y desactiva procesos de un activo', N'EXECUTE AS USER = N''sgspi_prueba_custodio'';
 INSERT sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo) VALUES (1, 1);
-DELETE sgspi.activo_informacion_proceso_institucional WHERE aci_codigo = 1 AND pri_codigo = 1;', 0;
+UPDATE sgspi.activo_informacion_proceso_institucional SET aip_esta_activo = 0 WHERE aci_codigo = 1 AND pri_codigo = 1;', 0;
+EXEC #espera N'AP-22 custodio no borra tablas puente', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; DELETE sgspi.activo_informacion_proceso_institucional WHERE 1 = 0;', 229;
+EXEC #espera N'AP-22 custodio desactiva un seguimiento', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 60;', 0;
 EXEC #espera N'AP-02 auditor registra el dictamen de eficacia', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'', per_codigo_evaluador = 2, plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 0;
 EXEC #espera N'AP-02 auditor no edita el resto del plan', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE 1 = 0;', 230;
 EXEC #espera N'AP-02 auditor registra observaciones en el SoA', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''Hallazgo'' WHERE eac_codigo = 1;', 0;
