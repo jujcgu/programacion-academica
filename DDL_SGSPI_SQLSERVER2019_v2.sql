@@ -245,7 +245,8 @@ IF CONVERT (INT,
             IF LEN(@errores)                    > 0
                 BEGIN RAISERROR (N'DESPLIEGUE SGSPI DETENIDO SIN CAMBIOS:%s', 16, 1, @errores);
                     SET NOEXEC ON;
-                END GO
+                END
+GO
                 BEGIN TRANSACTION; -- [AP-19] No se ejecuta si la verificación previa activó NOEXEC
                     IF NOT EXISTS
                         (
@@ -256,7 +257,8 @@ IF CONVERT (INT,
                             WHERE
                                 name = N'sgspi')
                         BEGIN EXECUTE (N'CREATE SCHEMA sgspi AUTHORIZATION dbo;');
-                        END GO
+                        END
+GO
                         IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
                             GO
                             /*==================================================================================================
@@ -3001,7 +3003,8 @@ IF CONVERT (INT,
                                                                                                                                                                                                                                                                                                                     INSERT, UPDATE,
                                                                                                                                                                                                                                                                                                                     DELETE
                                                                                                                                                                                                                                                                                                                         ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
-                                                                                                                                                                                                                                                                                                                    -- Columnas inmutables para la aplicación: creador, fechas de control (las mantienen DEFAULT y triggers) y avance derivado de [sga]. DENY
+                                                                                                                                                                                                                                                                                                                    -- Columnas inmutables para la aplicación: creador, fechas de control (las mantienen DEFAULT y triggers) y avance derivado de [sga].
+DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                                                                                                                         ON sgspi.periodo_vigencia (pev_fecha_creacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
@@ -4124,6 +4127,8 @@ IF CONVERT (INT,
                                                                                                                                                                                                                                                                                                                                                     crn.crn_nombre_control;
                                                                                                                                                                                                                                                                                                                                                 GO
                                                                                                                                                                                                                                                                                                                                                 IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
-                                                                                                                                                                                                                                                                                                                                                    GO COMMIT TRANSACTION;        -- [AP-19]
-                                                                                                                                                                                                                                                                                                                                                    GO SET NOEXEC OFF;
+                                                                                                                                                                                                                                                                                                                                                    GO
+COMMIT TRANSACTION; -- [AP-19]
+                                                                                                                                                                                                                                                                                                                                                    GO
+SET NOEXEC OFF;
 GO
