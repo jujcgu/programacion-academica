@@ -232,6 +232,11 @@ IF CONVERT (INT,
                 N'dbo.usuario_general',
                 N'up'
             )
+            ,
+            (
+                N'dbo.usuario_general',
+                N'us'
+            )
         ;
         DECLARE @faltantes NVARCHAR (1000) =
         (
@@ -704,9 +709,8 @@ GO
                                                 -- RN-DOFA-03: Si la prioridad es ALTA (3) y no está en borrador, exige Impacto y Acción Propuesta
                                                 CONSTRAINT CK_acf_prioridad_alta_campos CHECK (acf_estado_registro = N'BORRADOR' OR acf_valor_prioridad <> 3 OR (LEN(TRIM(ISNULL(acf_impacto_sistema_gestion, N''))) > 0 AND LEN(TRIM(ISNULL(acf_accion_propuesta, N''))) > 0)),
                                                 -- [AP-05] Se elimina CK_acf_estado_registro (lista de estados): ahora lo garantiza FK_acf_estado_flujo
-                                                -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador, y VIGENTE/HISTORICO exigen aprobador
-                                                CONSTRAINT CK_acf_sod_aprobador CHECK (per_codigo_aprobador IS NULL OR per_codigo_aprobador <> per_codigo_creador),
-                                                CONSTRAINT CK_acf_aprobador_requerido CHECK (acf_estado_registro NOT IN (N'VIGENTE', N'HISTORICO') OR per_codigo_aprobador IS NOT NULL)
+                                                -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador (la firma la escribe TR_acf_integridad_y_actualizacion)
+                                                CONSTRAINT CK_acf_sod_aprobador CHECK (per_codigo_aprobador IS NULL OR per_codigo_aprobador <> per_codigo_creador)
                                             )
                                         ;
                                         -- [AP-18] Reemplaza la UNIQUE constraint y el índice IX_acf_pev_codigo (prefijo duplicado) por un único índice único con INCLUDE
@@ -836,9 +840,8 @@ GO
                                                     CONSTRAINT FK_rpi_estado_flujo FOREIGN KEY (efc_dominio, rpi_estado_registro) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador)                               , -- [AP-05]
                                                     CONSTRAINT CK_rpi_valores_escala CHECK (rpi_valor_poder IN (1, 2, 3) AND rpi_valor_interes IN (1, 2, 3) AND (rpi_valor_cumplimiento IS NULL OR rpi_valor_cumplimiento IN (1, 2, 3))),
                                                     -- [AP-05] Se elimina CK_rpi_estado_registro (lista de estados): ahora lo garantiza FK_rpi_estado_flujo
-                                                    -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador, y VIGENTE/HISTORICO exigen aprobador
-                                                    CONSTRAINT CK_rpi_sod_aprobador CHECK (per_codigo_aprobador IS NULL OR per_codigo_aprobador <> per_codigo_creador),
-                                                    CONSTRAINT CK_rpi_aprobador_requerido CHECK (rpi_estado_registro NOT IN (N'VIGENTE', N'HISTORICO') OR per_codigo_aprobador IS NOT NULL)
+                                                    -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador (la firma la escribe TR_rpi_integridad_y_actualizacion)
+                                                    CONSTRAINT CK_rpi_sod_aprobador CHECK (per_codigo_aprobador IS NULL OR per_codigo_aprobador <> per_codigo_creador)
                                                 )
                                             ;
                                             CREATE NONCLUSTERED INDEX IX_rpi_pev_codigo
@@ -1058,10 +1061,8 @@ GO
                                                         AND aci_valor_confidencialidad                                                                                                                                                                                    = 1)),
                                                         -- [AP-05] Se elimina CK_aci_estado_registro: los estados válidos viven en sgspi.estado_flujo_catalogo (FK_aci_estado_flujo)
                                                         CONSTRAINT CK_aci_cantidad_unidades_positiva CHECK (aci_cantidad_unidades >= 1),
-                                                        -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador
-                                                        CONSTRAINT CK_aci_sod_aprobador CHECK (per_codigo_aprobador IS NULL OR per_codigo_aprobador <> per_codigo_creador),
-                                                        -- [AP-15] Un activo vigente, inactivo o histórico debe tener aprobador
-                                                        CONSTRAINT CK_aci_aprobador_requerido CHECK (aci_estado_registro NOT IN (N'VIGENTE', N'INACTIVO', N'HISTORICO') OR per_codigo_aprobador IS NOT NULL)
+                                                        -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador (la firma la escribe TR_aci_integridad_y_actualizacion)
+                                                        CONSTRAINT CK_aci_sod_aprobador CHECK (per_codigo_aprobador IS NULL OR per_codigo_aprobador <> per_codigo_creador)
                                                     )
                                                 ;
                                                 CREATE NONCLUSTERED INDEX IX_aci_tac_codigo
@@ -2134,16 +2135,49 @@ GO
                                                                                                 IF NOT
                                                                                                     UPDATE
                                                                                                         (acf_fecha_actualizacion)
-                                                                                                    UPDATE
-                                                                                                        t
-                                                                                                    SET
-                                                                                                        t.acf_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
-                                                                                                    FROM
-                                                                                                        sgspi.analisis_contexto_factor AS t
-                                                                                                    INNER JOIN
-                                                                                                        inserted AS i
-                                                                                                    ON
-                                                                                                        i.acf_codigo = t.acf_codigo;
+                                                                                                    BEGIN
+                                                                                                        DECLARE @per_actor INT;
+                                                                                                        IF EXISTS
+                                                                                                            (
+                                                                                                                SELECT
+                                                                                                                    1
+                                                                                                                FROM
+                                                                                                                    inserted AS i
+                                                                                                                INNER JOIN
+                                                                                                                    deleted AS d
+                                                                                                                ON
+                                                                                                                    d.acf_codigo = i.acf_codigo
+                                                                                                                WHERE
+                                                                                                                    d.acf_estado_registro <> i.acf_estado_registro
+                                                                                                                AND i.acf_estado_registro = N'VIGENTE'
+                                                                                                            )
+                                                                                                        BEGIN
+                                                                                                            SELECT TOP (1) @per_actor = u.up
+                                                                                                            FROM dbo.usuario_general AS u
+                                                                                                            WHERE u.us = ORIGINAL_LOGIN();
+                                                                                                            IF @per_actor IS NULL
+                                                                                                                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+                                                                                                        END;
+                                                                                                        UPDATE
+                                                                                                            t
+                                                                                                        SET
+                                                                                                            t.acf_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
+                                                                                                            t.per_codigo_aprobador    = CASE
+                                                                                                                WHEN d.acf_estado_registro <> i.acf_estado_registro AND i.acf_estado_registro = N'VIGENTE'
+                                                                                                                THEN @per_actor
+                                                                                                                ELSE t.per_codigo_aprobador
+                                                                                                            END
+                                                                                                        FROM
+                                                                                                            sgspi.analisis_contexto_factor AS t
+                                                                                                        INNER JOIN
+                                                                                                            inserted AS i
+                                                                                                        ON
+                                                                                                            i.acf_codigo = t.acf_codigo
+                                                                                                        INNER JOIN
+                                                                                                            deleted AS d
+                                                                                                        ON
+                                                                                                            d.acf_codigo = i.acf_codigo;
+                                                                                                    END;
                                                                                                 END;
                                                                                             END;
                                                                                             GO
@@ -2256,16 +2290,35 @@ GO
                                                                                                                             IF NOT
                                                                                                                                 UPDATE
                                                                                                                                     (rpi_fecha_actualizacion)
-                                                                                                                                UPDATE
-                                                                                                                                    t
-                                                                                                                                SET
-                                                                                                                                    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
-                                                                                                                                FROM
-                                                                                                                                    sgspi.requisito_parte_interesada AS t
-                                                                                                                                INNER JOIN
-                                                                                                                                    inserted AS i
-                                                                                                                                ON
-                                                                                                                                    i.rpi_codigo = t.rpi_codigo;
+BEGIN
+    DECLARE @per_actor INT;
+    IF EXISTS
+        (
+            SELECT 1
+            FROM inserted AS i
+            INNER JOIN deleted AS d ON d.rpi_codigo = i.rpi_codigo
+            WHERE d.rpi_estado_registro <> i.rpi_estado_registro
+              AND i.rpi_estado_registro = N'VIGENTE'
+        )
+    BEGIN
+        SELECT TOP (1) @per_actor = u.up
+        FROM dbo.usuario_general AS u
+        WHERE u.us = ORIGINAL_LOGIN();
+        IF @per_actor IS NULL
+            THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+    END;
+    UPDATE t
+    SET
+        t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
+        t.per_codigo_aprobador    = CASE
+            WHEN d.rpi_estado_registro <> i.rpi_estado_registro AND i.rpi_estado_registro = N'VIGENTE'
+            THEN @per_actor
+            ELSE t.per_codigo_aprobador
+        END
+    FROM sgspi.requisito_parte_interesada AS t
+    INNER JOIN inserted AS i ON i.rpi_codigo = t.rpi_codigo
+    INNER JOIN deleted AS d ON d.rpi_codigo = i.rpi_codigo;
+END;
                                                                                                                             END;
                                                                                                                         END;
                                                                                                                         GO
@@ -2378,16 +2431,35 @@ GO
                                                                                                                                                         IF NOT
                                                                                                                                                             UPDATE
                                                                                                                                                                 (aci_fecha_actualizacion)
-                                                                                                                                                            UPDATE
-                                                                                                                                                                t
-                                                                                                                                                            SET
-                                                                                                                                                                t.aci_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
-                                                                                                                                                            FROM
-                                                                                                                                                                sgspi.activo_informacion AS t
-                                                                                                                                                            INNER JOIN
-                                                                                                                                                                inserted AS i
-                                                                                                                                                            ON
-                                                                                                                                                                i.aci_codigo = t.aci_codigo;
+BEGIN
+    DECLARE @per_actor INT;
+    IF EXISTS
+        (
+            SELECT 1
+            FROM inserted AS i
+            INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo
+            WHERE d.aci_estado_registro <> i.aci_estado_registro
+              AND i.aci_estado_registro = N'VIGENTE'
+        )
+    BEGIN
+        SELECT TOP (1) @per_actor = u.up
+        FROM dbo.usuario_general AS u
+        WHERE u.us = ORIGINAL_LOGIN();
+        IF @per_actor IS NULL
+            THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+    END;
+    UPDATE t
+    SET
+        t.aci_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
+        t.per_codigo_aprobador    = CASE
+            WHEN d.aci_estado_registro <> i.aci_estado_registro AND i.aci_estado_registro = N'VIGENTE'
+            THEN @per_actor
+            ELSE t.per_codigo_aprobador
+        END
+    FROM sgspi.activo_informacion AS t
+    INNER JOIN inserted AS i ON i.aci_codigo = t.aci_codigo
+    INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo;
+END;
                                                                                                                                                         END;
                                                                                                                                                     END;
                                                                                                                                                     GO
@@ -2586,16 +2658,46 @@ GO
                                                                                                                                                                                                                 IF NOT
                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                         (eia_fecha_actualizacion)
-                                                                                                                                                                                                                    UPDATE
-                                                                                                                                                                                                                        t
-                                                                                                                                                                                                                    SET
-                                                                                                                                                                                                                        t.eia_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
-                                                                                                                                                                                                                    FROM
-                                                                                                                                                                                                                        sgspi.evento_incertidumbre_activo AS t
-                                                                                                                                                                                                                    INNER JOIN
-                                                                                                                                                                                                                        inserted AS i
-                                                                                                                                                                                                                    ON
-                                                                                                                                                                                                                        i.eia_codigo = t.eia_codigo;
+BEGIN
+    DECLARE @per_actor INT;
+    IF EXISTS
+        (
+            SELECT 1
+            FROM inserted AS i
+            INNER JOIN deleted AS d ON d.eia_codigo = i.eia_codigo
+            WHERE (d.eia_estado_registro = N'EN_VALIDACION_LIDER' AND i.eia_estado_registro = N'EN_REVISION_SGSPI')
+               OR (d.eia_estado_registro = N'EN_REVISION_SGSPI' AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'))
+               OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE' AND i.eia_estado_registro = N'APROBADO_PLANIFICADO')
+        )
+    BEGIN
+        SELECT TOP (1) @per_actor = u.up
+        FROM dbo.usuario_general AS u
+        WHERE u.us = ORIGINAL_LOGIN();
+        IF @per_actor IS NULL
+            THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+    END;
+    UPDATE t
+    SET
+        t.eia_fecha_actualizacion     = SYSDATETIMEOFFSET(), -- [AP-11] [AP-12]
+        t.per_codigo_validador_lider  = CASE
+            WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER' AND i.eia_estado_registro = N'EN_REVISION_SGSPI'
+            THEN @per_actor
+            ELSE t.per_codigo_validador_lider
+        END,
+        t.per_codigo_revisor_sgspi    = CASE
+            WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI' AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO')
+            THEN @per_actor
+            ELSE t.per_codigo_revisor_sgspi
+        END,
+        t.per_codigo_aprobador_comite = CASE
+            WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE' AND i.eia_estado_registro = N'APROBADO_PLANIFICADO'
+            THEN @per_actor
+            ELSE t.per_codigo_aprobador_comite
+        END
+    FROM sgspi.evento_incertidumbre_activo AS t
+    INNER JOIN inserted AS i ON i.eia_codigo = t.eia_codigo
+    INNER JOIN deleted AS d ON d.eia_codigo = i.eia_codigo;
+END;
                                                                                                                                                                                                                 END;
                                                                                                                                                                                                             END;
                                                                                                                                                                                                             GO
@@ -3013,19 +3115,19 @@ DENY
                                                                                                                                                                                                                                                                                                                         ON sgspi.periodo_vigencia (pev_fecha_creacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.analisis_contexto_factor (per_codigo_creador, acf_fecha_creacion, acf_fecha_actualizacion) TO sgspi_rol_base;
+                                                                                                                                                                                                                                                                                                                        ON sgspi.analisis_contexto_factor (per_codigo_creador, per_codigo_aprobador, acf_fecha_creacion, acf_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.requisito_parte_interesada (per_codigo_creador, rpi_fecha_creacion, rpi_fecha_actualizacion) TO sgspi_rol_base;
+                                                                                                                                                                                                                                                                                                                        ON sgspi.requisito_parte_interesada (per_codigo_creador, per_codigo_aprobador, rpi_fecha_creacion, rpi_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.activo_informacion (per_codigo_creador, aci_fecha_creacion, aci_fecha_actualizacion) TO sgspi_rol_base;
+                                                                                                                                                                                                                                                                                                                        ON sgspi.activo_informacion (per_codigo_creador, per_codigo_aprobador, aci_fecha_creacion, aci_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                                                                                                                         ON sgspi.activo_documental (ado_fecha_creacion, ado_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.evento_incertidumbre_activo (per_codigo_creador, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
+                                                                                                                                                                                                                                                                                                                        ON sgspi.evento_incertidumbre_activo (per_codigo_creador, per_codigo_validador_lider, per_codigo_revisor_sgspi, per_codigo_aprobador_comite, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                                                                                                                         ON sgspi.plan_tratamiento (plt_fecha_creacion, plt_fecha_actualizacion) TO sgspi_rol_base;
