@@ -61,7 +61,7 @@ TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carg
 AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
 listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
 TR_<acr>_integridad_y_actualizacion de acf, rpi, aci, eia y act (error 50011).
-[tef_accion_bitacora] quedó sin uso al retirarse la bitácora.
+[tef_rol_requerido] restringe transiciones por rol de BD (NULL = cualquier rol con UPDATE).
 AP-06  Integridad declarativa entre tablas: estrategia/naturaleza del evento, causal/nivel de reserva,
 nivel del padre en la taxonomía, componente afectado = categoría ISO 27005, serie con subseries.
 AP-07  Atributos ISO/IEC 27002:2022 normalizados ([aac]/[cra]) en vez de texto multivaluado.
@@ -304,14 +304,13 @@ GO
                                     efc_dominio               NVARCHAR (10) NOT NULL                                                                                                             ,
                                     efc_identificador_origen  NVARCHAR (30) NOT NULL                                                                                                             ,
                                     efc_identificador_destino NVARCHAR (30) NOT NULL                                                                                                             ,
-                                    tef_accion_bitacora       NVARCHAR (30) CONSTRAINT DF_tef_accion_bitacora DEFAULT N'TRANSICION_ESTADO' NOT NULL                                              ,
+                                    tef_rol_requerido         SYSNAME NULL                                                                                                                 , -- NULL = cualquier rol con UPDATE
                                     tef_esta_activa           BIT CONSTRAINT DF_tef_esta_activa DEFAULT 1 NOT NULL                                                                               , -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
                                     CONSTRAINT PK_tef_transicion_estado_flujo PRIMARY KEY CLUSTERED (tef_codigo)                                                                                 ,
                                     CONSTRAINT UQ_tef_dominio_origen_destino UNIQUE (efc_dominio, efc_identificador_origen, efc_identificador_destino)                                           ,
                                     CONSTRAINT FK_tef_estado_origen FOREIGN KEY (efc_dominio, efc_identificador_origen) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador)  ,
                                     CONSTRAINT FK_tef_estado_destino FOREIGN KEY (efc_dominio, efc_identificador_destino) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador),
-                                    CONSTRAINT CK_tef_origen_distinto_destino CHECK (efc_identificador_origen <> efc_identificador_destino)                                                      ,
-                                    CONSTRAINT CK_tef_accion_bitacora CHECK (tef_accion_bitacora IN (N'TRANSICION_ESTADO', N'APROBAR', N'OBSERVAR'))
+                                    CONSTRAINT CK_tef_origen_distinto_destino CHECK (efc_identificador_origen <> efc_identificador_destino)
                                 )
                             ;
                             CREATE NONCLUSTERED INDEX IX_tef_estado_destino
@@ -421,13 +420,13 @@ GO
                                             (N'ACT', N'OBSERVADA', N'Observada', 0, 1)
                                     )
                                     AS v (dominio, identificador, nombre, es_inicial, permite_edicion);
-                                -- [AP-05] Transiciones válidas (se toman de los triggers originales); la acción de bitácora replica los CASE originales
+                                -- [AP-05] Transiciones válidas (se toman de los triggers originales); tef_rol_requerido NULL = cualquier rol con UPDATE
                                 INSERT INTO sgspi.transicion_estado_flujo
                                     (
                                         efc_dominio              ,
                                         efc_identificador_origen ,
                                         efc_identificador_destino,
-                                        tef_accion_bitacora
+                                        tef_rol_requerido
                                     )
                                 SELECT
                                     v.dominio
@@ -436,142 +435,142 @@ GO
                                     ,
                                     v.destino
                                     ,
-                                    v.accion
+                                    v.rol_requerido
                                 FROM
                                     (
                                         VALUES
                                             -- ACF
-                                            (N'ACF', N'BORRADOR', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
                                             ,
-                                            (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'OBSERVAR')
+                                            (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
                                             ,
-                                            (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
                                             ,
-                                            (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE', N'APROBAR')
+                                            (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE', NULL)
                                             ,
-                                            (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO', N'OBSERVAR')
+                                            (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
                                             ,
-                                            (N'ACF', N'OBSERVADO', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
-                                            (N'ACF', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACF', N'VIGENTE', N'HISTORICO', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'VIGENTE', N'HISTORICO', NULL)
                                             ,
-                                            (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI', NULL)
                                             ,
                                             -- RPI
-                                            (N'RPI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
                                             ,
-                                            (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'OBSERVAR')
+                                            (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
                                             ,
-                                            (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
                                             ,
-                                            (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE', N'APROBAR')
+                                            (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE', NULL)
                                             ,
-                                            (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'OBSERVAR')
+                                            (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
                                             ,
-                                            (N'RPI', N'OBSERVADO', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
-                                            (N'RPI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'RPI', N'VIGENTE', N'HISTORICO', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'VIGENTE', N'HISTORICO', NULL)
                                             ,
-                                            (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI', NULL)
                                             ,
                                             -- ACI
-                                            (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', NULL)
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'OBSERVAR')
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
                                             ,
-                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', NULL)
                                             ,
-                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', N'OBSERVAR')
+                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', NULL)
                                             ,
-                                            (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', N'APROBAR')
+                                            (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', NULL)
                                             ,
-                                            (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'OBSERVAR')
+                                            (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
                                             ,
-                                            (N'ACI', N'OBSERVADO', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
-                                            (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACI', N'VIGENTE', N'INACTIVO', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'VIGENTE', N'INACTIVO', NULL)
                                             ,
-                                            (N'ACI', N'VIGENTE', N'HISTORICO', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'VIGENTE', N'HISTORICO', NULL)
                                             ,
-                                            (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', NULL)
                                             ,
-                                            (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', NULL)
                                             ,
-                                            (N'ACI', N'INACTIVO', N'VIGENTE', N'APROBAR')
+                                            (N'ACI', N'INACTIVO', N'VIGENTE', NULL)
                                             ,
-                                            (N'ACI', N'INACTIVO', N'HISTORICO', N'TRANSICION_ESTADO')
+                                            (N'ACI', N'INACTIVO', N'HISTORICO', NULL)
                                             ,
                                             -- EIA
-                                            (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
                                             ,
-                                            (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'OBSERVAR')
+                                            (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
                                             ,
-                                            (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
                                             ,
-                                            (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', NULL)
                                             ,
-                                            (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', N'APROBAR')
+                                            (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', NULL)
                                             ,
-                                            (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', N'OBSERVAR')
+                                            (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
                                             ,
-                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'APROBAR')
+                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', NULL)
                                             ,
-                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', N'OBSERVAR')
+                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', NULL)
                                             ,
-                                            (N'EIA', N'OBSERVADO', N'BORRADOR', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
-                                            (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', NULL)
                                             ,
-                                            (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', N'OBSERVAR')
+                                            (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', NULL)
                                             ,
-                                            (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', NULL)
                                             ,
-                                            (N'EIA', N'EN_EJECUCION', N'OBSERVADO', N'OBSERVAR')
+                                            (N'EIA', N'EN_EJECUCION', N'OBSERVADO', NULL)
                                             ,
-                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'APROBAR')
+                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', NULL)
                                             ,
-                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', NULL)
                                             ,
-                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', N'OBSERVAR')
+                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', NULL)
                                             ,
-                                            (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', N'TRANSICION_ESTADO')
+                                            (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', NULL)
                                             ,
                                             -- ACT
-                                            (N'ACT', N'PENDIENTE', N'EN_CURSO', N'TRANSICION_ESTADO')
+                                            (N'ACT', N'PENDIENTE', N'EN_CURSO', NULL)
                                             ,
-                                            (N'ACT', N'PENDIENTE', N'OBSERVADA', N'OBSERVAR')
+                                            (N'ACT', N'PENDIENTE', N'OBSERVADA', NULL)
                                             ,
-                                            (N'ACT', N'EN_CURSO', N'COMPLETADA', N'APROBAR')
+                                            (N'ACT', N'EN_CURSO', N'COMPLETADA', NULL)
                                             ,
-                                            (N'ACT', N'EN_CURSO', N'OBSERVADA', N'OBSERVAR')
+                                            (N'ACT', N'EN_CURSO', N'OBSERVADA', NULL)
                                             ,
-                                            (N'ACT', N'OBSERVADA', N'PENDIENTE', N'TRANSICION_ESTADO')
+                                            (N'ACT', N'OBSERVADA', N'PENDIENTE', NULL)
                                             ,
-                                            (N'ACT', N'OBSERVADA', N'EN_CURSO', N'TRANSICION_ESTADO')
+                                            (N'ACT', N'OBSERVADA', N'EN_CURSO', NULL)
                                             ,
-                                            (N'ACT', N'COMPLETADA', N'OBSERVADA', N'OBSERVAR')
+                                            (N'ACT', N'COMPLETADA', N'OBSERVADA', NULL)
                                     )
-                                    AS v (dominio, origen, destino, accion);
+                                    AS v (dominio, origen, destino, rol_requerido);
                                 GO
                                 IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
                                     GO
@@ -2128,7 +2127,8 @@ GO
                                                                                                                 WHERE
                                                                                                                     tef.efc_dominio              = N'ACF'
                                                                                                                 AND tef.efc_identificador_origen = d.acf_estado_registro
-                                                                                                                AND tef.efc_identificador_destino = i.acf_estado_registro )) ) THROW 50011                                                                   ,
+                                                                                                                AND tef.efc_identificador_destino = i.acf_estado_registro
+                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                                   ,
                                                                                                 N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[analisis_contexto_factor].',
                                                                                                 1;
                                                                                                 IF NOT
@@ -2249,7 +2249,8 @@ GO
                                                                                                                                             WHERE
                                                                                                                                                 tef.efc_dominio              = N'RPI'
                                                                                                                                             AND tef.efc_identificador_origen = d.rpi_estado_registro
-                                                                                                                                            AND tef.efc_identificador_destino = i.rpi_estado_registro )) ) THROW 50011                                                                     ,
+                                                                                                                                            AND tef.efc_identificador_destino = i.rpi_estado_registro
+                                                                                                                                            AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                                     ,
                                                                                                                             N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[requisito_parte_interesada].',
                                                                                                                             1;
                                                                                                                             IF NOT
@@ -2370,7 +2371,8 @@ GO
                                                                                                                                                                         WHERE
                                                                                                                                                                             tef.efc_dominio              = N'ACI'
                                                                                                                                                                         AND tef.efc_identificador_origen = d.aci_estado_registro
-                                                                                                                                                                        AND tef.efc_identificador_destino = i.aci_estado_registro )) ) THROW 50011                                                   ,
+                                                                                                                                                                        AND tef.efc_identificador_destino = i.aci_estado_registro
+                                                                                                                                                                        AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                   ,
                                                                                                                                                         N'Transición inválida o intento de modificar un activo no editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[activo_informacion].',
                                                                                                                                                         1;
                                                                                                                                                         IF NOT
@@ -2577,7 +2579,8 @@ GO
                                                                                                                                                                                                                                 WHERE
                                                                                                                                                                                                                                     tef.efc_dominio              = N'EIA'
                                                                                                                                                                                                                                 AND tef.efc_identificador_origen = d.eia_estado_registro
-                                                                                                                                                                                                                                AND tef.efc_identificador_destino = i.eia_estado_registro )) ) THROW 50011                                 ,
+                                                                                                                                                                                                                                AND tef.efc_identificador_destino = i.eia_estado_registro
+                                                                                                                                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                 ,
                                                                                                                                                                                                                 N'Transición de estado inválida o intento de alterar un evento cerrado/histórico en [sgspi].[evento_incertidumbre_activo].',
                                                                                                                                                                                                                 1;
                                                                                                                                                                                                                 IF NOT
@@ -2764,7 +2767,8 @@ GO
                                                                                                                                                                                                                                                                                 WHERE
                                                                                                                                                                                                                                                                                     tef.efc_dominio              = N'ACT'
                                                                                                                                                                                                                                                                                 AND tef.efc_identificador_origen = d.act_estado_actividad
-                                                                                                                                                                                                                                                                                AND tef.efc_identificador_destino = i.act_estado_actividad )) ) THROW 50011                                                 ,
+                                                                                                                                                                                                                                                                                AND tef.efc_identificador_destino = i.act_estado_actividad
+                                                                                                                                                                                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                 ,
                                                                                                                                                                                                                                                                 N'Transición de estado inválida o intento de modificar una actividad en estado no editable (COMPLETADA) en [sgspi].[actividad_tratamiento].',
                                                                                                                                                                                                                                                                 1;
                                                                                                                                                                                                                                                                 -- No se tocan actividades de un evento CERRADO_EFICAZ o HISTORICO
