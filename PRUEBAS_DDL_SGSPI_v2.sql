@@ -42,9 +42,15 @@ EXEC #espera N'INSERT acf en BORRADOR', N'INSERT sgspi.analisis_contexto_factor 
 EXEC #espera N'AP-05 transición no permitida BORRADOR->VIGENTE', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'', per_codigo_aprobador = 2, acf_impacto_sistema_gestion = N''i'', acf_accion_propuesta = N''a'' WHERE acf_numero_factor = 1;', 50011;
 EXEC #espera N'Transición BORRADOR->EN_VALIDACION_LIDER', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_VALIDACION_LIDER'', acf_impacto_sistema_gestion = N''i'', acf_accion_propuesta = N''a'' WHERE acf_numero_factor = 1;', 0;
 EXEC #espera N'Transición EN_VALIDACION_LIDER->EN_REVISION_SGSPI', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_REVISION_SGSPI'' WHERE acf_numero_factor = 1;', 0;
-EXEC #espera N'AP-15 aprobar sin aprobador', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'' WHERE acf_numero_factor = 1;', 547;
-EXEC #espera N'AP-15 aprobador = creador', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'', per_codigo_aprobador = 1 WHERE acf_numero_factor = 1;', 547;
-EXEC #espera N'Aprobar con aprobador distinto', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'', per_codigo_aprobador = 2 WHERE acf_numero_factor = 1;', 0;
+-- La base desechable mapea ORIGINAL_LOGIN() a la persona 2 en dbo.usuario_general (us = login, up = per_codigo)
+EXEC #espera N'AP-15 la firma de aprobación la pone el trigger, no el cliente', N'
+UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'', per_codigo_aprobador = 3 WHERE acf_numero_factor = 1;
+IF (SELECT per_codigo_aprobador FROM sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1) <> 2 THROW 51000, N''la firma no es la persona del login'', 1;', 0;
+EXEC #espera N'AP-15 quien aprueba (persona del login) = creador', N'
+INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, per_codigo_creador) VALUES (1,1,1,N''DEBILIDAD'',2,N''Autoaprobación'',2);
+UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_VALIDACION_LIDER'' WHERE acf_numero_factor = 2;
+UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_REVISION_SGSPI'' WHERE acf_numero_factor = 2;
+UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'' WHERE acf_numero_factor = 2;', 547;
 EXEC #espera N'AP-05 editar VIGENTE sin cambiar estado', N'UPDATE sgspi.analisis_contexto_factor SET acf_descripcion_situacion = N''cambio'' WHERE acf_numero_factor = 1;', 50011;
 EXEC #espera N'Borrado físico bloqueado', N'DELETE sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1;', 50010;
 GO
@@ -172,6 +178,29 @@ EXEC #espera N'AP-02 comité no edita contenido de eia', N'EXECUTE AS USER = N''
 EXEC #espera N'AP-02 comité no escribe firma directa en eia', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET per_codigo_aprobador_comite = 2 WHERE 1 = 0;', 230;
 EXEC #espera N'AP-02 comité no edita contenido de rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET rpi_necesidad_expectativa = N''x'' WHERE 1 = 0;', 230;
 EXEC #espera N'AP-02 comité no escribe firma directa en rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET per_codigo_aprobador = 2 WHERE 1 = 0;', 230;
+-- 1.1 Rol por transición (tef_rol_requerido)
+EXEC #espera N'AP-02 solo los estados de captura quedan sin rol requerido', N'IF EXISTS (SELECT 1 FROM sgspi.transicion_estado_flujo WHERE tef_rol_requerido IS NULL AND efc_identificador_origen NOT IN (N''BORRADOR'', N''OBSERVADO'', N''PENDIENTE'', N''OBSERVADA'')) THROW 51000, N''transición sin rol'', 1;', 0;
+EXEC #espera N'AP-02 la aceptación del comité exige el rol del comité', N'IF EXISTS (SELECT 1 FROM sgspi.transicion_estado_flujo WHERE efc_identificador_origen = N''EN_ACEPTACION_COMITE'' AND tef_rol_requerido <> N''sgspi_rol_comite_direccion'') THROW 51000, N''comité sin rol'', 1;', 0;
+EXEC #espera N'AP-02 custodio no aprueba un activo', N'
+INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-R'', N''Activo por aprobar'', 3, N''PUBLICA'', 1, 1, 1, 1);
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_VALIDACION_LIDER'' WHERE aci_codigo_inventario = N''INV-R'';
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI'' WHERE aci_codigo_inventario = N''INV-R'';
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario = N''INV-R'';', 50011;
+EXEC #espera N'AP-02 el oficial sí aprueba el activo', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario = N''INV-R'';', 0;
+-- 1.2 Firma de Archivo
+EXEC #espera N'AP-02 nadie escribe la firma de Archivo con UPDATE', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.activo_documental SET per_codigo_revisor_archivo = 2 WHERE 1 = 0;', 230;
+EXEC #espera N'AP-15 la firma de Archivo no se envía al crear el activo documental', N'
+INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-D'', N''Actas por revisar'', 3, N''PUBLICA'', 1, 1, 1, 1);
+INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion, per_codigo_revisor_archivo) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-D''), 1, 1, 1, 1, 1, N''Archivo'', 3);', 50018;
+EXEC #espera N'AP-15 la firma de Archivo la pone la transición EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI', N'
+INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-D''), 1, 1, 1, 1, 1, N''Archivo'');
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_VALIDACION_LIDER'' WHERE aci_codigo_inventario = N''INV-D'';
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_ARCHIVO'' WHERE aci_codigo_inventario = N''INV-D'';
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI'' WHERE aci_codigo_inventario = N''INV-D'';
+IF ISNULL((SELECT ado.per_codigo_revisor_archivo FROM sgspi.activo_documental AS ado INNER JOIN sgspi.activo_informacion AS aci ON aci.aci_codigo = ado.ado_codigo WHERE aci.aci_codigo_inventario = N''INV-D''), 0) <> 2 THROW 51000, N''firma de Archivo no registrada'', 1;', 0;
+-- 1.3 acotado: entre estados editables se puede completar contenido; hacia uno no editable, no
+EXEC #espera N'AP-05 aprobar editando el contenido en la misma sentencia', N'UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'', aci_nombre_activo = N''Cambiado al aprobar'' WHERE aci_codigo_inventario = N''INV-D'';', 50011;
 GO
 DROP USER sgspi_prueba_consulta;
 DROP USER sgspi_prueba_custodio;

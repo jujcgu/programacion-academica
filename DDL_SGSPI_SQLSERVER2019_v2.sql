@@ -61,7 +61,7 @@ TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carg
 AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
 listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
 TR_<acr>_integridad_y_actualizacion de acf, rpi, aci, eia y act (error 50011).
-[tef_rol_requerido] restringe transiciones por rol de BD (NULL = cualquier rol con UPDATE).
+[tef_rol_requerido] restringe transiciones por rol de BD según el estado de origen (NULL = cualquier rol con UPDATE; db_owner pasa siempre).
 AP-06  Integridad declarativa entre tablas: estrategia/naturaleza del evento, causal/nivel de reserva,
 nivel del padre en la taxonomía, componente afectado = categoría ISO 27005, serie con subseries.
 AP-07  Atributos ISO/IEC 27002:2022 normalizados ([aac]/[cra]) en vez de texto multivaluado.
@@ -442,133 +442,133 @@ GO
                                             -- ACF
                                             (N'ACF', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
+                                            (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
+                                            (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
+                                            (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE', NULL)
+                                            (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
+                                            (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             (N'ACF', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
                                             (N'ACF', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACF', N'VIGENTE', N'HISTORICO', NULL)
+                                            (N'ACF', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI', NULL)
+                                            (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             -- RPI
                                             (N'RPI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
+                                            (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
+                                            (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
+                                            (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE', NULL)
+                                            (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
+                                            (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             (N'RPI', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
                                             (N'RPI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'RPI', N'VIGENTE', N'HISTORICO', NULL)
+                                            (N'RPI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI', NULL)
+                                            (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             -- ACI
                                             (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', NULL)
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
+                                            (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', NULL)
+                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', N'sgspi_rol_gestor_documental')
                                             ,
-                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', NULL)
+                                            (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', N'sgspi_rol_gestor_documental')
                                             ,
-                                            (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', NULL)
+                                            (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
+                                            (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             (N'ACI', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
                                             (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'ACI', N'VIGENTE', N'INACTIVO', NULL)
+                                            (N'ACI', N'VIGENTE', N'INACTIVO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACI', N'VIGENTE', N'HISTORICO', NULL)
+                                            (N'ACI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', NULL)
+                                            (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', NULL)
+                                            (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACI', N'INACTIVO', N'VIGENTE', NULL)
+                                            (N'ACI', N'INACTIVO', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'ACI', N'INACTIVO', N'HISTORICO', NULL)
+                                            (N'ACI', N'INACTIVO', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             -- EIA
                                             (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', NULL)
+                                            (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', NULL)
+                                            (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', NULL)
+                                            (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', NULL)
+                                            (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', NULL)
+                                            (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', NULL)
+                                            (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', NULL)
+                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'sgspi_rol_comite_direccion')
                                             ,
-                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', NULL)
+                                            (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', N'sgspi_rol_comite_direccion')
                                             ,
                                             (N'EIA', N'OBSERVADO', N'BORRADOR', NULL)
                                             ,
                                             (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL)
                                             ,
-                                            (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', NULL)
+                                            (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', NULL)
+                                            (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', NULL)
+                                            (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'EN_EJECUCION', N'OBSERVADO', NULL)
+                                            (N'EIA', N'EN_EJECUCION', N'OBSERVADO', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', NULL)
+                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', NULL)
+                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', NULL)
+                                            (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
-                                            (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', NULL)
+                                            (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad')
                                             ,
                                             -- ACT
                                             (N'ACT', N'PENDIENTE', N'EN_CURSO', NULL)
                                             ,
                                             (N'ACT', N'PENDIENTE', N'OBSERVADA', NULL)
                                             ,
-                                            (N'ACT', N'EN_CURSO', N'COMPLETADA', NULL)
+                                            (N'ACT', N'EN_CURSO', N'COMPLETADA', N'sgspi_rol_lider_propietario')
                                             ,
-                                            (N'ACT', N'EN_CURSO', N'OBSERVADA', NULL)
+                                            (N'ACT', N'EN_CURSO', N'OBSERVADA', N'sgspi_rol_lider_propietario')
                                             ,
                                             (N'ACT', N'OBSERVADA', N'PENDIENTE', NULL)
                                             ,
                                             (N'ACT', N'OBSERVADA', N'EN_CURSO', NULL)
                                             ,
-                                            (N'ACT', N'COMPLETADA', N'OBSERVADA', NULL)
+                                            (N'ACT', N'COMPLETADA', N'OBSERVADA', N'sgspi_rol_oficial_seguridad_privacidad')
                                     )
                                     AS v (dominio, origen, destino, rol_requerido);
                                 GO
@@ -2124,10 +2124,10 @@ GO
                                                                                                                     tef.efc_dominio              = N'ACF'
                                                                                                                 AND tef.efc_identificador_origen = d.acf_estado_registro
                                                                                                                 AND tef.efc_identificador_destino = i.acf_estado_registro
-                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                                   ,
+                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1 OR IS_MEMBER(N'db_owner') = 1) )) ) THROW 50011                                                                   ,
                                                                                                 N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[analisis_contexto_factor].',
                                                                                                 1;
-                                                                                                -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas
+                                                                                                -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                                                                                                 IF EXISTS
                                                                                                     (
                                                                                                         SELECT
@@ -2138,6 +2138,7 @@ GO
                                                                                                         FROM inserted AS i
                                                                                                         INNER JOIN deleted AS d ON d.acf_codigo = i.acf_codigo
                                                                                                         WHERE i.acf_estado_registro <> d.acf_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'ACF' AND efc.efc_identificador IN (d.acf_estado_registro, i.acf_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                         EXCEPT
                                                                                                         SELECT
                                                                                                             d.acf_codigo, d.pev_codigo, d.pri_codigo, d.fec_codigo,
@@ -2147,6 +2148,7 @@ GO
                                                                                                         FROM deleted AS d
                                                                                                         INNER JOIN inserted AS i ON i.acf_codigo = d.acf_codigo
                                                                                                         WHERE i.acf_estado_registro <> d.acf_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'ACF' AND efc.efc_identificador IN (d.acf_estado_registro, i.acf_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                     )
                                                                                                     THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[analisis_contexto_factor].', 1;
                                                                                                 IF NOT
@@ -2301,10 +2303,10 @@ GO
                                                                                                                                                 tef.efc_dominio              = N'RPI'
                                                                                                                                             AND tef.efc_identificador_origen = d.rpi_estado_registro
                                                                                                                                             AND tef.efc_identificador_destino = i.rpi_estado_registro
-                                                                                                                                            AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                                     ,
+                                                                                                                                            AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1 OR IS_MEMBER(N'db_owner') = 1) )) ) THROW 50011                                                                     ,
                                                                                                                             N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[requisito_parte_interesada].',
                                                                                                                             1;
-                                                                                                                            -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas
+                                                                                                                            -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                                                                                                                             IF EXISTS
                                                                                                                                 (
                                                                                                                                     SELECT
@@ -2315,6 +2317,7 @@ GO
                                                                                                                                     FROM inserted AS i
                                                                                                                                     INNER JOIN deleted AS d ON d.rpi_codigo = i.rpi_codigo
                                                                                                                                     WHERE i.rpi_estado_registro <> d.rpi_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'RPI' AND efc.efc_identificador IN (d.rpi_estado_registro, i.rpi_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                                                     EXCEPT
                                                                                                                                     SELECT
                                                                                                                                         d.rpi_codigo, d.pev_codigo, d.pai_codigo, d.rpi_necesidad_expectativa,
@@ -2324,6 +2327,7 @@ GO
                                                                                                                                     FROM deleted AS d
                                                                                                                                     INNER JOIN inserted AS i ON i.rpi_codigo = d.rpi_codigo
                                                                                                                                     WHERE i.rpi_estado_registro <> d.rpi_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'RPI' AND efc.efc_identificador IN (d.rpi_estado_registro, i.rpi_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                                                 )
                                                                                                                                 THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[requisito_parte_interesada].', 1;
                                                                                                                             IF NOT
@@ -2464,10 +2468,10 @@ END;
                                                                                                                                                                             tef.efc_dominio              = N'ACI'
                                                                                                                                                                         AND tef.efc_identificador_origen = d.aci_estado_registro
                                                                                                                                                                         AND tef.efc_identificador_destino = i.aci_estado_registro
-                                                                                                                                                                        AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                   ,
+                                                                                                                                                                        AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1 OR IS_MEMBER(N'db_owner') = 1) )) ) THROW 50011                                                   ,
                                                                                                                                                         N'Transición inválida o intento de modificar un activo no editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[activo_informacion].',
                                                                                                                                                         1;
-                                                                                                                                                        -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas
+                                                                                                                                                        -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                                                                                                                                                         IF EXISTS
                                                                                                                                                             (
                                                                                                                                                                 SELECT
@@ -2484,6 +2488,7 @@ END;
                                                                                                                                                                 FROM inserted AS i
                                                                                                                                                                 INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo
                                                                                                                                                                 WHERE i.aci_estado_registro <> d.aci_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'ACI' AND efc.efc_identificador IN (d.aci_estado_registro, i.aci_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                                                                                 EXCEPT
                                                                                                                                                                 SELECT
                                                                                                                                                                     d.aci_codigo, d.aci_codigo_inventario, d.aci_nombre_activo, d.aci_descripcion_detallada,
@@ -2499,6 +2504,7 @@ END;
                                                                                                                                                                 FROM deleted AS d
                                                                                                                                                                 INNER JOIN inserted AS i ON i.aci_codigo = d.aci_codigo
                                                                                                                                                                 WHERE i.aci_estado_registro <> d.aci_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'ACI' AND efc.efc_identificador IN (d.aci_estado_registro, i.aci_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                                                                             )
                                                                                                                                                             THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[activo_informacion].', 1;
                                                                                                                                                         IF NOT
@@ -2512,7 +2518,7 @@ BEGIN
             FROM inserted AS i
             INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo
             WHERE d.aci_estado_registro <> i.aci_estado_registro
-              AND i.aci_estado_registro = N'VIGENTE'
+              AND (i.aci_estado_registro = N'VIGENTE' OR d.aci_estado_registro = N'EN_REVISION_ARCHIVO')
         )
     BEGIN
         SELECT TOP (1) @per_actor = u.up
@@ -2532,6 +2538,14 @@ BEGIN
     FROM sgspi.activo_informacion AS t
     INNER JOIN inserted AS i ON i.aci_codigo = t.aci_codigo
     INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo;
+    -- Firma de Archivo: la pone el trigger al salir de EN_REVISION_ARCHIVO hacia EN_REVISION_SGSPI
+    UPDATE ado
+    SET ado.per_codigo_revisor_archivo = @per_actor
+    FROM sgspi.activo_documental AS ado
+    INNER JOIN inserted AS i ON i.aci_codigo = ado.ado_codigo
+    INNER JOIN deleted AS d ON d.aci_codigo = i.aci_codigo
+    WHERE d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+      AND i.aci_estado_registro = N'EN_REVISION_SGSPI';
 END;
                                                                                                                                                         END;
                                                                                                                                                     END;
@@ -2579,6 +2593,9 @@ IF EXISTS
     WHERE efc.efc_permite_edicion = 0
 )
     THROW 50011, N'Operación denegada: No se permite insertar ni modificar un activo documental cuyo activo de información no es editable en [sgspi].[activo_documental].', 1;
+-- La firma de Archivo la escribe TR_aci; en UPDATE la impide el DENY de columna, en INSERT esta comprobación
+IF EXISTS (SELECT 1 FROM inserted AS i WHERE i.per_codigo_revisor_archivo IS NOT NULL AND NOT EXISTS (SELECT 1 FROM deleted AS d WHERE d.ado_codigo = i.ado_codigo))
+    THROW 50018, N'La firma de Archivo [per_codigo_revisor_archivo] no se envía al crear el activo documental: la registra la transición EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI.', 1;
                                                                                                                                                                     -- [AP-06] Una serie con subseries exige indicar la subserie (INSERT y UPDATE)
                                                                                                                                                                     IF EXISTS
                                                                                                                                                                         (
@@ -2721,10 +2738,10 @@ IF EXISTS
                                                                                                                                                                                                                                     tef.efc_dominio              = N'EIA'
                                                                                                                                                                                                                                 AND tef.efc_identificador_origen = d.eia_estado_registro
                                                                                                                                                                                                                                 AND tef.efc_identificador_destino = i.eia_estado_registro
-                                                                                                                                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                 ,
+                                                                                                                                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1 OR IS_MEMBER(N'db_owner') = 1) )) ) THROW 50011                                 ,
                                                                                                                                                                                                                 N'Transición de estado inválida o intento de alterar un evento cerrado/histórico en [sgspi].[evento_incertidumbre_activo].',
                                                                                                                                                                                                                 1;
-                                                                                                                                                                                                                -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas
+                                                                                                                                                                                                                -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                                                                                                                                                                                                                 IF EXISTS
                                                                                                                                                                                                                     (
                                                                                                                                                                                                                         SELECT
@@ -2737,6 +2754,7 @@ IF EXISTS
                                                                                                                                                                                                                         FROM inserted AS i
                                                                                                                                                                                                                         INNER JOIN deleted AS d ON d.eia_codigo = i.eia_codigo
                                                                                                                                                                                                                         WHERE i.eia_estado_registro <> d.eia_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'EIA' AND efc.efc_identificador IN (d.eia_estado_registro, i.eia_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                                                                                                                                         EXCEPT
                                                                                                                                                                                                                         SELECT
                                                                                                                                                                                                                             d.eia_codigo, d.pev_codigo, d.eia_identificador_evento, d.eia_naturaleza_evento,
@@ -2748,6 +2766,7 @@ IF EXISTS
                                                                                                                                                                                                                         FROM deleted AS d
                                                                                                                                                                                                                         INNER JOIN inserted AS i ON i.eia_codigo = d.eia_codigo
                                                                                                                                                                                                                         WHERE i.eia_estado_registro <> d.eia_estado_registro
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'EIA' AND efc.efc_identificador IN (d.eia_estado_registro, i.eia_estado_registro) AND efc.efc_permite_edicion = 0)
                                                                                                                                                                                                                     )
                                                                                                                                                                                                                     THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[evento_incertidumbre_activo].', 1;
                                                                                                                                                                                                                 IF NOT
@@ -2972,10 +2991,10 @@ IF EXISTS
                                                                                                                                                                                                                                                                                     tef.efc_dominio              = N'ACT'
                                                                                                                                                                                                                                                                                 AND tef.efc_identificador_origen = d.act_estado_actividad
                                                                                                                                                                                                                                                                                 AND tef.efc_identificador_destino = i.act_estado_actividad
-                                                                                                                                                                                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                 ,
+                                                                                                                                                                                                                                                                                AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1 OR IS_MEMBER(N'db_owner') = 1) )) ) THROW 50011                                                 ,
                                                                                                                                                                                                                                                                 N'Transición de estado inválida o intento de modificar una actividad en estado no editable (COMPLETADA) en [sgspi].[actividad_tratamiento].',
                                                                                                                                                                                                                                                                 1;
-                                                                                                                                                                                                                                                                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo puede cambiar act_estado_actividad
+                                                                                                                                                                                                                                                                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo puede cambiar act_estado_actividad (si el origen o el destino no es editable)
                                                                                                                                                                                                                                                                     IF EXISTS
                                                                                                                                                                                                                                                                         (
                                                                                                                                                                                                                                             SELECT
@@ -2985,6 +3004,7 @@ IF EXISTS
                                                                                                                                                                                                                                             FROM inserted AS i
                                                                                                                                                                                                                                             INNER JOIN deleted AS d ON d.act_codigo = i.act_codigo
                                                                                                                                                                                                                                             WHERE i.act_estado_actividad <> d.act_estado_actividad
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'ACT' AND efc.efc_identificador IN (d.act_estado_actividad, i.act_estado_actividad) AND efc.efc_permite_edicion = 0)
                                                                                                                                                                                                                                             EXCEPT
                                                                                                                                                                                                                                             SELECT
                                                                                                                                                                                                                                                 d.act_codigo, d.plt_codigo, d.act_numero_orden, d.act_descripcion_actividad,
@@ -2993,6 +3013,7 @@ IF EXISTS
                                                                                                                                                                                                                                             FROM deleted AS d
                                                                                                                                                                                                                                             INNER JOIN inserted AS i ON i.act_codigo = d.act_codigo
                                                                                                                                                                                                                                             WHERE i.act_estado_actividad <> d.act_estado_actividad
+    AND EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_dominio = N'ACT' AND efc.efc_identificador IN (d.act_estado_actividad, i.act_estado_actividad) AND efc.efc_permite_edicion = 0)
                                                                                                                                                                                                                                         )
                                                                                                                                                                                                                                         THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[actividad_tratamiento].', 1;
                                                                                                                                                                                                                                                                     IF NOT
@@ -3447,7 +3468,7 @@ DENY
                                                                                                                                                                                                                                                                                                                         ON sgspi.activo_informacion (per_codigo_creador, per_codigo_aprobador, aci_fecha_creacion, aci_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
-                                                                                                                                                                                                                                                                                                                        ON sgspi.activo_documental (ado_fecha_creacion, ado_fecha_actualizacion) TO sgspi_rol_base;
+                                                                                                                                                                                                                                                                                                                        ON sgspi.activo_documental (per_codigo_revisor_archivo, ado_fecha_creacion, ado_fecha_actualizacion) TO sgspi_rol_base;
                                                                                                                                                                                                                                                                                                                     DENY
                                                                                                                                                                                                                                                                                                                     UPDATE
                                                                                                                                                                                                                                                                                                                         ON sgspi.evento_incertidumbre_activo (per_codigo_creador, per_codigo_validador_lider, per_codigo_revisor_sgspi, per_codigo_aprobador_comite, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
