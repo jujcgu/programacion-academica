@@ -145,6 +145,7 @@ ALTER ROLE sgspi_rol_auditor_control ADD MEMBER sgspi_prueba_auditor;
 ALTER ROLE sgspi_rol_comite_direccion ADD MEMBER sgspi_prueba_comite;
 GO
 EXEC #espera N'AP-02 la vista de alcance no expone la identificación', N'IF COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_identificacion'') IS NOT NULL THROW 51000, N''per_identificacion sigue expuesta'', 1;', 0;
+EXEC #espera N'AP-02 la vista de alcance no expone el correo institucional', N'IF COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_correo_institucional'') IS NOT NULL OR COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_email_interno'') IS NOT NULL THROW 51000, N''per_correo_institucional sigue expuesto'', 1;', 0;
 EXEC #espera N'AP-02 base lee vistas que cruzan a [dbo]', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p1 FROM sgspi.vw_usuario_rol_alcance_sgspi;', 0;
 EXEC #espera N'AP-02 base no escribe', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; INSERT sgspi.parte_interesada (pai_nombre, pai_origen) VALUES (N''X'', N''INTERNA'');', 229;
 EXEC #espera N'AP-02 ni el oficial escribe la máquina de estados', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; INSERT sgspi.transicion_estado_flujo (efc_dominio, efc_identificador_origen, efc_identificador_destino) VALUES (N''ACF'', N''BORRADOR'', N''VIGENTE'');', 229;

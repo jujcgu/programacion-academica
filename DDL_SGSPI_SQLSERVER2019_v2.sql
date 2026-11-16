@@ -52,7 +52,7 @@ eliminaron junto con las tablas temporales (SYSTEM_VERSIONING) de ado, eia y eac
 registra quién cambió qué: solo conserva <acr>_fecha_creacion y <acr>_fecha_actualizacion.
 AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
-tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion.
+tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno.
 AP-03  RETIRADO. Ya no se exige contexto de sesión: creador, aprobador y firmantes son los per_codigo que
 envía la aplicación, y la base de datos no puede verificar quién ejecuta la operación.
 AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
@@ -166,11 +166,6 @@ IF CONVERT (INT,
             (
                 N'dbo.persona',
                 N'per_apellido'
-            )
-            ,
-            (
-                N'dbo.persona',
-                N'per_email_interno'
             )
             ,
             (
@@ -3690,10 +3685,8 @@ DENY
                                                                                                                                                                                                                                                                                                                         AS
                                                                                                                                                                                                                                                                                                                         SELECT
                                                                                                                                                                                                                                                                                                                             p.per_codigo
-                                                                                                                                                                                                                                                                                                                            , -- sin per_identificacion: la vista la lee todo sgspi_rol_base [AP-02]
+                                                                                                                                                                                                                                                                                                                            , -- sin per_identificacion ni per_email_interno: la vista la lee todo sgspi_rol_base [AP-02]
                                                                                                                                                                                                                                                                                                                             CONCAT(RTRIM(ISNULL(p.per_nombre, N'')), N' ', RTRIM(ISNULL(p.per_apellido, N''))) AS per_nombre_completo
-                                                                                                                                                                                                                                                                                                                            ,
-                                                                                                                                                                                                                                                                                                                            p.per_email_interno                                                                AS per_correo_institucional
                                                                                                                                                                                                                                                                                                                             ,
                                                                                                                                                                                                                                                                                                                             ug.usg_codigo
                                                                                                                                                                                                                                                                                                                             ,
