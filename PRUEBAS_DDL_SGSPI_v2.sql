@@ -137,10 +137,12 @@ CREATE USER sgspi_prueba_consulta WITHOUT LOGIN;
 CREATE USER sgspi_prueba_custodio WITHOUT LOGIN;
 CREATE USER sgspi_prueba_oficial WITHOUT LOGIN;
 CREATE USER sgspi_prueba_auditor WITHOUT LOGIN;
+CREATE USER sgspi_prueba_comite WITHOUT LOGIN;
 ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_prueba_consulta;
 ALTER ROLE sgspi_rol_custodio_operador ADD MEMBER sgspi_prueba_custodio;
 ALTER ROLE sgspi_rol_oficial_seguridad_privacidad ADD MEMBER sgspi_prueba_oficial;
 ALTER ROLE sgspi_rol_auditor_control ADD MEMBER sgspi_prueba_auditor;
+ALTER ROLE sgspi_rol_comite_direccion ADD MEMBER sgspi_prueba_comite;
 GO
 EXEC #espera N'AP-02 la vista de alcance no expone la identificación', N'IF COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_identificacion'') IS NOT NULL THROW 51000, N''per_identificacion sigue expuesta'', 1;', 0;
 EXEC #espera N'AP-02 base lee vistas que cruzan a [dbo]', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p1 FROM sgspi.vw_usuario_rol_alcance_sgspi;', 0;
@@ -164,11 +166,17 @@ EXEC #espera N'AP-02 auditor registra el dictamen de eficacia', N'EXECUTE AS USE
 EXEC #espera N'AP-02 auditor no edita el resto del plan', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE 1 = 0;', 230;
 EXEC #espera N'AP-02 auditor registra observaciones en el SoA', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''Hallazgo'' WHERE eac_codigo = 1;', 0;
 EXEC #espera N'AP-02 auditor no cambia el estado de implementación del SoA', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_estado_implementacion = N''CUMPLE'' WHERE 1 = 0;', 230;
+EXEC #espera N'AP-02 comité puede cambiar el estado en eia y rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''OBSERVADO'' WHERE 1 = 0; UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''OBSERVADO'' WHERE 1 = 0;', 0;
+EXEC #espera N'AP-02 comité no edita contenido de eia', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET eia_fuente_generadora = N''x'' WHERE 1 = 0;', 230;
+EXEC #espera N'AP-02 comité no escribe firma directa en eia', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET per_codigo_aprobador_comite = 2 WHERE 1 = 0;', 230;
+EXEC #espera N'AP-02 comité no edita contenido de rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET rpi_necesidad_expectativa = N''x'' WHERE 1 = 0;', 230;
+EXEC #espera N'AP-02 comité no escribe firma directa en rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET per_codigo_aprobador = 2 WHERE 1 = 0;', 230;
 GO
 DROP USER sgspi_prueba_consulta;
 DROP USER sgspi_prueba_custodio;
 DROP USER sgspi_prueba_oficial;
 DROP USER sgspi_prueba_auditor;
+DROP USER sgspi_prueba_comite;
 GO
 -- ======================= 8. Padres no editables en hijas y tablas puente =======================
 EXEC #espera N'Preparar catálogos, puentes editables y bloquear padres', N'
