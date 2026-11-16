@@ -2574,6 +2574,16 @@ END;
                                                                                                                                                                             1
                                                                                                                                                                         FROM
                                                                                                                                                                             inserted) RETURN;
+IF EXISTS
+(
+    SELECT 1
+    FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS x
+    INNER JOIN sgspi.activo_informacion AS aci ON aci.aci_codigo = x.ado_codigo
+    INNER JOIN sgspi.estado_flujo_catalogo AS efc
+        ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = aci.aci_estado_registro
+    WHERE efc.efc_permite_edicion = 0
+)
+    THROW 50011, N'Operación denegada: No se permite insertar ni modificar un activo documental cuyo activo de información no es editable en [sgspi].[activo_documental].', 1;
                                                                                                                                                                     -- [AP-06] Una serie con subseries exige indicar la subserie (INSERT y UPDATE)
                                                                                                                                                                     IF EXISTS
                                                                                                                                                                         (
@@ -2597,20 +2607,6 @@ END;
                                                                                                                                                                                 FROM
                                                                                                                                                                                     deleted)
                                                                                                                                                                             BEGIN
-                                                                                                                                                                                IF EXISTS
-                                                                                                                                                                                    (
-                                                                                                                                                                                        SELECT
-                                                                                                                                                                                            1
-                                                                                                                                                                                        FROM
-                                                                                                                                                                                            inserted AS i
-                                                                                                                                                                                        INNER JOIN
-                                                                                                                                                                                            sgspi.activo_informacion AS aci
-                                                                                                                                                                                        ON
-                                                                                                                                                                                            aci.aci_codigo = i.ado_codigo
-                                                                                                                                                                                        WHERE
-                                                                                                                                                                                            aci.aci_estado_registro = N'HISTORICO' ) THROW 50011                                                                                                   ,
-                                                                                                                                                                                    N'Operación denegada: No se permite modificar un activo documental cuyo activo de información se encuentra en estado HISTORICO en [sgspi].[activo_documental].',
-                                                                                                                                                                                    1;
                                                                                                                                                                                     IF NOT
                                                                                                                                                                                         UPDATE
                                                                                                                                                                                             (ado_fecha_actualizacion)
@@ -2832,6 +2828,17 @@ END;
                                                                                                                                                                                                                                 inserted) THROW 50010                                                                                 ,
                                                                                                                                                                                                                         N'Operación denegada: No se permite eliminar físicamente planes de tratamiento en [sgspi].[plan_tratamiento].',
                                                                                                                                                                                                                         1;
+IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+IF EXISTS
+(
+    SELECT 1
+    FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS x
+    INNER JOIN sgspi.evento_incertidumbre_activo AS eia ON eia.eia_codigo = x.eia_codigo
+    INNER JOIN sgspi.estado_flujo_catalogo AS efc
+        ON efc.efc_dominio = N'EIA' AND efc.efc_identificador = eia.eia_estado_registro
+    WHERE efc.efc_permite_edicion = 0
+)
+    THROW 50011, N'Operación denegada: No se permite insertar ni modificar el plan de tratamiento de un evento no editable en [sgspi].[plan_tratamiento].', 1;
                                                                                                                                                                                                                         IF EXISTS
                                                                                                                                                                                                                             (
                                                                                                                                                                                                                                 SELECT
@@ -2839,22 +2846,6 @@ END;
                                                                                                                                                                                                                                 FROM
                                                                                                                                                                                                                                     deleted)
                                                                                                                                                                                                                             BEGIN
-                                                                                                                                                                                                                                IF EXISTS
-                                                                                                                                                                                                                                    (
-                                                                                                                                                                                                                                        SELECT
-                                                                                                                                                                                                                                            1
-                                                                                                                                                                                                                                        FROM
-                                                                                                                                                                                                                                            inserted AS i
-                                                                                                                                                                                                                                        INNER JOIN
-                                                                                                                                                                                                                                            sgspi.evento_incertidumbre_activo AS eia
-                                                                                                                                                                                                                                        ON
-                                                                                                                                                                                                                                            eia.eia_codigo = i.eia_codigo
-                                                                                                                                                                                                                                        WHERE
-                                                                                                                                                                                                                                            eia.eia_estado_registro IN (N'CERRADO_EFICAZ'
-                                                                                                                                                                                                                                                                        ,
-                                                                                                                                                                                                                                                                        N'HISTORICO') ) THROW 50011                                                                             ,
-                                                                                                                                                                                                                                    N'Operación denegada: No se permite modificar el plan de tratamiento de un evento CERRADO_EFICAZ o HISTORICO en [sgspi].[plan_tratamiento].',
-                                                                                                                                                                                                                                    1;
                                                                                                                                                                                                                                     IF NOT
                                                                                                                                                                                                                                         UPDATE
                                                                                                                                                                                                                                             (plt_fecha_actualizacion)
@@ -2931,6 +2922,18 @@ END;
                                                                                                                                                                                                                                                                 AND efc.efc_es_inicial = 1 ) ) THROW 50014                                                                             ,
                                                                                                                                                                                                                                                     N'Estado inicial inválido: un registro nuevo de [sgspi].[actividad_tratamiento] solo puede crearse en el estado inicial del flujo.',
                                                                                                                                                                                                                                                     1;
+-- No se tocan actividades de un evento en estado no editable
+IF EXISTS
+(
+    SELECT 1
+    FROM (SELECT plt_codigo FROM inserted UNION SELECT plt_codigo FROM deleted) AS x
+    INNER JOIN sgspi.plan_tratamiento AS plt ON plt.plt_codigo = x.plt_codigo
+    INNER JOIN sgspi.evento_incertidumbre_activo AS eia ON eia.eia_codigo = plt.eia_codigo
+    INNER JOIN sgspi.estado_flujo_catalogo AS efc
+        ON efc.efc_dominio = N'EIA' AND efc.efc_identificador = eia.eia_estado_registro
+    WHERE efc.efc_permite_edicion = 0
+)
+    THROW 50011, N'Operación denegada: No se permite insertar ni modificar actividades de un evento no editable en [sgspi].[actividad_tratamiento].', 1;
                                                                                                                                                                                                                                                     IF EXISTS
                                                                                                                                                                                                                                                         (
                                                                                                                                                                                                                                                             SELECT
@@ -2977,27 +2980,6 @@ END;
                                                                                                                                                                                                                                                                                 AND (tef.tef_rol_requerido IS NULL OR IS_MEMBER(tef.tef_rol_requerido) = 1) )) ) THROW 50011                                                 ,
                                                                                                                                                                                                                                                                 N'Transición de estado inválida o intento de modificar una actividad en estado no editable (COMPLETADA) en [sgspi].[actividad_tratamiento].',
                                                                                                                                                                                                                                                                 1;
-                                                                                                                                                                                                                                                                -- No se tocan actividades de un evento CERRADO_EFICAZ o HISTORICO
-                                                                                                                                                                                                                                                                IF EXISTS
-                                                                                                                                                                                                                                                                    (
-                                                                                                                                                                                                                                                                        SELECT
-                                                                                                                                                                                                                                                                            1
-                                                                                                                                                                                                                                                                        FROM
-                                                                                                                                                                                                                                                                            inserted AS i
-                                                                                                                                                                                                                                                                        INNER JOIN
-                                                                                                                                                                                                                                                                            sgspi.plan_tratamiento AS plt
-                                                                                                                                                                                                                                                                        ON
-                                                                                                                                                                                                                                                                            plt.plt_codigo = i.plt_codigo
-                                                                                                                                                                                                                                                                        INNER JOIN
-                                                                                                                                                                                                                                                                            sgspi.evento_incertidumbre_activo AS eia
-                                                                                                                                                                                                                                                                        ON
-                                                                                                                                                                                                                                                                            eia.eia_codigo = plt.eia_codigo
-                                                                                                                                                                                                                                                                        WHERE
-                                                                                                                                                                                                                                                                            eia.eia_estado_registro IN (N'CERRADO_EFICAZ'
-                                                                                                                                                                                                                                                                                                        ,
-                                                                                                                                                                                                                                                                                                        N'HISTORICO') ) THROW 50011                                                                       ,
-                                                                                                                                                                                                                                                                    N'Operación denegada: No se permite modificar actividades de un evento CERRADO_EFICAZ o HISTORICO en [sgspi].[actividad_tratamiento].',
-                                                                                                                                                                                                                                                                    1;
                                                                                                                                                                                                                                                                     -- EXCEPT trata NULL = NULL: si cambia el estado, solo puede cambiar act_estado_actividad
                                                                                                                                                                                                                                                                     IF EXISTS
                                                                                                                                                                                                                                                                         (
@@ -3198,6 +3180,228 @@ END;
                                                                                                                                                                                                                                                                                     GO
                                                                                                                                                                                                                                                                                     IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
                                                                                                                                                                                                                                                                                         GO
+-- 5.10.9b Triggers sobre tablas puente: bloquean INSERT/UPDATE cuando el padre tiene efc_permite_edicion = 0
+CREATE OR ALTER TRIGGER sgspi.TR_rpc_bloquear_padre_no_editable
+ON sgspi.requisito_parte_interesada_cuestionario
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT rpi_codigo FROM inserted UNION SELECT rpi_codigo FROM deleted) AS x
+        INNER JOIN sgspi.requisito_parte_interesada AS p ON p.rpi_codigo = x.rpi_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'RPI' AND efc.efc_identificador = p.rpi_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[requisito_parte_interesada_cuestionario] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_rpp_bloquear_padre_no_editable
+ON sgspi.requisito_parte_interesada_proceso_institucional
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT rpi_codigo FROM inserted UNION SELECT rpi_codigo FROM deleted) AS x
+        INNER JOIN sgspi.requisito_parte_interesada AS p ON p.rpi_codigo = x.rpi_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'RPI' AND efc.efc_identificador = p.rpi_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[requisito_parte_interesada_proceso_institucional] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_aip_bloquear_padre_no_editable
+ON sgspi.activo_informacion_proceso_institucional
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.aci_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_proceso_institucional] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_ais_bloquear_padre_no_editable
+ON sgspi.activo_informacion_sede
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.aci_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_sede] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_air_bloquear_padre_no_editable
+ON sgspi.activo_informacion_responsable
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.aci_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_responsable] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_ads_bloquear_padre_no_editable
+ON sgspi.activo_documental_soporte_registro
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.ado_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_soporte_registro] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_adm_bloquear_padre_no_editable
+ON sgspi.activo_documental_medio_conservacion
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.ado_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_medio_conservacion] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_adi_bloquear_padre_no_editable
+ON sgspi.activo_documental_idioma
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.ado_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_idioma] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_adf_bloquear_padre_no_editable
+ON sgspi.activo_documental_formato_archivo
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.ado_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_formato_archivo] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_adu_bloquear_padre_no_editable
+ON sgspi.activo_documental_unidad_productora
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS x
+        INNER JOIN sgspi.activo_informacion AS p ON p.aci_codigo = x.ado_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'ACI' AND efc.efc_identificador = p.aci_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_unidad_productora] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
+CREATE OR ALTER TRIGGER sgspi.TR_ptc_bloquear_padre_no_editable
+ON sgspi.plan_tratamiento_control_referencia_normativa
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM inserted) RETURN;
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT plt_codigo FROM inserted UNION SELECT plt_codigo FROM deleted) AS x
+        INNER JOIN sgspi.plan_tratamiento AS plt ON plt.plt_codigo = x.plt_codigo
+        INNER JOIN sgspi.evento_incertidumbre_activo AS p ON p.eia_codigo = plt.eia_codigo
+        INNER JOIN sgspi.estado_flujo_catalogo AS efc
+            ON efc.efc_dominio = N'EIA' AND efc.efc_identificador = p.eia_estado_registro
+        WHERE efc.efc_permite_edicion = 0
+    )
+        THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[plan_tratamiento_control_referencia_normativa] cuando el padre no es editable.', 1;
+END;
+GO
+IF @@TRANCOUNT = 0 SET NOEXEC ON; -- [AP-19]
+GO
                                                                                                                                                                                                                                                                                         -- 5.10.10 Roles y permisos [AP-02]: privilegios mínimos por actor.
                                                                                                                                                                                                                                                                                         -- Cada persona escribe con su login SQL real, miembro de UN rol de actor (uno por grupo SGSPI_* de [dbo].[grupo]);
                                                                                                                                                                                                                                                                                         -- la cuenta compartida de consulta es miembro solo de sgspi_rol_base. Los seis roles de actor son miembros de

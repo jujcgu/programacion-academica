@@ -170,6 +170,82 @@ DROP USER sgspi_prueba_custodio;
 DROP USER sgspi_prueba_oficial;
 DROP USER sgspi_prueba_auditor;
 GO
+-- ======================= 8. Padres no editables en hijas y tablas puente =======================
+EXEC #espera N'Preparar catálogos, puentes editables y bloquear padres', N'
+INSERT sgspi.proceso_institucional (pri_identificador, pri_nombre, tpr_codigo, uaa_codigo_lider) VALUES (N''P02'', N''Operaciones'', 1, 1);
+INSERT sgspi.formato_archivo_catalogo (fac_nombre) VALUES (N''Hoja de cálculo'');
+INSERT sgspi.soporte_registro_catalogo (src_nombre) VALUES (N''Papel'');
+INSERT sgspi.medio_conservacion_catalogo (mcc_nombre) VALUES (N''Servidor institucional''), (N''Nube'');
+INSERT sgspi.idioma_catalogo (idi_codigo_iso, idi_nombre) VALUES (N''es'', N''Español''), (N''en'', N''Inglés'');
+INSERT sgspi.unidad_productora_cuadro_clasificacion_documental (upc_nodo_jerarquico, upc_nombre_unidad) VALUES (hierarchyid::Parse(''/1/''), N''Rectoría''), (hierarchyid::Parse(''/2/''), N''Secretaría'');
+INSERT sgspi.control_referencia_normativa (enc_codigo, crn_identificador_control, crn_nombre_control, crn_objetivo_requisito) VALUES (1, N''A.5.15'', N''Control de acceso'', N''o'');
+
+INSERT sgspi.requisito_parte_interesada_cuestionario (rpi_codigo, rpc_numero_pregunta) VALUES (1, 1);
+INSERT sgspi.requisito_parte_interesada_proceso_institucional (rpi_codigo, pri_codigo) VALUES (1, 1);
+INSERT sgspi.activo_informacion_sede (aci_codigo, sus_codigo) VALUES (1, 1);
+INSERT sgspi.activo_informacion_responsable (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad) VALUES (1, 1, 1, N''CUSTODIO'');
+INSERT sgspi.activo_documental_medio_conservacion (ado_codigo, mcc_codigo) VALUES (1, (SELECT mcc_codigo FROM sgspi.medio_conservacion_catalogo WHERE mcc_nombre = N''Servidor institucional''));
+INSERT sgspi.activo_documental_idioma (ado_codigo, idi_codigo) VALUES (1, (SELECT idi_codigo FROM sgspi.idioma_catalogo WHERE idi_codigo_iso = N''es''));
+INSERT sgspi.activo_documental_unidad_productora (ado_codigo, upc_codigo) VALUES (1, (SELECT upc_codigo FROM sgspi.unidad_productora_cuadro_clasificacion_documental WHERE upc_nombre_unidad = N''Rectoría''));
+
+INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador)
+VALUES (N''INV-5'', N''Actas sin ado'', 3, N''PUBLICA'', 1, 2, 2, 1);
+INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
+VALUES (1, N''RA-02'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Evento sin plan'', 5, 5, 1);
+
+UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''EN_VALIDACION_LIDER'' WHERE rpi_codigo = 1;
+UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''EN_REVISION_SGSPI'' WHERE rpi_codigo = 1;
+UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''VIGENTE'' WHERE rpi_codigo = 1;
+
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_VALIDACION_LIDER'' WHERE aci_codigo_inventario IN (N''INV-1'', N''INV-5'');
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI'' WHERE aci_codigo_inventario IN (N''INV-1'', N''INV-5'');
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario IN (N''INV-1'', N''INV-5'');
+
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_VALIDACION_LIDER'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_REVISION_SGSPI'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''APROBADO_PLANIFICADO'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EJECUCION'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EVALUACION_EFICACIA'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''CERRADO_EFICAZ'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');', 0;
+
+EXEC #espera N'ado INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-5''), 1, 1, 1, 1, 1, N''x'');', 50011;
+EXEC #espera N'ado UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_documental SET ado_lugar_consulta_ubicacion = N''x'' WHERE ado_codigo = 1;', 50011;
+EXEC #espera N'plt INSERT con padre CERRADO_EFICAZ bloqueado', N'INSERT sgspi.plan_tratamiento (eia_codigo, plt_naturaleza_evento, etc_codigo, plt_justificacion_estrategia, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_fecha_inicio, plt_fecha_fin, plt_recursos_humanos_tecnicos, plt_recursos_economicos_desc, plt_nombre_indicador_kpi, plt_meta_indicador_kpi) VALUES ((SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-02''), N''RIESGO'', 1, N''j'', 1, 1, ''2026-01-01'', ''2026-12-31'', N''r'', N''r'', N''k'', 100);', 50011;
+EXEC #espera N'plt UPDATE con padre CERRADO_EFICAZ bloqueado', N'UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE plt_codigo = (SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''));', 50011;
+EXEC #espera N'act INSERT con padre CERRADO_EFICAZ bloqueado', N'INSERT sgspi.actividad_tratamiento (plt_codigo, act_numero_orden, act_descripcion_actividad, act_fecha_compromiso) VALUES ((SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')), 2, N''Nueva'', ''2026-07-31'');', 50011;
+EXEC #espera N'act UPDATE con padre CERRADO_EFICAZ bloqueado', N'UPDATE sgspi.actividad_tratamiento SET act_descripcion_actividad = N''x'' WHERE act_codigo = 1;', 50011;
+
+EXEC #espera N'rpc INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.requisito_parte_interesada_cuestionario (rpi_codigo, rpc_numero_pregunta) VALUES (1, 2);', 50011;
+EXEC #espera N'rpc UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.requisito_parte_interesada_cuestionario SET rpc_esta_activo = 0 WHERE rpi_codigo = 1 AND rpc_numero_pregunta = 1;', 50011;
+EXEC #espera N'rpp INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.requisito_parte_interesada_proceso_institucional (rpi_codigo, pri_codigo) VALUES (1, (SELECT pri_codigo FROM sgspi.proceso_institucional WHERE pri_identificador = N''P02''));', 50011;
+EXEC #espera N'rpp UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.requisito_parte_interesada_proceso_institucional SET rpp_esta_activo = 0 WHERE rpi_codigo = 1 AND pri_codigo = 1;', 50011;
+EXEC #espera N'aip INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo) VALUES (1, (SELECT pri_codigo FROM sgspi.proceso_institucional WHERE pri_identificador = N''P02''));', 50011;
+EXEC #espera N'aip UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_informacion_proceso_institucional SET aip_esta_activo = 1 WHERE aci_codigo = 1 AND pri_codigo = 1;', 50011;
+EXEC #espera N'ais INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_informacion_sede (aci_codigo, sus_codigo) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-5''), 1);', 50011;
+EXEC #espera N'ais UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_informacion_sede SET ais_esta_activo = 0 WHERE aci_codigo = 1 AND sus_codigo = 1;', 50011;
+EXEC #espera N'air INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_informacion_responsable (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad) VALUES (1, 1, 1, N''PROPIETARIO'');', 50011;
+EXEC #espera N'air UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_informacion_responsable SET air_esta_activo = 0 WHERE aci_codigo = 1 AND car_codigo = 1 AND uaa_codigo = 1 AND air_tipo_responsabilidad = N''CUSTODIO'';', 50011;
+EXEC #espera N'ads INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental_soporte_registro (ado_codigo, src_codigo) VALUES (1, (SELECT src_codigo FROM sgspi.soporte_registro_catalogo WHERE src_nombre = N''Papel''));', 50011;
+EXEC #espera N'ads UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_documental_soporte_registro SET ads_esta_activo = 0 WHERE ado_codigo = 1 AND src_codigo = 1;', 50011;
+EXEC #espera N'adm INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental_medio_conservacion (ado_codigo, mcc_codigo) VALUES (1, (SELECT mcc_codigo FROM sgspi.medio_conservacion_catalogo WHERE mcc_nombre = N''Nube''));', 50011;
+EXEC #espera N'adm UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_documental_medio_conservacion SET adm_esta_activo = 0 WHERE ado_codigo = 1 AND mcc_codigo = (SELECT mcc_codigo FROM sgspi.medio_conservacion_catalogo WHERE mcc_nombre = N''Servidor institucional'');', 50011;
+EXEC #espera N'adi INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental_idioma (ado_codigo, idi_codigo) VALUES (1, (SELECT idi_codigo FROM sgspi.idioma_catalogo WHERE idi_codigo_iso = N''en''));', 50011;
+EXEC #espera N'adi UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_documental_idioma SET adi_esta_activo = 0 WHERE ado_codigo = 1 AND idi_codigo = (SELECT idi_codigo FROM sgspi.idioma_catalogo WHERE idi_codigo_iso = N''es'');', 50011;
+EXEC #espera N'adf INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental_formato_archivo (ado_codigo, fac_codigo) VALUES (1, (SELECT fac_codigo FROM sgspi.formato_archivo_catalogo WHERE fac_nombre = N''Hoja de cálculo''));', 50011;
+EXEC #espera N'adf UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_documental_formato_archivo SET adf_esta_activo = 0 WHERE ado_codigo = 1 AND fac_codigo = 1;', 50011;
+EXEC #espera N'adu INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental_unidad_productora (ado_codigo, upc_codigo) VALUES (1, (SELECT upc_codigo FROM sgspi.unidad_productora_cuadro_clasificacion_documental WHERE upc_nombre_unidad = N''Secretaría''));', 50011;
+EXEC #espera N'adu UPDATE con padre VIGENTE bloqueado', N'UPDATE sgspi.activo_documental_unidad_productora SET adu_esta_activo = 0 WHERE ado_codigo = 1 AND upc_codigo = (SELECT upc_codigo FROM sgspi.unidad_productora_cuadro_clasificacion_documental WHERE upc_nombre_unidad = N''Rectoría'');', 50011;
+EXEC #espera N'ptc INSERT con padre CERRADO_EFICAZ bloqueado', N'INSERT sgspi.plan_tratamiento_control_referencia_normativa (plt_codigo, crn_codigo) VALUES ((SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')), (SELECT crn_codigo FROM sgspi.control_referencia_normativa WHERE crn_identificador_control = N''A.5.15''));', 50011;
+EXEC #espera N'ptc UPDATE con padre CERRADO_EFICAZ bloqueado', N'UPDATE sgspi.plan_tratamiento_control_referencia_normativa SET ptc_esta_activo = 0 WHERE plt_codigo = (SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')) AND crn_codigo = 1;', 50011;
+
+EXEC #espera N'Reabrir padre VIGENTE->EN_REVISION_SGSPI habilita edición de hija y puente', N'
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI'' WHERE aci_codigo = 1;
+UPDATE sgspi.activo_documental SET ado_lugar_consulta_ubicacion = N''Bóveda'' WHERE ado_codigo = 1;
+UPDATE sgspi.activo_documental_formato_archivo SET adf_esta_activo = 0 WHERE ado_codigo = 1 AND fac_codigo = 2;
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo = 1;
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''HISTORICO'' WHERE aci_codigo = 1;', 0;
+EXEC #espera N'ado UPDATE con padre HISTORICO bloqueado', N'UPDATE sgspi.activo_documental SET ado_lugar_consulta_ubicacion = N''Otro'' WHERE ado_codigo = 1;', 50011;
+GO
 SELECT n, IIF(ok = 1, N'PASA', N'FALLA') AS r, prueba, esperado, obtenido FROM #resultado ORDER BY n;
 SELECT CONCAT(SUM(CONVERT (INT, ok)), N' de ', COUNT(*), N' pruebas pasan') AS resumen FROM #resultado;
 GO
