@@ -39,6 +39,20 @@ END
 
 
 GO
+-- [AP-03] Los triggers toman la persona de ORIGINAL_LOGIN() en dbo.usuario_general (us = login, up = per_codigo).
+-- La base desechable mapea el login de quien prueba a la persona 2; #sesion_como la cambia para que la persona 1
+-- cree los registros y la persona 2 los apruebe sin violar la segregación de funciones.
+CREATE PROCEDURE #sesion_como
+@per_codigo INT
+AS
+BEGIN
+    UPDATE dbo.usuario_general
+    SET    up = @per_codigo
+    WHERE  us = ORIGINAL_LOGIN();
+END
+
+
+GO
 EXECUTE #espera N'AP-22 toda tabla tiene columna de borrado lógico BIT NOT NULL DEFAULT 1', N'
 IF EXISTS (SELECT 1 FROM sys.tables AS t
            WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
@@ -52,6 +66,8 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
     THROW 51000, N''hay tablas sin <acr>_esta_activo'', 1;', 0;
 
 -- ======================= 1. Flujo de estados (ACF) =======================
+EXECUTE #sesion_como 1; -- crea la persona 1
+
 EXECUTE #espera N'Datos maestros', N'
 INSERT sgspi.periodo_vigencia (pev_anio, pev_fecha_apertura) VALUES (2026, ''2026-01-01'');
 INSERT sgspi.tipo_proceso_catalogo (tpr_identificador, tpr_nombre) VALUES (N''EST'', N''ESTRATÉGICO'');
@@ -72,7 +88,8 @@ EXECUTE #espera N'Transición BORRADOR->EN_VALIDACION_LIDER', N'UPDATE sgspi.ana
 
 EXECUTE #espera N'Transición EN_VALIDACION_LIDER->EN_REVISION_SGSPI', N'UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_REVISION_SGSPI'' WHERE acf_numero_factor = 1;', 0;
 
--- La base desechable mapea ORIGINAL_LOGIN() a la persona 2 en dbo.usuario_general (us = login, up = per_codigo)
+EXECUTE #sesion_como 2; -- aprueba la persona 2
+
 EXECUTE #espera N'AP-15 la firma de aprobación la pone el trigger, no el cliente', N'
 UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'', per_codigo_aprobador = 3 WHERE acf_numero_factor = 1;
 IF (SELECT per_codigo_aprobador FROM sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1) <> 2 THROW 51000, N''la firma no es la persona del login'', 1;', 0;
@@ -83,6 +100,8 @@ UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_VALIDACION
 UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_REVISION_SGSPI'' WHERE acf_numero_factor = 2;
 UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'' WHERE acf_numero_factor = 2;', 547;
 
+EXECUTE #espera N'AP-15 el creador debe ser la persona de la sesión (acf)', N'INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, per_codigo_creador) VALUES (1,1,1,N''DEBILIDAD'',3,N''Suplantación'',1);', 50019;
+
 EXECUTE #espera N'AP-05 editar VIGENTE sin cambiar estado', N'UPDATE sgspi.analisis_contexto_factor SET acf_descripcion_situacion = N''cambio'' WHERE acf_numero_factor = 1;', 50011;
 
 EXECUTE #espera N'Borrado físico bloqueado', N'DELETE sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1;', 50010;
@@ -90,10 +109,14 @@ EXECUTE #espera N'Borrado físico bloqueado', N'DELETE sgspi.analisis_contexto_f
 
 GO
 -- ======================= 2. RPI (nuevo creador/aprobador, ya no nace VIGENTE) =======================
+EXECUTE #sesion_como 1;
+
 EXECUTE #espera N'AP-04 rpi nace en BORRADOR por defecto', N'
 INSERT sgspi.parte_interesada (pai_nombre, pai_origen) VALUES (N''Estudiantes'', N''INTERNA'');
 INSERT sgspi.requisito_parte_interesada (pev_codigo, pai_codigo, rpi_necesidad_expectativa, per_codigo_creador) VALUES (1,1,N''Privacidad'',1);
 IF (SELECT rpi_estado_registro FROM sgspi.requisito_parte_interesada WHERE rpi_codigo = 1) <> N''BORRADOR'' THROW 51000, N''no nació en BORRADOR'', 1;', 0;
+
+EXECUTE #espera N'AP-15 el creador debe ser la persona de la sesión (rpi)', N'INSERT sgspi.requisito_parte_interesada (pev_codigo, pai_codigo, rpi_necesidad_expectativa, per_codigo_creador) VALUES (1,1,N''Suplantación'',2);', 50019;
 
 
 GO
@@ -120,6 +143,14 @@ EXECUTE #espera N'AP-13 valor antiguo con tilde rechazado', N'INSERT sgspi.activ
 
 EXECUTE #espera N'AP-06 activo RESERVADO con causal de nivel CLASIFICADA', N'INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, cet_codigo, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-4'', N''x'', 3, N''RESERVADA'', 1, 3, 1, 1, 1);', 547;
 
+EXECUTE #espera N'AP-15 el creador debe ser la persona de la sesión (aci)', N'INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-S'', N''x'', 3, N''PUBLICA'', 1, 1, 1, 2);', 50019;
+
+EXECUTE #espera N'AP-23 activo RESERVADO a 15 años', N'INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, cet_codigo, aci_es_reserva_indefinida, aci_anios_plazo_reserva, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-6'', N''Expedientes de defensa'', 3, N''RESERVADA'', 2, 0, 15, 3, 1, 1, 1);', 0;
+
+EXECUTE #espera N'AP-23 activo RESERVADO con reserva indefinida', N'INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, cet_codigo, aci_es_reserva_indefinida, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-7'', N''x'', 3, N''RESERVADA'', 2, 1, 3, 1, 1, 1);', 547;
+
+EXECUTE #espera N'AP-23 activo RESERVADO a más de 15 años', N'INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, cet_codigo, aci_es_reserva_indefinida, aci_anios_plazo_reserva, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-8'', N''x'', 3, N''RESERVADA'', 2, 0, 16, 3, 1, 1, 1);', 547;
+
 EXECUTE #espera N'Catálogos documentales', N'
 INSERT sgspi.serie_documental_catalogo (sdo_numero_ccd, sdo_nombre_serie, sdo_tiene_subseries) VALUES (2, N''ACTAS'', 1);
 INSERT sgspi.subserie_documental_catalogo (sdo_codigo, sbd_numero_ccd, sbd_nombre_subserie) VALUES (1, 1, N''Actas de Consejo Superior'');
@@ -143,7 +174,7 @@ GO
 EXECUTE #espera N'Escalas y matriz 5x5 (una celda)', N'
 INSERT sgspi.escala_probabilidad (epr_codigo, epr_codigo_letra, epr_nombre_nivel, epr_descripcion_criterio, epr_frecuencia_referencia) VALUES (5, ''A'', N''Casi seguro'', N''d'', N''f''), (1, ''E'', N''Raro'', N''d'', N''f'');
 INSERT sgspi.escala_impacto (eim_codigo, eim_nombre_impacto_negativo, eim_nombre_impacto_positivo, eim_descripcion_organizacional) VALUES (5, N''Catastrófico'', N''Altamente beneficioso'', N''d''), (1, N''Insignificante'', N''Leve'', N''d'');
-INSERT sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo, zrc_codigo, mvr_directriz_tratamiento_riesgo, mvr_directriz_tratamiento_oportunidad) VALUES (5,5,''E'',N''Tratar'',N''Explotar''), (1,1,''B'',N''Aceptar'',N''Monitorear'');
+INSERT sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo, zrc_codigo, mvr_directriz_tratamiento_riesgo, mvr_directriz_tratamiento_oportunidad, mvr_requiere_aprobacion_comite) VALUES (5,5,''E'',N''Tratar'',N''Explotar'',1), (1,1,''B'',N''Aceptar'',N''Monitorear'',0);
 IF (SELECT mvr_codigo_posicion FROM sgspi.matriz_valoracion_riesgo WHERE epr_codigo = 5 AND eim_codigo = 5) <> ''A5'' THROW 51000, N''posición mal calculada'', 1;', 0;
 
 EXECUTE #espera N'AP-09 letra de probabilidad incoherente (3 = A)', N'INSERT sgspi.escala_probabilidad (epr_codigo, epr_codigo_letra, epr_nombre_nivel, epr_descripcion_criterio, epr_frecuencia_referencia) VALUES (3, ''B'', N''x'', N''d'', N''f'');', 547;
@@ -155,6 +186,8 @@ EXECUTE #espera N'AP-06 componente afectado que no es categoría nivel 1', N'INS
 EXECUTE #espera N'AP-06 identificador RA-ABC rechazado', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-ABC'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''s'', 5, 5, 1);', 547;
 
 EXECUTE #espera N'Evento de riesgo RA-01 en BORRADOR', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-01'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Fuga de actas'', 5, 5, 1);', 0;
+
+EXECUTE #espera N'AP-15 el creador debe ser la persona de la sesión (eia)', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-09'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Suplantación'', 5, 5, 2);', 50019;
 
 EXECUTE #espera N'AP-15 validador líder = creador', N'UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_VALIDACION_LIDER'', per_codigo_validador_lider = 1 WHERE eia_identificador_evento = N''RA-01'';', 547;
 
@@ -177,6 +210,8 @@ EXECUTE #espera N'AP-16 evidencia incompleta (nombre sin hash)', N'INSERT sgspi.
 EXECUTE #espera N'AP-09 seguimiento sincroniza el avance de la actividad', N'
 INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 40, N''Avance parcial'');
 IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 40 THROW 51000, N''avance no sincronizado'', 1;', 0;
+
+EXECUTE #espera N'AP-15 el seguimiento lo registra la persona de la sesión', N'INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 2, 50, N''Avance ajeno'');', 50019;
 
 EXECUTE #espera N'AP-16 seguimiento es append-only', N'UPDATE sgspi.seguimiento_actividad SET sga_porcentaje_reportado = 90 WHERE sga_porcentaje_reportado = 40;', 50016;
 
@@ -279,7 +314,10 @@ EXECUTE #espera N'AP-22 custodio no borra tablas puente', N'EXECUTE AS USER = N'
 
 EXECUTE #espera N'AP-22 custodio desactiva un seguimiento', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 60;', 0;
 
-EXECUTE #espera N'AP-02 auditor registra el dictamen de eficacia', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'', per_codigo_evaluador = 2, plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 0;
+EXECUTE #espera N'AP-02 auditor registra el dictamen de eficacia; la fecha la pone el servidor', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'', per_codigo_evaluador = 1, plt_fecha_evaluacion_eficacia = ''2000-01-01T00:00:00+00:00'' WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');
+IF (SELECT YEAR(plt_fecha_evaluacion_eficacia) FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')) = 2000 THROW 51000, N''la fecha del dictamen no la puso el servidor'', 1;', 0;
+
+EXECUTE #espera N'AP-15 el auditor no firma el dictamen como otra persona', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_dictamen_eficacia = N''Eficaz (corregido)'', per_codigo_evaluador = 2 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 50019;
 
 EXECUTE #espera N'AP-02 auditor no edita el resto del plan', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE 1 = 0;', 230;
 
@@ -309,13 +347,15 @@ UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI''
 EXECUTE AS USER = N''sgspi_prueba_custodio'';
 UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario = N''INV-R'';', 50011;
 
+EXECUTE #sesion_como 2; -- aprueba la persona 2
+
 EXECUTE #espera N'AP-02 el oficial sí aprueba el activo', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario = N''INV-R'';', 0;
 
 -- 1.2 Firma de Archivo
 EXECUTE #espera N'AP-02 nadie escribe la firma de Archivo con UPDATE', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.activo_documental SET per_codigo_revisor_archivo = 2 WHERE 1 = 0;', 230;
 
 EXECUTE #espera N'AP-15 la firma de Archivo no se envía al crear el activo documental', N'
-INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-D'', N''Actas por revisar'', 3, N''PUBLICA'', 1, 1, 1, 1);
+INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-D'', N''Actas por revisar'', 3, N''PUBLICA'', 1, 1, 1, 2);
 INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion, per_codigo_revisor_archivo) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-D''), 1, 1, 1, 1, 1, N''Archivo'', 3);', 50018;
 
 EXECUTE #espera N'AP-15 la firma de Archivo la pone la transición EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI', N'
@@ -343,7 +383,9 @@ DROP USER sgspi_prueba_comite;
 
 GO
 -- ======================= 8. Padres no editables en hijas y tablas puente =======================
-EXECUTE #espera N'Preparar catálogos, puentes editables y bloquear padres', N'
+EXECUTE #sesion_como 1;
+
+EXECUTE #espera N'Preparar catálogos y puentes editables', N'
 INSERT sgspi.proceso_institucional (pri_identificador, pri_nombre, tpr_codigo, uaa_codigo_lider) VALUES (N''P02'', N''Operaciones'', 1, 1);
 INSERT sgspi.formato_archivo_catalogo (fac_nombre) VALUES (N''Hoja de cálculo'');
 INSERT sgspi.soporte_registro_catalogo (src_nombre) VALUES (N''Papel'');
@@ -363,8 +405,11 @@ INSERT sgspi.activo_documental_unidad_productora (ado_codigo, upc_codigo) VALUES
 INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador)
 VALUES (N''INV-5'', N''Actas sin ado'', 3, N''PUBLICA'', 1, 2, 2, 1);
 INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
-VALUES (1, N''RA-02'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Evento sin plan'', 5, 5, 1);
+VALUES (1, N''RA-02'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Evento sin plan'', 1, 1, 1);', 0;
 
+EXECUTE #sesion_como 2; -- aprueba la persona 2
+
+EXECUTE #espera N'Bloquear padres', N'
 UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''EN_VALIDACION_LIDER'' WHERE rpi_codigo = 1;
 UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''EN_REVISION_SGSPI'' WHERE rpi_codigo = 1;
 UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''VIGENTE'' WHERE rpi_codigo = 1;
@@ -374,11 +419,29 @@ UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI''
 UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario IN (N''INV-1'', N''INV-5'');
 
 UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_VALIDACION_LIDER'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
-UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_REVISION_SGSPI'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
-UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''APROBADO_PLANIFICADO'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
-UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EJECUCION'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
-UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EVALUACION_EFICACIA'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');
-UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''CERRADO_EFICAZ'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');', 0;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_REVISION_SGSPI'' WHERE eia_identificador_evento IN (N''RA-01'', N''RA-02'');', 0;
+
+EXECUTE #espera N'AP-16 APROBADO_PLANIFICADO exige plan de tratamiento', N'UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''APROBADO_PLANIFICADO'' WHERE eia_identificador_evento = N''RA-02'';', 50020;
+
+EXECUTE #espera N'AP-16 riesgo en celda con comité no se aprueba sin pasar por el comité', N'UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''APROBADO_PLANIFICADO'' WHERE eia_identificador_evento = N''RA-01'';', 50020;
+
+EXECUTE #espera N'AP-16 el comité acepta el riesgo y el trigger pone su firma', N'
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_ACEPTACION_COMITE'' WHERE eia_identificador_evento = N''RA-01'';
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''APROBADO_PLANIFICADO'' WHERE eia_identificador_evento = N''RA-01'';
+IF ISNULL((SELECT per_codigo_aprobador_comite FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''), 0) <> 2 THROW 51000, N''firma del comité no registrada'', 1;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EJECUCION'' WHERE eia_identificador_evento = N''RA-01'';
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EVALUACION_EFICACIA'' WHERE eia_identificador_evento = N''RA-01'';', 0;
+
+EXECUTE #espera N'AP-16 CERRADO_EFICAZ exige un plan dictaminado eficaz', N'
+UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 0, plt_dictamen_eficacia = N''No eficaz'', per_codigo_evaluador = 2 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''CERRADO_EFICAZ'' WHERE eia_identificador_evento = N''RA-01'';', 50020;
+
+EXECUTE #espera N'Cerrar RA-01 eficaz y cargar RA-02 ya cerrado y sin plan (carga histórica con el trigger deshabilitado, AP-04)', N'
+UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'' WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''CERRADO_EFICAZ'' WHERE eia_identificador_evento = N''RA-01'';
+DISABLE TRIGGER sgspi.TR_eia_integridad_y_actualizacion ON sgspi.evento_incertidumbre_activo;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''CERRADO_EFICAZ'' WHERE eia_identificador_evento = N''RA-02'';
+ENABLE TRIGGER sgspi.TR_eia_integridad_y_actualizacion ON sgspi.evento_incertidumbre_activo;', 0;
 
 EXECUTE #espera N'ado INSERT con padre VIGENTE bloqueado', N'INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-5''), 1, 1, 1, 1, 1, N''x'');', 50011;
 

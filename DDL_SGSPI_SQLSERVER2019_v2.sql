@@ -53,8 +53,9 @@ registra quién cambió qué: solo conserva <acr>_fecha_creacion y <acr>_fecha_a
 AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
 tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno.
-AP-03  RETIRADO. Ya no se exige contexto de sesión: creador, aprobador y firmantes son los per_codigo que
-envía la aplicación, y la base de datos no puede verificar quién ejecuta la operación.
+AP-03  Identidad sin procedimiento de contexto de sesión: los triggers de acf, rpi, aci, eia, plt y sga resuelven la
+persona con ORIGINAL_LOGIN() -> [dbo].[usuario_general] (error 50017 si no la hay), firman con ella las aprobaciones
+y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor de seguimiento distinto.
 AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
 VIGENTE (error 50014). Carga histórica: un administrador (dbo) deshabilita temporalmente el trigger
 TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carga_inicial.
@@ -77,8 +78,11 @@ AP-12  Marcas de fecha en DATETIMEOFFSET(0) (zona horaria explícita).
 AP-13  Valores normalizados (PUBLICA, NO_CLASIFICADA, ...) y vistas filtradas por enc_familia_norma.
 AP-14  Claves naturales con UNIQUE (pri, cet, msi, act).
 AP-15  Segregación de funciones: aprobador/firmantes distintos del creador; aprobador obligatorio en
-estados aprobados; rpi gana creador y aprobador.
+estados aprobados; rpi gana creador y aprobador. El creador debe ser la persona de la sesión (50019, AP-03):
+sin eso, declarar a otra persona como creadora anularía los CHECK de segregación.
 AP-16  Coherencia de eficacia del plan, KPI sin desborde, evidencia con formato y seguimiento append-only.
+Requisitos de transición en eia (50020): plan activo para APROBADO_PLANIFICADO, paso por el comité si la celda
+inherente o la residual meta lo exige (mvr_requiere_aprobacion_comite) y plan eficaz para CERRADO_EFICAZ.
 AP-17  Todos los DEFAULT con nombre DF_<columna>.
 AP-18  Índices redundantes eliminados, INCLUDE de claves clustered retirados, índice para FK compuesta.
 AP-19  Verificación previa: el script se detiene sin cambios si [sgspi] ya tiene tablas o faltan
@@ -89,6 +93,8 @@ AP-22  Borrado lógico: ningún registro se elimina. Toda tabla tiene <acr>_esta
 (1 = activo, 0 = inactivo, DEFAULT 1); DENY DELETE sobre el esquema, sin ON DELETE CASCADE, tablas puente
 con UPDATE en vez de DELETE y vistas que omiten asociaciones inactivas. En estados no editables
 (efc_permite_edicion = 0) desactivar exige primero una transición, como cualquier otra edición.
+AP-23  Plazo legal de la reserva (Ley 1712 de 2014, art. 22): la información RESERVADA no puede tener reserva
+indefinida ni de más de 15 años.
 ==================================================================================================*/
 SET ANSI_NULLS ON;
 
@@ -657,6 +663,10 @@ CREATE TABLE sgspi.activo_informacion (
                                                       OR aci_valor_confidencialidad >= 2),
     CONSTRAINT CK_aci_anios_plazo_reserva CHECK (aci_anios_plazo_reserva IS NULL
                                                  OR aci_anios_plazo_reserva BETWEEN 1 AND 100),
+    -- [AP-23] Ley 1712 de 2014, art. 22: la reserva no es indefinida ni supera 15 años (la CLASIFICADA, art. 18, no tiene ese límite)
+    CONSTRAINT CK_aci_reserva_plazo_legal CHECK (aci_clasificacion_transparencia <> N'RESERVADA'
+                                                 OR (ISNULL(aci_es_reserva_indefinida, 0) = 0
+                                                     AND ISNULL(aci_anios_plazo_reserva, 0) <= 15)),
     -- RN-DOC-03 (Unificada en Supertipo): Coherencia del Índice de Información Clasificada y Reservada (Ley 1712 de 2014 / Decreto 103 de 2015) con plazos tipados
     CONSTRAINT CK_aci_coherencia_indice_reserva CHECK (aci_estado_registro = N'BORRADOR'
                                                        OR (aci_clasificacion_transparencia IN (N'CLASIFICADA', N'RESERVADA')
@@ -1505,7 +1515,8 @@ GO
                                                                     Cada TR_<acr>_integridad_y_actualizacion: (a) impide el borrado físico (error 50010); (b) en las tablas
                                                                     con flujo exige el estado inicial en INSERT (50014) y solo admite las transiciones de [tef] y la
                                                                     edición en estados con efc_permite_edicion = 1 (50011); (c) mantiene <acr>_fecha_actualizacion.
-                                                                    No registran bitácora ni exigen contexto de sesión (auditoría retirada: AP-01, AP-03).
+                                                                    (d) en acf, rpi, aci y eia exigen la persona de la sesión (50017), que sea el creador de lo nuevo (50019) y firman con ella (AP-03).
+                                                                    No registran bitácora (auditoría retirada: AP-01).
                                                                     ==================================================================================================*/
 -- 5.10.1 Trigger sobre [sgspi].[analisis_contexto_factor] ([acf])
 CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
@@ -1536,6 +1547,21 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                     AND efc.efc_identificador = i.acf_estado_registro
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[analisis_contexto_factor] solo puede crearse en el estado inicial del flujo.', 1;
+           -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-15] Un creador ajeno anularía CK_acf_sod_aprobador
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   deleted AS d
+                                         WHERE  d.acf_codigo = i.acf_codigo)
+                             AND i.per_codigo_creador <> @per_actor)
+               THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[analisis_contexto_factor].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -1614,21 +1640,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[analisis_contexto_factor].', 1;
                    IF NOT UPDATE (acf_fecha_actualizacion)
                        BEGIN
-                           DECLARE @per_actor AS INT;
-                           IF EXISTS (SELECT 1
-                                      FROM   inserted AS i
-                                             INNER JOIN
-                                             deleted AS d
-                                             ON d.acf_codigo = i.acf_codigo
-                                      WHERE  d.acf_estado_registro <> i.acf_estado_registro
-                                             AND i.acf_estado_registro = N'VIGENTE')
-                               BEGIN
-                                   SELECT TOP (1) @per_actor = u.up
-                                   FROM   dbo.usuario_general AS u
-                                   WHERE  u.us = ORIGINAL_LOGIN();
-                                   IF @per_actor IS NULL
-                                       THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-                               END
                            UPDATE t
                            SET    t.acf_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
                                   t.per_codigo_aprobador    = CASE WHEN d.acf_estado_registro <> i.acf_estado_registro
@@ -1679,6 +1690,21 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                     AND efc.efc_identificador = i.rpi_estado_registro
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[requisito_parte_interesada] solo puede crearse en el estado inicial del flujo.', 1;
+           -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-15] Un creador ajeno anularía CK_rpi_sod_aprobador
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   deleted AS d
+                                         WHERE  d.rpi_codigo = i.rpi_codigo)
+                             AND i.per_codigo_creador <> @per_actor)
+               THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[requisito_parte_interesada].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -1753,21 +1779,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[requisito_parte_interesada].', 1;
                    IF NOT UPDATE (rpi_fecha_actualizacion)
                        BEGIN
-                           DECLARE @per_actor AS INT;
-                           IF EXISTS (SELECT 1
-                                      FROM   inserted AS i
-                                             INNER JOIN
-                                             deleted AS d
-                                             ON d.rpi_codigo = i.rpi_codigo
-                                      WHERE  d.rpi_estado_registro <> i.rpi_estado_registro
-                                             AND i.rpi_estado_registro = N'VIGENTE')
-                               BEGIN
-                                   SELECT TOP (1) @per_actor = u.up
-                                   FROM   dbo.usuario_general AS u
-                                   WHERE  u.us = ORIGINAL_LOGIN();
-                                   IF @per_actor IS NULL
-                                       THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-                               END
                            UPDATE t
                            SET    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
                                   t.per_codigo_aprobador    = CASE WHEN d.rpi_estado_registro <> i.rpi_estado_registro
@@ -1818,6 +1829,21 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                     AND efc.efc_identificador = i.aci_estado_registro
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[activo_informacion] solo puede crearse en el estado inicial del flujo.', 1;
+           -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones y la revisión de Archivo
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-15] Un creador ajeno anularía CK_aci_sod_aprobador
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   deleted AS d
+                                         WHERE  d.aci_codigo = i.aci_codigo)
+                             AND i.per_codigo_creador <> @per_actor)
+               THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[activo_informacion].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -1932,22 +1958,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[activo_informacion].', 1;
                    IF NOT UPDATE (aci_fecha_actualizacion)
                        BEGIN
-                           DECLARE @per_actor AS INT;
-                           IF EXISTS (SELECT 1
-                                      FROM   inserted AS i
-                                             INNER JOIN
-                                             deleted AS d
-                                             ON d.aci_codigo = i.aci_codigo
-                                      WHERE  d.aci_estado_registro <> i.aci_estado_registro
-                                             AND (i.aci_estado_registro = N'VIGENTE'
-                                                  OR d.aci_estado_registro = N'EN_REVISION_ARCHIVO'))
-                               BEGIN
-                                   SELECT TOP (1) @per_actor = u.up
-                                   FROM   dbo.usuario_general AS u
-                                   WHERE  u.us = ORIGINAL_LOGIN();
-                                   IF @per_actor IS NULL
-                                       THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-                               END
                            UPDATE t
                            SET    t.aci_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
                                   t.per_codigo_aprobador    = CASE WHEN d.aci_estado_registro <> i.aci_estado_registro
@@ -2078,6 +2088,21 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                     AND efc.efc_identificador = i.eia_estado_registro
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[evento_incertidumbre_activo] solo puede crearse en el estado inicial del flujo.', 1;
+           -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las validaciones y aprobaciones
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-15] Un creador ajeno anularía CK_eia_sod_firmas
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   deleted AS d
+                                         WHERE  d.eia_codigo = i.eia_codigo)
+                             AND i.per_codigo_creador <> @per_actor)
+               THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[evento_incertidumbre_activo].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -2164,27 +2189,54 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                         AND efc.efc_identificador IN (d.eia_estado_registro, i.eia_estado_registro)
                                                         AND efc.efc_permite_edicion = 0))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[evento_incertidumbre_activo].', 1;
+                   -- [AP-16] Requisitos de la transición (50020): plan activo para aprobar, paso por el comité cuando la celda
+                   -- inherente o la residual meta lo exige (RN-RSG-03) y plan dictaminado eficaz para cerrar
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.eia_codigo = i.eia_codigo
+                              WHERE  i.eia_estado_registro = N'APROBADO_PLANIFICADO'
+                                     AND d.eia_estado_registro <> N'APROBADO_PLANIFICADO'
+                                     AND NOT EXISTS (SELECT 1
+                                                     FROM   sgspi.plan_tratamiento AS plt
+                                                     WHERE  plt.eia_codigo = i.eia_codigo
+                                                            AND plt.plt_esta_activo = 1))
+                       THROW 50020, N'Transición incompleta: APROBADO_PLANIFICADO exige un plan de tratamiento activo en [sgspi].[evento_incertidumbre_activo].', 1;
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.eia_codigo = i.eia_codigo
+                              WHERE  d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                                     AND i.eia_estado_registro = N'APROBADO_PLANIFICADO'
+                                     AND EXISTS (SELECT 1
+                                                 FROM   sgspi.matriz_valoracion_riesgo AS mvr
+                                                 WHERE  mvr.mvr_requiere_aprobacion_comite = 1
+                                                        AND ((mvr.epr_codigo = i.epr_codigo_inherente
+                                                              AND mvr.eim_codigo = i.eim_codigo_inherente)
+                                                             OR EXISTS (SELECT 1
+                                                                        FROM   sgspi.plan_tratamiento AS plt
+                                                                        WHERE  plt.eia_codigo = i.eia_codigo
+                                                                               AND plt.plt_esta_activo = 1
+                                                                               AND plt.epr_codigo_residual_meta = mvr.epr_codigo
+                                                                               AND plt.eim_codigo_residual_meta = mvr.eim_codigo))))
+                       THROW 50020, N'Transición incompleta: la celda inherente o la residual meta exige pasar por EN_ACEPTACION_COMITE antes de APROBADO_PLANIFICADO en [sgspi].[evento_incertidumbre_activo].', 1;
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.eia_codigo = i.eia_codigo
+                              WHERE  i.eia_estado_registro = N'CERRADO_EFICAZ'
+                                     AND d.eia_estado_registro <> N'CERRADO_EFICAZ'
+                                     AND NOT EXISTS (SELECT 1
+                                                     FROM   sgspi.plan_tratamiento AS plt
+                                                     WHERE  plt.eia_codigo = i.eia_codigo
+                                                            AND plt.plt_esta_activo = 1
+                                                            AND plt.plt_es_tratamiento_eficaz = 1))
+                       THROW 50020, N'Transición incompleta: CERRADO_EFICAZ exige un plan de tratamiento dictaminado eficaz en [sgspi].[evento_incertidumbre_activo].', 1;
                    IF NOT UPDATE (eia_fecha_actualizacion)
                        BEGIN
-                           DECLARE @per_actor AS INT;
-                           IF EXISTS (SELECT 1
-                                      FROM   inserted AS i
-                                             INNER JOIN
-                                             deleted AS d
-                                             ON d.eia_codigo = i.eia_codigo
-                                      WHERE  (d.eia_estado_registro = N'EN_VALIDACION_LIDER'
-                                              AND i.eia_estado_registro = N'EN_REVISION_SGSPI')
-                                             OR (d.eia_estado_registro = N'EN_REVISION_SGSPI'
-                                                 AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'))
-                                             OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                                                 AND i.eia_estado_registro = N'APROBADO_PLANIFICADO'))
-                               BEGIN
-                                   SELECT TOP (1) @per_actor = u.up
-                                   FROM   dbo.usuario_general AS u
-                                   WHERE  u.us = ORIGINAL_LOGIN();
-                                   IF @per_actor IS NULL
-                                       THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-                               END
                            UPDATE t
                            SET    t.eia_fecha_actualizacion     = SYSDATETIMEOFFSET(), -- [AP-11] [AP-12]
                                   t.per_codigo_validador_lider  = CASE WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
@@ -2242,6 +2294,52 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                                 AND efc.efc_identificador = eia.eia_estado_registro
                       WHERE  efc.efc_permite_edicion = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar el plan de tratamiento de un evento no editable en [sgspi].[plan_tratamiento].', 1;
+           -- [AP-15] Dictamen de eficacia nuevo o cambiado (EXCEPT trata NULL = NULL): lo firma la persona de la sesión
+           -- [AP-03] y su fecha es la del servidor, aunque CK_plt_coherencia_eficacia obligue al cliente a enviarla
+           DECLARE @dictamen TABLE (
+               plt_codigo           INT PRIMARY KEY,
+               per_codigo_evaluador INT NOT NULL);
+           INSERT INTO @dictamen (
+               plt_codigo,
+               per_codigo_evaluador
+           )
+           SELECT i.plt_codigo,
+                  i.per_codigo_evaluador
+           FROM   inserted AS i
+                  LEFT OUTER JOIN
+                  deleted AS d
+                  ON d.plt_codigo = i.plt_codigo
+           WHERE  i.per_codigo_evaluador IS NOT NULL
+                  AND (d.plt_codigo IS NULL
+                       OR EXISTS (SELECT i.plt_es_tratamiento_eficaz,
+                                         i.plt_dictamen_eficacia,
+                                         i.per_codigo_evaluador,
+                                         i.plt_fecha_evaluacion_eficacia
+                                  EXCEPT
+                                  SELECT d.plt_es_tratamiento_eficaz,
+                                         d.plt_dictamen_eficacia,
+                                         d.per_codigo_evaluador,
+                                         d.plt_fecha_evaluacion_eficacia));
+           IF EXISTS (SELECT 1
+                      FROM   @dictamen)
+               BEGIN
+                   DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                                FROM     dbo.usuario_general AS u
+                                                WHERE    u.us = ORIGINAL_LOGIN()
+                                                ORDER BY u.uid);
+                   IF @per_actor IS NULL
+                       THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+                   IF EXISTS (SELECT 1
+                              FROM   @dictamen
+                              WHERE  per_codigo_evaluador <> @per_actor)
+                       THROW 50019, N'Evaluador inválido: [per_codigo_evaluador] debe ser la persona de la sesión en [sgspi].[plan_tratamiento].', 1;
+                   UPDATE t
+                   SET    t.plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() -- [AP-12]
+                   FROM   sgspi.plan_tratamiento AS t
+                          INNER JOIN
+                          @dictamen AS x
+                          ON x.plt_codigo = t.plt_codigo;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -2478,6 +2576,17 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-03] [AP-15] El seguimiento lo registra la persona de la sesión
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF EXISTS (SELECT 1
+                      FROM   inserted
+                      WHERE  per_codigo <> @per_actor)
+               THROW 50019, N'Autor inválido: [per_codigo] debe ser la persona de la sesión en [sgspi].[seguimiento_actividad].', 1;
            -- Si hay varias filas de la misma actividad en el lote, prevalece la de mayor sga_codigo
            UPDATE act
            SET    act.act_porcentaje_avance = x.sga_porcentaje_reportado
