@@ -10,7 +10,7 @@ Escala: **5** sin hallazgos · **4** detalles menores · **3** brechas relevante
 | # | Dimensión | Ronda 1 | Hoy | Hallazgo principal |
 |---|---|:-:|:-:|---|
 | 1 | Normalización y dependencias | 4 | 4 | 3FN con derivados calculados; el avance de la actividad no se recalcula al anular un seguimiento. |
-| 2 | Claves y restricciones | 3 | **3** | Cinco reglas de flujo quedan en la app y se saltan con el login propio; `RA-01` y `RA-001` conviven; la vigencia cerrada no bloquea altas. |
+| 2 | Claves y restricciones | 3 | **3** | Cinco reglas de flujo quedan en la app y se saltan con el login propio; `RA-01` y `RA-001` conviven; la vigencia cerrada no bloquea altas. (Fase 2 aplicada.) |
 | 3 | Antipatrones estructurales | 3 | 4 | Lógica copiada a gran escala (112 triggers, 53 copias de la resolución de identidad), mitigada por pruebas. |
 | 4 | Cardinalidad y opcionalidad | 3 | 4 | Un plan sin actividades llega a evaluación de eficacia; el custodio es 0..N. |
 | 5 | Tipos de datos y precisión | 4 | 4 | `plt_porcentaje_cumplimiento_kpi` todavía desborda y tumba la vista que lo lee. |
@@ -152,6 +152,8 @@ Queda una inconsistencia de la especificación que no se tocó: el diagrama ACI 
 
 ### Fase 2 — Reglas en el motor (dimensión 2)
 
+**Estado:** aplicada el 2026-11-18 en el DDL, las pruebas y la especificación, sin ejecutar contra SQL Server (en `TR_eac_integridad_y_actualizacion` se amplió a `AFTER INSERT, UPDATE, DELETE` con `IF EXISTS (SELECT 1 FROM deleted)` para cubrir las altas en C4). Los pasos describen lo que quedó.
+
 5. **C1 Consecutivo de eventos [S]** — añadir a `CK_eia_naturaleza_prefijo` (L1248), fuera del `OR` de las dos naturalezas:
    ```sql
    AND eia_identificador_evento NOT LIKE N'_A-0[0-9][0-9]'   -- 'RA-001' es 'RA-01'
@@ -241,7 +243,7 @@ Queda una inconsistencia de la especificación que no se tocó: el diagrama ACI 
 
 | # | Pregunta | Respuesta | Aplicado |
 |---|---|---|---|
-| D7 | ¿Qué estados de vigencia admiten altas? | La recomendada: `EN_CONFIGURACION` y `ABIERTA` sí; `CERRADA` e `HISTORICA` no. | Pendiente: C4 (fase 2) |
+| D7 | ¿Qué estados de vigencia admiten altas? | La recomendada: `EN_CONFIGURACION` y `ABIERTA` sí; `CERRADA` e `HISTORICA` no. | C4 (fase 2) |
 | D8 | ¿Qué pantallas usan la cuenta compartida y qué deben ver? | La recomendada: catálogos y las cinco vistas de inventario, DOFA y controles; nada de `eia`, `plt`, `act`, `sga` ni `aud_*`. | Pendiente: DS1 (fase 4) |
 | D9 | ¿El gestor documental registra actividades y seguimientos? | Sí, con alcance `[Asignado]`, como ya dice la especificación (matriz 5.3, tabla 11.1). La recomendación "No" partía de un dato falso; se aplicó su rama "si sí". | P3 (fase 1) |
 

@@ -88,7 +88,8 @@ AP-03  Identidad sin procedimiento de contexto de sesión: los triggers de acf, 
 persona con ORIGINAL_LOGIN() -> [dbo].[usuario_general] (error 50017 si no la hay), firman con ella las aprobaciones
 y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor de seguimiento distinto.
 AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
-VIGENTE (error 50014). Carga histórica: un administrador (dbo) deshabilita temporalmente el trigger
+VIGENTE (error 50014). Tampoco se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en
+acf, rpi, ado, eia y eac (error 50022, D7). Carga histórica: un administrador (dbo) deshabilita temporalmente el trigger
 TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carga_inicial.
 AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
 listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
@@ -114,9 +115,12 @@ AP-15  Segregación de funciones: aprobador/firmantes distintos del creador; apr
 estados aprobados; rpi gana creador y aprobador. El creador debe ser la persona de la sesión (50019, AP-03):
 sin eso, declarar a otra persona como creadora anularía los CHECK de segregación.
 AP-16  Coherencia de eficacia del plan, KPI sin desborde, evidencia con formato y seguimiento append-only.
-Requisitos de transición en eia (50020): plan activo para APROBADO_PLANIFICADO, paso por el comité si la celda
-inherente o la residual meta lo exige (mvr_requiere_aprobacion_comite) y plan eficaz para CERRADO_EFICAZ; D2: el
-dictamen y el cierre son del auditor. D3: un activo solo pasa a VIGENTE con su propietario activo, que es único.
+Requisitos de transición (50020): en aci, VIGENTE exige propietario único activo (D3), aval de Archivo en activos
+documentales activos (RN-DOC-06) y custodio activo (RN-ACT-05); en eia, APROBADO_PLANIFICADO exige plan activo,
+paso por el comité si la celda inherente o la residual meta lo exige (mvr_requiere_aprobacion_comite), meta residual
+no superior a la inherente en RIESGO (RN-RSG-04) y control activo ISO27701 si el activo primario contiene datos
+personales (RN-RSG-05); EN_EVALUACION_EFICACIA exige plan activo con al menos una actividad activa y todas en
+COMPLETADA; CERRADO_EFICAZ exige plan dictaminado eficaz (D2: dictamen y cierre del auditor).
 AP-17  Todos los DEFAULT con nombre DF_<columna>.
 AP-18  Índices redundantes eliminados, INCLUDE de claves clustered retirados, índice para FK compuesta.
 AP-19  Verificación previa: el script se detiene sin cambios si [sgspi] ya tiene tablas o faltan
@@ -134,7 +138,9 @@ AP-24  Concurrencia: (a) control optimista con <acr>_version ROWVERSION NOT NULL
 eac (la aplicación actualiza con WHERE <acr>_codigo = @id AND <acr>_version = @v y vuelve a leer tras guardar, porque el
 UPDATE del trigger incrementa la versión); (b) TR_ado, TR_plt, TR_act y los 11 triggers puente leen el padre con
 WITH (UPDLOCK) (la aplicación reintenta ante deadlock, error 1205); (c) patrón único de consecutivos (acf_numero_factor,
-RA-nn/OA-nn por vigencia y act_numero_orden por plan), con reintento en la aplicación ante los errores 2601/2627:
+RA-nn/OA-nn por vigencia y act_numero_orden por plan), con reintento en la aplicación ante los errores 2601/2627
+(en eia se calcula sobre el número entero: ISNULL(MAX(CONVERT(INT, SUBSTRING(eia_identificador_evento, 4, 3))), 0) + 1
+con WITH (UPDLOCK, HOLDLOCK)):
     INSERT sgspi.analisis_contexto_factor (..., acf_numero_factor, ...)
     SELECT ..., ISNULL(MAX(acf_numero_factor), 0) + 1, ...
     FROM sgspi.analisis_contexto_factor WITH (UPDLOCK, HOLDLOCK)
@@ -299,8 +305,9 @@ IF @@TRANCOUNT = 0
 
 GO
 -- [AP-05] Estados (se toman de los CHECK y triggers originales)
--- Identificadores usados en CHECK o triggers (no renombrar en [efc]): BORRADOR, VIGENTE, EN_VALIDACION_LIDER,
--- EN_REVISION_ARCHIVO, EN_REVISION_SGSPI, EN_ACEPTACION_COMITE, APROBADO_PLANIFICADO, CERRADO_EFICAZ, PENDIENTE, COMPLETADA.
+-- Identificadores usados en CHECK o triggers (no renombrar en [efc] ni en [enc].[enc_familia_norma]):
+-- BORRADOR, VIGENTE, EN_VALIDACION_LIDER, EN_REVISION_ARCHIVO, EN_REVISION_SGSPI, EN_ACEPTACION_COMITE,
+-- APROBADO_PLANIFICADO, EN_EVALUACION_EFICACIA, CERRADO_EFICAZ, PENDIENTE, COMPLETADA; familia ISO27701.
 INSERT INTO sgspi.estado_flujo_catalogo (
     efc_dominio,
     efc_identificador,
@@ -1249,15 +1256,17 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
     CONSTRAINT FK_eia_dbo_persona_revisor FOREIGN KEY (per_codigo_revisor_sgspi) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT FK_eia_dbo_persona_comite FOREIGN KEY (per_codigo_aprobador_comite) REFERENCES dbo.persona (per_codigo),
     -- RN-RSG-01: Exclusión Mutua Riesgo (RA-) vs Oportunidad (OA-)
-    -- [AP-13] Formato estricto: prefijo 'RA-' / 'OA-' seguido de 2 o 3 dígitos y nada más (LEN 5..6)
-    CONSTRAINT CK_eia_naturaleza_prefijo CHECK ((eia_naturaleza_evento = N'RIESGO'
-                                                 AND eia_identificador_evento LIKE N'RA-%'
-                                                 AND LEN(eia_identificador_evento) BETWEEN 5 AND 6
-                                                 AND SUBSTRING(eia_identificador_evento, 4, 3) NOT LIKE N'%[^0-9]%')
-                                                OR (eia_naturaleza_evento = N'OPORTUNIDAD'
-                                                    AND eia_identificador_evento LIKE N'OA-%'
-                                                    AND LEN(eia_identificador_evento) BETWEEN 5 AND 6
-                                                    AND SUBSTRING(eia_identificador_evento, 4, 3) NOT LIKE N'%[^0-9]%')),
+    -- [AP-13] Formato estricto: prefijo 'RA-' / 'OA-' seguido de 2 o 3 dígitos sin ceros iniciales en 3 dígitos ni '00' (LEN 5..6)
+    CONSTRAINT CK_eia_naturaleza_prefijo CHECK (((eia_naturaleza_evento = N'RIESGO'
+                                                  AND eia_identificador_evento LIKE N'RA-%'
+                                                  AND LEN(eia_identificador_evento) BETWEEN 5 AND 6
+                                                  AND SUBSTRING(eia_identificador_evento, 4, 3) NOT LIKE N'%[^0-9]%')
+                                                 OR (eia_naturaleza_evento = N'OPORTUNIDAD'
+                                                     AND eia_identificador_evento LIKE N'OA-%'
+                                                     AND LEN(eia_identificador_evento) BETWEEN 5 AND 6
+                                                     AND SUBSTRING(eia_identificador_evento, 4, 3) NOT LIKE N'%[^0-9]%'))
+                                                AND eia_identificador_evento NOT LIKE N'_A-0[0-9][0-9]' -- 'RA-001' es 'RA-01'
+                                                AND eia_identificador_evento NOT LIKE N'_A-00'),
     -- [AP-15] Segregación de funciones ISO 27001 A.5.3: ninguna firma (validador, revisor, comité) puede ser del creador
     CONSTRAINT CK_eia_sod_firmas CHECK ((per_codigo_validador_lider IS NULL
                                          OR per_codigo_validador_lider <> per_codigo_creador)
@@ -2902,8 +2911,9 @@ GO
                                                                     Cada TR_<acr>_integridad_y_actualizacion: (a) impide el borrado físico (error 50010); (b) en las tablas
                                                                     con flujo exige el estado inicial en INSERT (50014) y solo admite las transiciones de [tef] y la
                                                                     edición en estados con efc_permite_edicion = 1 (50011); (c) mantiene <acr>_fecha_actualizacion.
-                                                                    (d) en acf, rpi, aci y eia exigen la persona de la sesión (50017), que sea el creador de lo nuevo (50019) y firman con ella (AP-03).
-                                                                    (e) archivan la versión anterior en aud_<tabla> (AP-01); en las tablas sin estos triggers lo hace TR_<acr>_auditoria (5.10.9c).
+                                                                    (d) en acf, rpi, aci y eia exigen la persona de la sesión (50017), que sea el creador de lo nuevo (50019) y firman con ella (AP-03);
+                                                                    (e) en acf, rpi, ado, eia y eac bloquean altas o traslados hacia una vigencia CERRADA o HISTORICA (50022, D7);
+                                                                    (f) archivan la versión anterior en aud_<tabla> (AP-01); en las tablas sin estos triggers lo hace TR_<acr>_auditoria (5.10.9c).
                                                                     ==================================================================================================*/
 -- 5.10.1 Trigger sobre [sgspi].[analisis_contexto_factor] ([acf])
 CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
@@ -2959,6 +2969,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                              OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[analisis_contexto_factor].', 1;
+           -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                             INNER JOIN
+                             sgspi.periodo_vigencia AS pev
+                             ON pev.pev_codigo = i.pev_codigo
+                      WHERE  pev.pev_estado_vigencia IN (N'CERRADA', N'HISTORICA')
+                             AND NOT EXISTS (SELECT 1
+                                             FROM   deleted AS d
+                                             WHERE  d.acf_codigo = i.acf_codigo
+                                                    AND d.pev_codigo = i.pev_codigo))
+               THROW 50022, N'Vigencia cerrada: no se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en [sgspi].[analisis_contexto_factor].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -3108,19 +3130,23 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                          d.acf_fecha_actualizacion,
                                          d.acf_esta_activo);
                    IF NOT UPDATE (acf_fecha_actualizacion)
-                       BEGIN
-                           UPDATE t
-                           SET    t.acf_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
-                                  t.per_codigo_aprobador    = CASE WHEN d.acf_estado_registro <> i.acf_estado_registro
-                                                                        AND i.acf_estado_registro = N'VIGENTE' THEN @per_actor ELSE t.per_codigo_aprobador END
-                           FROM   sgspi.analisis_contexto_factor AS t
-                                  INNER JOIN
-                                  inserted AS i
-                                  ON i.acf_codigo = t.acf_codigo
-                                  INNER JOIN
-                                  deleted AS d
-                                  ON d.acf_codigo = i.acf_codigo;
-                       END
+                       UPDATE t
+                       SET    t.acf_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       FROM   sgspi.analisis_contexto_factor AS t
+                              INNER JOIN
+                              inserted AS i
+                              ON i.acf_codigo = t.acf_codigo;
+                   UPDATE t
+                   SET    t.per_codigo_aprobador = @per_actor
+                   FROM   sgspi.analisis_contexto_factor AS t
+                          INNER JOIN
+                          inserted AS i
+                          ON i.acf_codigo = t.acf_codigo
+                          INNER JOIN
+                          deleted AS d
+                          ON d.acf_codigo = i.acf_codigo
+                   WHERE  d.acf_estado_registro <> i.acf_estado_registro
+                          AND i.acf_estado_registro = N'VIGENTE';
                END
        END
 
@@ -3174,6 +3200,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                          WHERE  d.rpi_codigo = i.rpi_codigo)
                              AND i.per_codigo_creador <> @per_actor)
                THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[requisito_parte_interesada].', 1;
+           -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                             INNER JOIN
+                             sgspi.periodo_vigencia AS pev
+                             ON pev.pev_codigo = i.pev_codigo
+                      WHERE  pev.pev_estado_vigencia IN (N'CERRADA', N'HISTORICA')
+                             AND NOT EXISTS (SELECT 1
+                                             FROM   deleted AS d
+                                             WHERE  d.rpi_codigo = i.rpi_codigo
+                                                    AND d.pev_codigo = i.pev_codigo))
+               THROW 50022, N'Vigencia cerrada: no se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en [sgspi].[requisito_parte_interesada].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -3311,19 +3349,23 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                          d.rpi_fecha_actualizacion,
                                          d.rpi_esta_activo);
                    IF NOT UPDATE (rpi_fecha_actualizacion)
-                       BEGIN
-                           UPDATE t
-                           SET    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
-                                  t.per_codigo_aprobador    = CASE WHEN d.rpi_estado_registro <> i.rpi_estado_registro
-                                                                        AND i.rpi_estado_registro = N'VIGENTE' THEN @per_actor ELSE t.per_codigo_aprobador END
-                           FROM   sgspi.requisito_parte_interesada AS t
-                                  INNER JOIN
-                                  inserted AS i
-                                  ON i.rpi_codigo = t.rpi_codigo
-                                  INNER JOIN
-                                  deleted AS d
-                                  ON d.rpi_codigo = i.rpi_codigo;
-                       END
+                       UPDATE t
+                       SET    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       FROM   sgspi.requisito_parte_interesada AS t
+                              INNER JOIN
+                              inserted AS i
+                              ON i.rpi_codigo = t.rpi_codigo;
+                   UPDATE t
+                   SET    t.per_codigo_aprobador = @per_actor
+                   FROM   sgspi.requisito_parte_interesada AS t
+                          INNER JOIN
+                          inserted AS i
+                          ON i.rpi_codigo = t.rpi_codigo
+                          INNER JOIN
+                          deleted AS d
+                          ON d.rpi_codigo = i.rpi_codigo
+                   WHERE  d.rpi_estado_registro <> i.rpi_estado_registro
+                          AND i.rpi_estado_registro = N'VIGENTE';
                END
        END
 
@@ -3510,11 +3552,30 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                               WHERE  i.aci_estado_registro = N'VIGENTE'
                                      AND d.aci_estado_registro <> N'VIGENTE'
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.activo_informacion_responsable AS air
+                                                     FROM   sgspi.activo_informacion_responsable AS air WITH (UPDLOCK)
                                                      WHERE  air.aci_codigo = i.aci_codigo
                                                             AND air.air_tipo_responsabilidad = N'PROPIETARIO'
                                                             AND air.air_esta_activo = 1))
                        THROW 50020, N'Transición incompleta: VIGENTE exige un propietario activo en [sgspi].[activo_informacion_responsable].', 1;
+                   -- RN-DOC-06 y RN-ACT-05: el activo documental exige aval de Archivo y todo activo exige al menos un custodio activo
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.aci_codigo = i.aci_codigo
+                              WHERE  i.aci_estado_registro = N'VIGENTE'
+                                     AND d.aci_estado_registro <> N'VIGENTE'
+                                     AND (EXISTS (SELECT 1
+                                                  FROM   sgspi.activo_documental AS ado WITH (UPDLOCK)
+                                                  WHERE  ado.ado_codigo = i.aci_codigo
+                                                         AND ado.ado_esta_activo = 1
+                                                         AND ado.per_codigo_revisor_archivo IS NULL)
+                                          OR NOT EXISTS (SELECT 1
+                                                         FROM   sgspi.activo_informacion_responsable AS air WITH (UPDLOCK)
+                                                         WHERE  air.aci_codigo = i.aci_codigo
+                                                                AND air.air_esta_activo = 1
+                                                                AND air.air_tipo_responsabilidad = N'CUSTODIO')))
+                       THROW 50020, N'Transición incompleta: VIGENTE exige el aval de Archivo (activo documental) y un custodio activo en [sgspi].[activo_informacion].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
                    INSERT INTO sgspi.aud_activo_informacion (
                        aci_codigo,
@@ -3660,31 +3721,35 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                          d.aci_fecha_actualizacion,
                                          d.aci_esta_activo);
                    IF NOT UPDATE (aci_fecha_actualizacion)
-                       BEGIN
-                           UPDATE t
-                           SET    t.aci_fecha_actualizacion = SYSDATETIMEOFFSET(), -- [AP-12]
-                                  t.per_codigo_aprobador    = CASE WHEN d.aci_estado_registro <> i.aci_estado_registro
-                                                                        AND i.aci_estado_registro = N'VIGENTE' THEN @per_actor ELSE t.per_codigo_aprobador END
-                           FROM   sgspi.activo_informacion AS t
-                                  INNER JOIN
-                                  inserted AS i
-                                  ON i.aci_codigo = t.aci_codigo
-                                  INNER JOIN
-                                  deleted AS d
-                                  ON d.aci_codigo = i.aci_codigo;
-                           -- Firma de Archivo: la pone el trigger al salir de EN_REVISION_ARCHIVO hacia EN_REVISION_SGSPI
-                           UPDATE ado
-                           SET    ado.per_codigo_revisor_archivo = @per_actor
-                           FROM   sgspi.activo_documental AS ado
-                                  INNER JOIN
-                                  inserted AS i
-                                  ON i.aci_codigo = ado.ado_codigo
-                                  INNER JOIN
-                                  deleted AS d
-                                  ON d.aci_codigo = i.aci_codigo
-                           WHERE  d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
-                                  AND i.aci_estado_registro = N'EN_REVISION_SGSPI';
-                       END
+                       UPDATE t
+                       SET    t.aci_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       FROM   sgspi.activo_informacion AS t
+                              INNER JOIN
+                              inserted AS i
+                              ON i.aci_codigo = t.aci_codigo;
+                   UPDATE t
+                   SET    t.per_codigo_aprobador = @per_actor
+                   FROM   sgspi.activo_informacion AS t
+                          INNER JOIN
+                          inserted AS i
+                          ON i.aci_codigo = t.aci_codigo
+                          INNER JOIN
+                          deleted AS d
+                          ON d.aci_codigo = i.aci_codigo
+                   WHERE  d.aci_estado_registro <> i.aci_estado_registro
+                          AND i.aci_estado_registro = N'VIGENTE';
+                   -- Firma de Archivo: la pone el trigger al salir de EN_REVISION_ARCHIVO hacia EN_REVISION_SGSPI
+                   UPDATE ado
+                   SET    ado.per_codigo_revisor_archivo = @per_actor
+                   FROM   sgspi.activo_documental AS ado
+                          INNER JOIN
+                          inserted AS i
+                          ON i.aci_codigo = ado.ado_codigo
+                          INNER JOIN
+                          deleted AS d
+                          ON d.aci_codigo = i.aci_codigo
+                   WHERE  d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+                          AND i.aci_estado_registro = N'EN_REVISION_SGSPI';
                END
        END
 
@@ -3763,6 +3828,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                              OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental].', 1;
+           -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                             INNER JOIN
+                             sgspi.periodo_vigencia AS pev
+                             ON pev.pev_codigo = i.pev_codigo
+                      WHERE  pev.pev_estado_vigencia IN (N'CERRADA', N'HISTORICA')
+                             AND NOT EXISTS (SELECT 1
+                                             FROM   deleted AS d
+                                             WHERE  d.ado_codigo = i.ado_codigo
+                                                    AND d.pev_codigo = i.pev_codigo))
+               THROW 50022, N'Vigencia cerrada: no se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en [sgspi].[activo_documental].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -3902,6 +3979,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                              OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[evento_incertidumbre_activo].', 1;
+           -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                             INNER JOIN
+                             sgspi.periodo_vigencia AS pev
+                             ON pev.pev_codigo = i.pev_codigo
+                      WHERE  pev.pev_estado_vigencia IN (N'CERRADA', N'HISTORICA')
+                             AND NOT EXISTS (SELECT 1
+                                             FROM   deleted AS d
+                                             WHERE  d.eia_codigo = i.eia_codigo
+                                                    AND d.pev_codigo = i.pev_codigo))
+               THROW 50022, N'Vigencia cerrada: no se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en [sgspi].[evento_incertidumbre_activo].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -3989,7 +4078,9 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                         AND efc.efc_permite_edicion = 0))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[evento_incertidumbre_activo].', 1;
                    -- [AP-16] Requisitos de la transición (50020): plan activo para aprobar, paso por el comité cuando la celda
-                   -- inherente o la residual meta lo exige (RN-RSG-03) y plan dictaminado eficaz para cerrar
+                   -- inherente o la residual meta lo exige (RN-RSG-03), meta residual no mayor a la inherente en RIESGO (RN-RSG-04),
+                   -- control ISO27701 si el activo primario contiene datos personales (RN-RSG-05), actividades completadas para
+                   -- evaluar eficacia (paso 11) y plan dictaminado eficaz para cerrar
                    IF EXISTS (SELECT 1
                               FROM   inserted AS i
                                      INNER JOIN
@@ -3998,7 +4089,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               WHERE  i.eia_estado_registro = N'APROBADO_PLANIFICADO'
                                      AND d.eia_estado_registro <> N'APROBADO_PLANIFICADO'
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.plan_tratamiento AS plt
+                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
                                                      WHERE  plt.eia_codigo = i.eia_codigo
                                                             AND plt.plt_esta_activo = 1))
                        THROW 50020, N'Transición incompleta: APROBADO_PLANIFICADO exige un plan de tratamiento activo en [sgspi].[evento_incertidumbre_activo].', 1;
@@ -4015,12 +4106,82 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                         AND ((mvr.epr_codigo = i.epr_codigo_inherente
                                                               AND mvr.eim_codigo = i.eim_codigo_inherente)
                                                              OR EXISTS (SELECT 1
-                                                                        FROM   sgspi.plan_tratamiento AS plt
+                                                                        FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
                                                                         WHERE  plt.eia_codigo = i.eia_codigo
                                                                                AND plt.plt_esta_activo = 1
                                                                                AND plt.epr_codigo_residual_meta = mvr.epr_codigo
                                                                                AND plt.eim_codigo_residual_meta = mvr.eim_codigo))))
                        THROW 50020, N'Transición incompleta: la celda inherente o la residual meta exige pasar por EN_ACEPTACION_COMITE antes de APROBADO_PLANIFICADO en [sgspi].[evento_incertidumbre_activo].', 1;
+                   -- RN-RSG-04: en un riesgo, la valoración residual meta no puede superar la inherente
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.eia_codigo = i.eia_codigo
+                                     INNER JOIN
+                                     sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                     ON plt.eia_codigo = i.eia_codigo
+                                        AND plt.plt_esta_activo = 1
+                              WHERE  i.eia_estado_registro = N'APROBADO_PLANIFICADO'
+                                     AND d.eia_estado_registro <> N'APROBADO_PLANIFICADO'
+                                     AND i.eia_naturaleza_evento = N'RIESGO'
+                                     AND (plt.epr_codigo_residual_meta > i.epr_codigo_inherente
+                                          OR plt.eim_codigo_residual_meta > i.eim_codigo_inherente))
+                       THROW 50020, N'Transición incompleta: en un RIESGO la valoración residual meta no puede superar la inherente en [sgspi].[evento_incertidumbre_activo].', 1;
+                   -- RN-RSG-05: si el activo primario contiene datos personales, el plan debe vincular al menos un control ISO27701
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.eia_codigo = i.eia_codigo
+                                     INNER JOIN
+                                     sgspi.activo_informacion AS aci
+                                     ON aci.aci_codigo = i.aci_codigo_primario
+                              WHERE  i.eia_estado_registro = N'APROBADO_PLANIFICADO'
+                                     AND d.eia_estado_registro <> N'APROBADO_PLANIFICADO'
+                                     AND aci.aci_contiene_datos_personales = 1
+                                     AND NOT EXISTS (SELECT 1
+                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                            INNER JOIN
+                                                            sgspi.plan_tratamiento_control_referencia_normativa AS ptc WITH (UPDLOCK)
+                                                            ON ptc.plt_codigo = plt.plt_codigo
+                                                            INNER JOIN
+                                                            sgspi.control_referencia_normativa AS crn
+                                                            ON crn.crn_codigo = ptc.crn_codigo
+                                                            INNER JOIN
+                                                            sgspi.estandar_normativo_catalogo AS enc
+                                                            ON enc.enc_codigo = crn.enc_codigo
+                                                     WHERE  plt.eia_codigo = i.eia_codigo
+                                                            AND plt.plt_esta_activo = 1
+                                                            AND ptc.ptc_esta_activo = 1
+                                                            AND enc.enc_familia_norma = N'ISO27701'))
+                       THROW 50020, N'Transición incompleta: APROBADO_PLANIFICADO sobre un activo con datos personales exige un control activo de la familia ISO27701 en [sgspi].[evento_incertidumbre_activo].', 1;
+                   -- Paso 11: pasar a evaluación de eficacia exige al menos una actividad activa y todas completadas
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.eia_codigo = i.eia_codigo
+                              WHERE  i.eia_estado_registro = N'EN_EVALUACION_EFICACIA'
+                                     AND d.eia_estado_registro <> N'EN_EVALUACION_EFICACIA'
+                                     AND (NOT EXISTS (SELECT 1
+                                                      FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                             INNER JOIN
+                                                             sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
+                                                             ON act.plt_codigo = plt.plt_codigo
+                                                      WHERE  plt.eia_codigo = i.eia_codigo
+                                                             AND plt.plt_esta_activo = 1
+                                                             AND act.act_esta_activa = 1)
+                                          OR EXISTS (SELECT 1
+                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                            INNER JOIN
+                                                            sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
+                                                            ON act.plt_codigo = plt.plt_codigo
+                                                     WHERE  plt.eia_codigo = i.eia_codigo
+                                                            AND plt.plt_esta_activo = 1
+                                                            AND act.act_esta_activa = 1
+                                                            AND act.act_estado_actividad <> N'COMPLETADA')))
+                       THROW 50020, N'Transición incompleta: EN_EVALUACION_EFICACIA exige un plan activo con al menos una actividad activa y todas en COMPLETADA en [sgspi].[evento_incertidumbre_activo].', 1;
                    IF EXISTS (SELECT 1
                               FROM   inserted AS i
                                      INNER JOIN
@@ -4029,7 +4190,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               WHERE  i.eia_estado_registro = N'CERRADO_EFICAZ'
                                      AND d.eia_estado_registro <> N'CERRADO_EFICAZ'
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.plan_tratamiento AS plt
+                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
                                                      WHERE  plt.eia_codigo = i.eia_codigo
                                                             AND plt.plt_esta_activo = 1
                                                             AND plt.plt_es_tratamiento_eficaz = 1))
@@ -4135,23 +4296,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                          d.eia_fecha_actualizacion,
                                          d.eia_esta_activo);
                    IF NOT UPDATE (eia_fecha_actualizacion)
-                       BEGIN
-                           UPDATE t
-                           SET    t.eia_fecha_actualizacion     = SYSDATETIMEOFFSET(), -- [AP-11] [AP-12]
-                                  t.per_codigo_validador_lider  = CASE WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
-                                                                            AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
-                                  t.per_codigo_revisor_sgspi    = CASE WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
-                                                                            AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
-                                  t.per_codigo_aprobador_comite = CASE WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                                                                            AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
-                           FROM   sgspi.evento_incertidumbre_activo AS t
-                                  INNER JOIN
-                                  inserted AS i
-                                  ON i.eia_codigo = t.eia_codigo
-                                  INNER JOIN
-                                  deleted AS d
-                                  ON d.eia_codigo = i.eia_codigo;
-                       END
+                       UPDATE t
+                       SET    t.eia_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+                       FROM   sgspi.evento_incertidumbre_activo AS t
+                              INNER JOIN
+                              inserted AS i
+                              ON i.eia_codigo = t.eia_codigo;
+                   UPDATE t
+                   SET    t.per_codigo_validador_lider  = CASE WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
+                                                                    AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
+                          t.per_codigo_revisor_sgspi    = CASE WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                                                                    AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
+                          t.per_codigo_aprobador_comite = CASE WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
+                                                                    AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
+                   FROM   sgspi.evento_incertidumbre_activo AS t
+                          INNER JOIN
+                          inserted AS i
+                          ON i.eia_codigo = t.eia_codigo
+                          INNER JOIN
+                          deleted AS d
+                          ON d.eia_codigo = i.eia_codigo
+                   WHERE  (d.eia_estado_registro = N'EN_VALIDACION_LIDER'
+                           AND i.eia_estado_registro = N'EN_REVISION_SGSPI')
+                          OR (d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                              AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'))
+                          OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
+                              AND i.eia_estado_registro = N'APROBADO_PLANIFICADO');
                END
        END
 
@@ -4597,7 +4767,7 @@ GO
 -- 5.10.8 Trigger sobre [sgspi].[evaluacion_aplicabilidad_control] ([eac]): sin flujo de estados
 CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
     ON sgspi.evaluacion_aplicabilidad_control
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF TRIGGER_NESTLEVEL(OBJECT_ID(N'sgspi.TR_eac_integridad_y_actualizacion', N'TR')) > 1
@@ -4617,77 +4787,93 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-           -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-           INSERT INTO sgspi.aud_evaluacion_aplicabilidad_control (
-               eac_codigo,
-               pev_codigo,
-               crn_codigo,
-               aae_es_aplicable,
-               aae_justificacion_aplicabilidad,
-               aae_documento_soporte_normativo,
-               car_codigo,
-               aae_frecuencia_revision,
-               aae_evidencia_objetiva_esperada,
-               aae_estado_implementacion,
-               aae_observaciones_auditoria,
-               aae_fecha_actualizacion,
-               aae_esta_activa,
-               per_codigo,
-               aae_usuario_bd,
-               aae_fecha_cambio
-           )
-           SELECT d.eac_codigo,
-                  d.pev_codigo,
-                  d.crn_codigo,
-                  d.eac_es_aplicable,
-                  d.eac_justificacion_aplicabilidad,
-                  d.eac_documento_soporte_normativo,
-                  d.car_codigo,
-                  d.eac_frecuencia_revision,
-                  d.eac_evidencia_objetiva_esperada,
-                  d.eac_estado_implementacion,
-                  d.eac_observaciones_auditoria,
-                  d.eac_fecha_actualizacion,
-                  d.eac_esta_activa,
-                  @per_actor,
-                  ORIGINAL_LOGIN(),
-                  SYSDATETIMEOFFSET()
-           FROM   deleted AS d
-                  INNER JOIN
-                  inserted AS i
-                  ON i.eac_codigo = d.eac_codigo
-           WHERE  EXISTS (SELECT i.pev_codigo,
-                                 i.crn_codigo,
-                                 i.eac_es_aplicable,
-                                 i.eac_justificacion_aplicabilidad,
-                                 i.eac_documento_soporte_normativo,
-                                 i.car_codigo,
-                                 i.eac_frecuencia_revision,
-                                 i.eac_evidencia_objetiva_esperada,
-                                 i.eac_estado_implementacion,
-                                 i.eac_observaciones_auditoria,
-                                 i.eac_fecha_actualizacion,
-                                 i.eac_esta_activa
-                          EXCEPT
-                          SELECT d.pev_codigo,
-                                 d.crn_codigo,
-                                 d.eac_es_aplicable,
-                                 d.eac_justificacion_aplicabilidad,
-                                 d.eac_documento_soporte_normativo,
-                                 d.car_codigo,
-                                 d.eac_frecuencia_revision,
-                                 d.eac_evidencia_objetiva_esperada,
-                                 d.eac_estado_implementacion,
-                                 d.eac_observaciones_auditoria,
-                                 d.eac_fecha_actualizacion,
-                                 d.eac_esta_activa);
-           IF NOT UPDATE (eac_fecha_actualizacion)
-               UPDATE t
-               SET    t.eac_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
-               FROM   sgspi.evaluacion_aplicabilidad_control AS t
-                      INNER JOIN
-                      inserted AS i
-                      ON i.eac_codigo = t.eac_codigo;
+           -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                             INNER JOIN
+                             sgspi.periodo_vigencia AS pev
+                             ON pev.pev_codigo = i.pev_codigo
+                      WHERE  pev.pev_estado_vigencia IN (N'CERRADA', N'HISTORICA')
+                             AND NOT EXISTS (SELECT 1
+                                             FROM   deleted AS d
+                                             WHERE  d.eac_codigo = i.eac_codigo
+                                                    AND d.pev_codigo = i.pev_codigo))
+               THROW 50022, N'Vigencia cerrada: no se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en [sgspi].[evaluacion_aplicabilidad_control].', 1;
+           IF EXISTS (SELECT 1
+                      FROM   deleted)
+               BEGIN
+                   -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   INSERT INTO sgspi.aud_evaluacion_aplicabilidad_control (
+                       eac_codigo,
+                       pev_codigo,
+                       crn_codigo,
+                       aae_es_aplicable,
+                       aae_justificacion_aplicabilidad,
+                       aae_documento_soporte_normativo,
+                       car_codigo,
+                       aae_frecuencia_revision,
+                       aae_evidencia_objetiva_esperada,
+                       aae_estado_implementacion,
+                       aae_observaciones_auditoria,
+                       aae_fecha_actualizacion,
+                       aae_esta_activa,
+                       per_codigo,
+                       aae_usuario_bd,
+                       aae_fecha_cambio
+                   )
+                   SELECT d.eac_codigo,
+                          d.pev_codigo,
+                          d.crn_codigo,
+                          d.eac_es_aplicable,
+                          d.eac_justificacion_aplicabilidad,
+                          d.eac_documento_soporte_normativo,
+                          d.car_codigo,
+                          d.eac_frecuencia_revision,
+                          d.eac_evidencia_objetiva_esperada,
+                          d.eac_estado_implementacion,
+                          d.eac_observaciones_auditoria,
+                          d.eac_fecha_actualizacion,
+                          d.eac_esta_activa,
+                          @per_actor,
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   deleted AS d
+                          INNER JOIN
+                          inserted AS i
+                          ON i.eac_codigo = d.eac_codigo
+                   WHERE  EXISTS (SELECT i.pev_codigo,
+                                         i.crn_codigo,
+                                         i.eac_es_aplicable,
+                                         i.eac_justificacion_aplicabilidad,
+                                         i.eac_documento_soporte_normativo,
+                                         i.car_codigo,
+                                         i.eac_frecuencia_revision,
+                                         i.eac_evidencia_objetiva_esperada,
+                                         i.eac_estado_implementacion,
+                                         i.eac_observaciones_auditoria,
+                                         i.eac_fecha_actualizacion,
+                                         i.eac_esta_activa
+                                  EXCEPT
+                                  SELECT d.pev_codigo,
+                                         d.crn_codigo,
+                                         d.eac_es_aplicable,
+                                         d.eac_justificacion_aplicabilidad,
+                                         d.eac_documento_soporte_normativo,
+                                         d.car_codigo,
+                                         d.eac_frecuencia_revision,
+                                         d.eac_evidencia_objetiva_esperada,
+                                         d.eac_estado_implementacion,
+                                         d.eac_observaciones_auditoria,
+                                         d.eac_fecha_actualizacion,
+                                         d.eac_esta_activa);
+                   IF NOT UPDATE (eac_fecha_actualizacion)
+                       UPDATE t
+                       SET    t.eac_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+                       FROM   sgspi.evaluacion_aplicabilidad_control AS t
+                              INNER JOIN
+                              inserted AS i
+                              ON i.eac_codigo = t.eac_codigo;
+               END
        END
 
 
