@@ -19,7 +19,7 @@ Escala: **5** sin hallazgos · **4** detalles menores · **3** brechas relevante
 | 8 | Volumetría y particionamiento | 4 | 4 | Particionar no hace falta; no hay estimación escrita ni retención de `aud_*`. |
 | 9 | Aislamiento y privilegios mínimos | 3 | **3** | El líder y el oficial pueden borrar el dictamen del auditor; el comité y el auditor mueven borradores ajenos; el alcance permite por omisión; el gestor no puede hacer su aval de Archivo. (Fase 1 aplicada.) |
 | 10 | Trazabilidad y auditoría | 1 | **3** | Las altas no se auditan: en 45 de 50 tablas no se sabe quién creó la fila; los cambios del DBA y de roles no dejan rastro. (Fase 3 aplicada.) |
-| 11 | Protección de datos sensibles | 2 | **3** | La cuenta compartida lee planes, auditoría y los logins reales de todo el personal; no hay cifrado en reposo. |
+| 11 | Protección de datos sensibles | 2 | **3** | La cuenta compartida lee planes, auditoría y los logins reales de todo el personal; no hay cifrado en reposo. (Fase 4 aplicada.) |
 | 12 | Convenciones y claridad semántica | 3 | 4 | La especificación cita CHECK que ya no existen (RN-INT-06) y sigue hablando de "Row-Level Security". |
 | 13 | Concurrencia y bloqueos | 2 | 4 | El consecutivo `RA-nn` se calcula sobre texto y se atasca en `RA-100`. |
 | 14 | Compatibilidad de despliegue | 3 | 4 | La verificación posterior compara el nombre de usuario de BD, pero los triggers comparan el login. |
@@ -231,6 +231,8 @@ Queda una inconsistencia de la especificación que no se tocó: el diagrama ACI 
 
 ### Fase 4 — Datos sensibles (dimensión 11)
 
+**Estado:** aplicada el 2026-11-18 en el DDL, las pruebas y la especificación (DS1 y la verificación de TDE de DS2; activar TDE en la instancia queda a cargo del DBA), sin ejecutar contra SQL Server. El paso 13 (opcional) se omite.
+
 11. **DS1 Cuenta compartida por lista blanca [S, D8]**:
     - Quitar `ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_consulta` (L8667) y los dos DENY de columnas (L8694-8698), que dejan de hacer falta.
     - Dar `GRANT SELECT … TO sgspi_rol_consulta` solo sobre los catálogos y las vistas que se acuerden en D8. Recomendado: `vw_consolidado_dofa`, `vw_resumen_activos_criticidad`, `vw_desglose_ccd_trd_mr04`, `vw_inventario_activo_documental_mr04` y `vw_controles_atributos_iso27002`, más los catálogos. Las vistas no necesitan permiso sobre las tablas, porque el encadenamiento de propiedad lo resuelve.
@@ -246,7 +248,7 @@ Queda una inconsistencia de la especificación que no se tocó: el diagrama ACI 
 | # | Pregunta | Respuesta | Aplicado |
 |---|---|---|---|
 | D7 | ¿Qué estados de vigencia admiten altas? | La recomendada: `EN_CONFIGURACION` y `ABIERTA` sí; `CERRADA` e `HISTORICA` no. | C4 (fase 2) |
-| D8 | ¿Qué pantallas usan la cuenta compartida y qué deben ver? | La recomendada: catálogos y las cinco vistas de inventario, DOFA y controles; nada de `eia`, `plt`, `act`, `sga` ni `aud_*`. | Pendiente: DS1 (fase 4) |
+| D8 | ¿Qué pantallas usan la cuenta compartida y qué deben ver? | La recomendada: catálogos y las cinco vistas de inventario, DOFA y controles; nada de `eia`, `plt`, `act`, `sga` ni `aud_*`. | DS1 (fase 4) |
 | D9 | ¿El gestor documental registra actividades y seguimientos? | Sí, con alcance `[Asignado]`, como ya dice la especificación (matriz 5.3, tabla 11.1). La recomendación "No" partía de un dato falso; se aplicó su rama "si sí". | P3 (fase 1) |
 
 ## 4. Mejoras menores (dimensiones con 4), cada una S

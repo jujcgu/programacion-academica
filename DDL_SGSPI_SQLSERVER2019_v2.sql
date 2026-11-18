@@ -82,8 +82,11 @@ ORIGINAL_LOGIN(), error 50017 si no hay persona; también para un DBA) y cuándo
 AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
 tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno
-y solo lista grupos SGSPI_*. D5: líder y custodio solo escriben en el alcance de sus UAA (sección 5.9b, error
-50021) y la cuenta compartida (sgspi_rol_consulta) no lee las vulnerabilidades de los eventos. Los roles transversales
+y solo lista grupos SGSPI_*. D5/D8: líder y custodio solo escriben en el alcance de sus UAA (sección 5.9b,
+error 50021); la cuenta compartida (sgspi_rol_consulta) queda fuera de sgspi_rol_base y solo lee por lista blanca
+los catálogos y las cinco vistas de inventario, DOFA y controles (vw_consolidado_dofa,
+vw_resumen_activos_criticidad, vw_desglose_ccd_trd_mr04, vw_inventario_activo_documental_mr04,
+vw_controles_atributos_iso27002), sin acceso a eia, plt, act, sga ni aud_*. Los roles transversales
 van en lista explícita (oficial, comité y auditor; el gestor documental solo en activos, D9): sin rol de actor no hay
 alcance. D2: el dictamen de eficacia solo lo escribe el auditor (DENY de sus columnas al líder y al oficial).
 AP-03  Identidad sin procedimiento de contexto de sesión: los triggers de acf, rpi, aci, eia, plt y sga resuelven la
@@ -9020,15 +9023,6 @@ GO
 -- [aid] La auditoría no se edita ni se borra
 CREATE OR ALTER TRIGGER sgspi.TR_aid_inmutabilidad
     ON sgspi.aud_activo_documental_idioma
-    INSTEAD OF UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_idioma] es inmutable y no admite modificaciones ni borrados.', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
     SET NOEXEC ON; -- [AP-19]
 
 
@@ -10481,9 +10475,9 @@ IF @@TRANCOUNT = 0
 GO
 -- 5.10.10 Roles y permisos [AP-02]: privilegios mínimos por actor.
 -- Cada persona escribe con su login SQL real, miembro de UN rol de actor (uno por grupo SGSPI_* de [dbo].[grupo]);
--- la cuenta compartida de consulta es miembro solo de sgspi_rol_consulta (lee como sgspi_rol_base, salvo las
--- vulnerabilidades de los eventos, D5). Los seis roles de actor son miembros de
--- sgspi_rol_base y heredan su SELECT y sus DENY. Este script NO asigna personas a roles (lo hace el DBA).
+-- la cuenta compartida de consulta es miembro solo de sgspi_rol_consulta (fuera de sgspi_rol_base: solo lee por
+-- lista blanca los catálogos y las cinco vistas de D8, sin acceso a eia, plt, act, sga ni aud_*). Los seis roles
+-- de actor son miembros de sgspi_rol_base y heredan su SELECT y sus DENY. Este script NO asigna personas a roles (lo hace el DBA).
 -- Los triggers no se ven afectados por los DENY: [sgspi] es de dbo y el encadenamiento de propiedad omite la verificación.
 -- dbo / db_owner / sysadmin NO se pueden restringir con DENY; un login en db_datawriter anula estos GRANT.
 IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_base') IS NULL
@@ -10508,9 +10502,7 @@ IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_auditor_control') IS NULL
     CREATE ROLE sgspi_rol_auditor_control; -- SGSPI_AUDITOR_CONTROL
 
 IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_consulta') IS NULL
-    CREATE ROLE sgspi_rol_consulta; -- Cuenta compartida de consulta de la aplicación (D5)
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_consulta;
+    CREATE ROLE sgspi_rol_consulta; -- Cuenta compartida de consulta de la aplicación (D5/D8)
 
 ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_custodio_operador;
 
@@ -10535,13 +10527,91 @@ DENY ALTER
 DENY DELETE
     ON SCHEMA::sgspi TO sgspi_rol_base;
 
--- D5: la cuenta compartida no lee amenazas, controles existentes ni vulnerabilidades de los eventos (tampoco su copia
--- en la auditoría); se leen con la conexión de la persona. Las vistas no exponen estas columnas.
-DENY SELECT
-    ON sgspi.evento_incertidumbre_activo (eia_fuente_generadora, eia_controles_existentes, eia_condicion_vulnerabilidad) TO sgspi_rol_consulta;
+-- D8: la cuenta compartida queda fuera de sgspi_rol_base y solo lee por lista blanca los catálogos (aquí)
+-- y las cinco vistas de inventario, DOFA y controles (al final de la sección 6, tras crearlas).
+GRANT SELECT
+    ON sgspi.periodo_vigencia TO sgspi_rol_consulta;
 
-DENY SELECT
-    ON sgspi.aud_evento_incertidumbre_activo (aea_fuente_generadora, aea_controles_existentes, aea_condicion_vulnerabilidad) TO sgspi_rol_consulta;
+GRANT SELECT
+    ON sgspi.estado_flujo_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.transicion_estado_flujo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.tipo_proceso_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.proceso_institucional TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.proceso_institucional_uaa TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.factor_entorno_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.parte_interesada TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.tipo_activo_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.causal_excepcion_transparencia TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.serie_documental_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.subserie_documental_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.periodicidad_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.estado_publicacion_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.soporte_registro_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.medio_conservacion_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.idioma_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.formato_archivo_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.escala_probabilidad TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.escala_impacto TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.zona_riesgo_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.estandar_normativo_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.control_referencia_normativa TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.atributo_control_catalogo TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_consulta;
 
 -- La máquina de estados solo cambia por script de migración: quien la escribe se salta los triggers de flujo.
 DENY INSERT, UPDATE, DELETE
@@ -11408,6 +11478,29 @@ IF @@TRANCOUNT = 0
 
 
 GO
+-- D8: la cuenta compartida solo lee las cinco vistas de inventario, DOFA y controles (encadenamiento de propiedad con dbo).
+GRANT SELECT
+    ON sgspi.vw_consolidado_dofa TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.vw_resumen_activos_criticidad TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.vw_desglose_ccd_trd_mr04 TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.vw_inventario_activo_documental_mr04 TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.vw_controles_atributos_iso27002 TO sgspi_rol_consulta;
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
 COMMIT TRANSACTION; -- [AP-19]
 
 
@@ -11419,7 +11512,8 @@ login del usuario de BD (SUSER_SNAME de su sid), que es lo que los triggers busc
 (a) miembros de grupos SGSPI_* sin usuario de BD o sin el rol equivalente; (b) usuarios de BD en un rol de actor cuyo
 login no está en [dbo].[usuario_general].[us]; (c) usuarios de BD en más de un rol de actor; (d) usuarios de un rol de
 actor que también son miembros directos de db_owner, db_datawriter, db_ddladmin o db_securityadmin, que anulan los
-GRANT; (e) logins de un rol de actor con varias personas en [dbo].[usuario_general] (TOP (1) elegiría una de ellas).
+GRANT; (e) logins de un rol de actor con varias personas en [dbo].[usuario_general] (TOP (1) elegiría una de ellas);
+(f) base sin TDE (sys.databases.is_encrypted = 0).
 ==================================================================================================*/
 WITH     cte_mapa_roles
 AS       (SELECT v.gru_nombre,
@@ -11494,7 +11588,14 @@ FROM     dbo.usuario_general AS u
 WHERE    u.us IN (SELECT mb.login_bd
                   FROM   cte_membresia_bd AS mb)
 GROUP BY u.us
-HAVING   COUNT(DISTINCT u.up) > 1;
+HAVING   COUNT(DISTINCT u.up) > 1
+UNION ALL
+SELECT   N'Base sin TDE' AS hallazgo,
+         DB_NAME() AS usuario,
+         N'sys.databases.is_encrypted = 0' AS detalle
+FROM     sys.databases
+WHERE    database_id = DB_ID()
+         AND is_encrypted = 0;
 
 
 GO

@@ -378,7 +378,7 @@ EXECUTE #espera N'AP-02 la vista de alcance no expone la identificación', N'IF 
 
 EXECUTE #espera N'AP-02 la vista de alcance no expone el correo institucional', N'IF COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_correo_institucional'') IS NOT NULL OR COL_LENGTH(N''sgspi.vw_usuario_rol_alcance_sgspi'', N''per_email_interno'') IS NOT NULL THROW 51000, N''per_correo_institucional sigue expuesto'', 1;', 0;
 
-EXECUTE #espera N'AP-02 base lee vistas que cruzan a [dbo]', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p1 FROM sgspi.vw_usuario_rol_alcance_sgspi;', 0;
+EXECUTE #espera N'AP-02 base lee vistas que cruzan a [dbo]', N'EXECUTE AS USER = N''sgspi_prueba_sin_rol''; SELECT * INTO #p1 FROM sgspi.vw_usuario_rol_alcance_sgspi;', 0;
 
 EXECUTE #espera N'AP-02 base no escribe', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; INSERT sgspi.parte_interesada (pai_nombre, pai_origen) VALUES (N''X'', N''INTERNA'');', 229;
 
@@ -425,11 +425,17 @@ EXECUTE #espera N'D2 solo el auditor registra el dictamen de eficacia (DENY de c
 
 EXECUTE #espera N'D2 el oficial no borra el dictamen de eficacia', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = NULL, plt_dictamen_eficacia = NULL, per_codigo_evaluador = NULL, plt_fecha_evaluacion_eficacia = NULL WHERE 1 = 0;', 230;
 
-EXECUTE #espera N'D5 la cuenta compartida no lee las vulnerabilidades', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT eia_condicion_vulnerabilidad INTO #p2 FROM sgspi.evento_incertidumbre_activo;', 230;
+EXECUTE #espera N'D8 la cuenta compartida no lee las vulnerabilidades', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT eia_condicion_vulnerabilidad INTO #p2 FROM sgspi.evento_incertidumbre_activo;', 229;
 
-EXECUTE #espera N'D5 ni su copia en la auditoría', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT aea_condicion_vulnerabilidad INTO #p3 FROM sgspi.aud_evento_incertidumbre_activo;', 230;
+EXECUTE #espera N'D8 ni su copia en la auditoría', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT aea_condicion_vulnerabilidad INTO #p3 FROM sgspi.aud_evento_incertidumbre_activo;', 229;
 
-EXECUTE #espera N'D5 la cuenta compartida lee el resto del evento', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT eia_identificador_evento, eia_escenario_operacional INTO #p4 FROM sgspi.evento_incertidumbre_activo;', 0;
+EXECUTE #espera N'D8 la cuenta compartida tampoco lee el resto del evento', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT eia_identificador_evento, eia_escenario_operacional INTO #p4 FROM sgspi.evento_incertidumbre_activo;', 229;
+
+EXECUTE #espera N'D8 la cuenta compartida lee vw_inventario_activo_documental_mr04', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p6 FROM sgspi.vw_inventario_activo_documental_mr04;', 0;
+
+EXECUTE #espera N'D8 la cuenta compartida no lee plan_tratamiento', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p7 FROM sgspi.plan_tratamiento;', 229;
+
+EXECUTE #espera N'D8 la cuenta compartida no lee aud_activo_informacion', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p8 FROM sgspi.aud_activo_informacion;', 229;
 
 EXECUTE #espera N'D5 el oficial sí lee las vulnerabilidades', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; SELECT eia_condicion_vulnerabilidad INTO #p5 FROM sgspi.evento_incertidumbre_activo;', 0;
 
