@@ -74,9 +74,11 @@ ACRÓNIMOS REUTILIZADOS DEL ESQUEMA CORPORATIVO [dbo]:
 - [usg] : dbo.usuario_grupo ([usg_codigo])
 REGISTRO DE CAMBIOS v2.0 (cada cambio está marcado en el código con -- [AP-xx]):
 AP-01  Auditoría por tabla (reemplaza la bitácora [bas] y las tablas temporales): cada tabla tiene su
-sgspi.aud_<tabla> (sección 5.9) con la versión anterior de cada fila modificada, quién la cambió (per_codigo de
+sgspi.aud_<tabla> (sección 5.9) con las altas (<aud>_operacion = 'I', con los valores iniciales de la fila creada)
+y la versión anterior de cada fila modificada (<aud>_operacion = 'U'), quién ejecutó la operación (per_codigo de
 ORIGINAL_LOGIN(), error 50017 si no hay persona; también para un DBA) y cuándo. Las tablas aud_* son inmutables
-(error 50016) y el borrado físico de cualquier tabla queda bloqueado por trigger (50010).
+(error 50016) y el borrado físico de cualquier tabla queda bloqueado por trigger (50010). La auditoría del servidor
+(DISABLE TRIGGER, roles y permisos) se configura fuera de la transacción en sql/sgspi/auditoria_servidor.sql.
 AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
 tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno
@@ -89,8 +91,11 @@ persona con ORIGINAL_LOGIN() -> [dbo].[usuario_general] (error 50017 si no la ha
 y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor de seguimiento distinto.
 AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
 VIGENTE (error 50014). Tampoco se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en
-acf, rpi, ado, eia y eac (error 50022, D7). Carga histórica: un administrador (dbo) deshabilita temporalmente el trigger
-TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carga_inicial.
+acf, rpi, ado, eia y eac (error 50022, D7). Carga histórica: con la auditoría del servidor encendida
+(sql/sgspi/auditoria_servidor.sql), un administrador (dbo) deshabilita temporalmente el trigger
+TR_<acr>_integridad_y_actualizacion de la tabla, vuelve a habilitarlo en el mismo script y termina con consultas de
+control que deben dar cero filas (estado inicial, aprobador en VIGENTE y propietario único activo); ya no existe
+usp_habilitar_carga_inicial.
 AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
 listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
 TR_<acr>_integridad_y_actualizacion de acf, rpi, aci, eia y act (error 50011).
@@ -1586,13 +1591,15 @@ IF @@TRANCOUNT = 0
 GO
 /*==================================================================================================
 5.9 TABLAS DE AUDITORÍA [AP-01]: una sgspi.aud_<tabla> por cada tabla del esquema (acrónimos en la cabecera)
-Cada fila guarda la versión ANTERIOR de una fila modificada, quién hizo el cambio (per_codigo de ORIGINAL_LOGIN())
-y cuándo. Las llena el trigger de la tabla de origen: TR_<acr>_auditoria (5.10.9c) o, en acf, rpi, aci, ado, eia,
-plt, act, eac y sga, el trigger que ya existía, porque esos triggers actualizan su propia tabla y un segundo
-trigger registraría también ese UPDATE interno. Los INSERT no se registran: la versión vigente es la fila de origen.
+Cada fila guarda el tipo de operación (<aud>_operacion: 'I' = fila creada con sus valores nuevos; 'U' = versión
+ANTERIOR de una fila modificada), quién hizo la operación (per_codigo de ORIGINAL_LOGIN()) y cuándo. Las llena el
+trigger de la tabla de origen: TR_<acr>_auditoria (5.10.9c), los 8 TR_<acr>_integridad_y_actualizacion (acf, rpi,
+aci, ado, eia, plt, act, eac) o, en sga, TR_sga_inmutabilidad (UPDATE, 'U') y TR_sga_sincronizar_avance (INSERT, 'I'),
+para no registrar dos veces los UPDATE internos de los triggers.
 Columnas: las de origen menos las calculadas, <acr>_version y <acr>_fecha_creacion; la clave conserva su nombre (FK al origen) y
 las demás cambian el acrónimo de origen por el de auditoría (en aud_seguimiento_actividad, el per_codigo de origen
-es per_codigo_autor). Son inmutables: TR_<aud>_inmutabilidad (error 50016) y DENY de escritura a sgspi_rol_base.
+es per_codigo_autor), más per_codigo, <aud>_operacion (CHAR(1) DEFAULT 'U' CHECK IN ('I', 'U')), <aud>_usuario_bd y
+<aud>_fecha_cambio. Son inmutables: TR_<aud>_inmutabilidad (error 50016) y DENY de escritura a sgspi_rol_base.
 ==================================================================================================*/
 -- [apv] Auditoría de [sgspi].[periodo_vigencia] ([pev])
 CREATE TABLE sgspi.aud_periodo_vigencia (
@@ -1604,11 +1611,13 @@ CREATE TABLE sgspi.aud_periodo_vigencia (
     apv_estado_vigencia NVARCHAR (20)      NOT NULL,
     apv_esta_activo     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    apv_operacion       CHAR (1)           CONSTRAINT DF_apv_operacion DEFAULT 'U' NOT NULL,
     apv_usuario_bd      SYSNAME            CONSTRAINT DF_apv_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apv_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_apv_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_apv_aud_periodo_vigencia PRIMARY KEY CLUSTERED (apv_codigo),
     CONSTRAINT FK_apv_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
-    CONSTRAINT FK_apv_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_apv_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_apv_operacion CHECK (apv_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_apv_pev_codigo
@@ -1628,11 +1637,13 @@ CREATE TABLE sgspi.aud_estado_flujo_catalogo (
     aec_permite_edicion BIT                NOT NULL,
     aec_esta_activo     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aec_operacion       CHAR (1)           CONSTRAINT DF_aec_operacion DEFAULT 'U' NOT NULL,
     aec_usuario_bd      SYSNAME            CONSTRAINT DF_aec_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aec_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_aec_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aec_aud_estado_flujo_catalogo PRIMARY KEY CLUSTERED (aec_codigo),
     CONSTRAINT FK_aec_estado_flujo_catalogo FOREIGN KEY (efc_codigo) REFERENCES sgspi.estado_flujo_catalogo (efc_codigo),
-    CONSTRAINT FK_aec_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aec_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aec_operacion CHECK (aec_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aec_efc_codigo
@@ -1651,11 +1662,13 @@ CREATE TABLE sgspi.aud_transicion_estado_flujo (
     atf_rol_requerido         SYSNAME            NULL,
     atf_esta_activa           BIT                NOT NULL,
     per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    atf_operacion             CHAR (1)           CONSTRAINT DF_atf_operacion DEFAULT 'U' NOT NULL,
     atf_usuario_bd            SYSNAME            CONSTRAINT DF_atf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     atf_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_atf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_atf_aud_transicion_estado_flujo PRIMARY KEY CLUSTERED (atf_codigo),
     CONSTRAINT FK_atf_transicion_estado_flujo FOREIGN KEY (tef_codigo) REFERENCES sgspi.transicion_estado_flujo (tef_codigo),
-    CONSTRAINT FK_atf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_atf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_atf_operacion CHECK (atf_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_atf_tef_codigo
@@ -1673,11 +1686,13 @@ CREATE TABLE sgspi.aud_tipo_proceso_catalogo (
     atr_descripcion   NVARCHAR (255)     NULL,
     atr_esta_activo   BIT                NOT NULL,
     per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    atr_operacion     CHAR (1)           CONSTRAINT DF_atr_operacion DEFAULT 'U' NOT NULL,
     atr_usuario_bd    SYSNAME            CONSTRAINT DF_atr_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     atr_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_atr_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_atr_aud_tipo_proceso_catalogo PRIMARY KEY CLUSTERED (atr_codigo),
     CONSTRAINT FK_atr_tipo_proceso_catalogo FOREIGN KEY (tpr_codigo) REFERENCES sgspi.tipo_proceso_catalogo (tpr_codigo),
-    CONSTRAINT FK_atr_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_atr_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_atr_operacion CHECK (atr_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_atr_tpr_codigo
@@ -1697,11 +1712,13 @@ CREATE TABLE sgspi.aud_proceso_institucional (
     car_codigo_lider  INT                NULL,
     api_esta_activo   BIT                NOT NULL,
     per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    api_operacion     CHAR (1)           CONSTRAINT DF_api_operacion DEFAULT 'U' NOT NULL,
     api_usuario_bd    SYSNAME            CONSTRAINT DF_api_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     api_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_api_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_api_aud_proceso_institucional PRIMARY KEY CLUSTERED (api_codigo),
     CONSTRAINT FK_api_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo),
-    CONSTRAINT FK_api_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_api_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_api_operacion CHECK (api_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_api_pri_codigo
@@ -1717,11 +1734,13 @@ CREATE TABLE sgspi.aud_proceso_institucional_uaa (
     uaa_codigo       INT                NOT NULL,
     apu_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    apu_operacion    CHAR (1)           CONSTRAINT DF_apu_operacion DEFAULT 'U' NOT NULL,
     apu_usuario_bd   SYSNAME            CONSTRAINT DF_apu_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apu_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_apu_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_apu_aud_proceso_institucional_uaa PRIMARY KEY CLUSTERED (apu_codigo),
     CONSTRAINT FK_apu_proceso_institucional_uaa FOREIGN KEY (pri_codigo, uaa_codigo) REFERENCES sgspi.proceso_institucional_uaa (pri_codigo, uaa_codigo),
-    CONSTRAINT FK_apu_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_apu_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_apu_operacion CHECK (apu_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_apu_pri_codigo_uaa_codigo
@@ -1739,11 +1758,13 @@ CREATE TABLE sgspi.aud_factor_entorno_catalogo (
     afc_descripcion    NVARCHAR (255)     NULL,
     afc_esta_activo    BIT                NOT NULL,
     per_codigo         INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    afc_operacion      CHAR (1)           CONSTRAINT DF_afc_operacion DEFAULT 'U' NOT NULL,
     afc_usuario_bd     SYSNAME            CONSTRAINT DF_afc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     afc_fecha_cambio   DATETIMEOFFSET (0) CONSTRAINT DF_afc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_afc_aud_factor_entorno_catalogo PRIMARY KEY CLUSTERED (afc_codigo),
     CONSTRAINT FK_afc_factor_entorno_catalogo FOREIGN KEY (fec_codigo) REFERENCES sgspi.factor_entorno_catalogo (fec_codigo),
-    CONSTRAINT FK_afc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_afc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_afc_operacion CHECK (afc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_afc_fec_codigo
@@ -1771,11 +1792,13 @@ CREATE TABLE sgspi.aud_analisis_contexto_factor (
     aaf_fecha_actualizacion     DATETIMEOFFSET (0) NOT NULL,
     aaf_esta_activo             BIT                NOT NULL,
     per_codigo                  INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aaf_operacion               CHAR (1)           CONSTRAINT DF_aaf_operacion DEFAULT 'U' NOT NULL,
     aaf_usuario_bd              SYSNAME            CONSTRAINT DF_aaf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aaf_fecha_cambio            DATETIMEOFFSET (0) CONSTRAINT DF_aaf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aaf_aud_analisis_contexto_factor PRIMARY KEY CLUSTERED (aaf_codigo),
     CONSTRAINT FK_aaf_analisis_contexto_factor FOREIGN KEY (acf_codigo) REFERENCES sgspi.analisis_contexto_factor (acf_codigo),
-    CONSTRAINT FK_aaf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aaf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aaf_operacion CHECK (aaf_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aaf_acf_codigo
@@ -1793,11 +1816,13 @@ CREATE TABLE sgspi.aud_parte_interesada (
     apa_descripcion_rol NVARCHAR (255)     NULL,
     apa_esta_activa     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    apa_operacion       CHAR (1)           CONSTRAINT DF_apa_operacion DEFAULT 'U' NOT NULL,
     apa_usuario_bd      SYSNAME            CONSTRAINT DF_apa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apa_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_apa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_apa_aud_parte_interesada PRIMARY KEY CLUSTERED (apa_codigo),
     CONSTRAINT FK_apa_parte_interesada FOREIGN KEY (pai_codigo) REFERENCES sgspi.parte_interesada (pai_codigo),
-    CONSTRAINT FK_apa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_apa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_apa_operacion CHECK (apa_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_apa_pai_codigo
@@ -1823,11 +1848,13 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada (
     ari_fecha_actualizacion   DATETIMEOFFSET (0) NOT NULL,
     ari_esta_activo           BIT                NOT NULL,
     per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    ari_operacion             CHAR (1)           CONSTRAINT DF_ari_operacion DEFAULT 'U' NOT NULL,
     ari_usuario_bd            SYSNAME            CONSTRAINT DF_ari_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ari_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_ari_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_ari_aud_requisito_parte_interesada PRIMARY KEY CLUSTERED (ari_codigo),
     CONSTRAINT FK_ari_requisito_parte_interesada FOREIGN KEY (rpi_codigo) REFERENCES sgspi.requisito_parte_interesada (rpi_codigo),
-    CONSTRAINT FK_ari_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_ari_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_ari_operacion CHECK (ari_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_ari_rpi_codigo
@@ -1843,11 +1870,13 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada_cuestionario (
     rpc_numero_pregunta SMALLINT           NOT NULL,
     arc_esta_activo     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    arc_operacion       CHAR (1)           CONSTRAINT DF_arc_operacion DEFAULT 'U' NOT NULL,
     arc_usuario_bd      SYSNAME            CONSTRAINT DF_arc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     arc_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_arc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_arc_aud_requisito_parte_interesada_cuestionario PRIMARY KEY CLUSTERED (arc_codigo),
     CONSTRAINT FK_arc_requisito_parte_interesada_cuestionario FOREIGN KEY (rpi_codigo, rpc_numero_pregunta) REFERENCES sgspi.requisito_parte_interesada_cuestionario (rpi_codigo, rpc_numero_pregunta),
-    CONSTRAINT FK_arc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_arc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_arc_operacion CHECK (arc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_arc_rpi_codigo_rpc_numero_pregunta
@@ -1864,11 +1893,13 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada_proceso_institucional (
     arp_fecha_registro DATETIMEOFFSET (0) NOT NULL,
     arp_esta_activo    BIT                NOT NULL,
     per_codigo         INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    arp_operacion      CHAR (1)           CONSTRAINT DF_arp_operacion DEFAULT 'U' NOT NULL,
     arp_usuario_bd     SYSNAME            CONSTRAINT DF_arp_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     arp_fecha_cambio   DATETIMEOFFSET (0) CONSTRAINT DF_arp_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_arp_aud_requisito_parte_interesada_proceso_institucional PRIMARY KEY CLUSTERED (arp_codigo),
     CONSTRAINT FK_arp_requisito_parte_interesada_proceso_institucional FOREIGN KEY (rpi_codigo, pri_codigo) REFERENCES sgspi.requisito_parte_interesada_proceso_institucional (rpi_codigo, pri_codigo),
-    CONSTRAINT FK_arp_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_arp_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_arp_operacion CHECK (arp_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_arp_rpi_codigo_pri_codigo
@@ -1887,11 +1918,13 @@ CREATE TABLE sgspi.aud_tipo_activo_catalogo (
     atc_ejemplos_ref    NVARCHAR (255)     NULL,
     atc_esta_activo     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    atc_operacion       CHAR (1)           CONSTRAINT DF_atc_operacion DEFAULT 'U' NOT NULL,
     atc_usuario_bd      SYSNAME            CONSTRAINT DF_atc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     atc_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_atc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_atc_aud_tipo_activo_catalogo PRIMARY KEY CLUSTERED (atc_codigo),
     CONSTRAINT FK_atc_tipo_activo_catalogo FOREIGN KEY (tac_codigo) REFERENCES sgspi.tipo_activo_catalogo (tac_codigo),
-    CONSTRAINT FK_atc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_atc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_atc_operacion CHECK (atc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_atc_tac_codigo
@@ -1910,11 +1943,13 @@ CREATE TABLE sgspi.aud_causal_excepcion_transparencia (
     ace_norma_referencia        NVARCHAR (100)     NOT NULL,
     ace_esta_activa             BIT                NOT NULL,
     per_codigo                  INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    ace_operacion               CHAR (1)           CONSTRAINT DF_ace_operacion DEFAULT 'U' NOT NULL,
     ace_usuario_bd              SYSNAME            CONSTRAINT DF_ace_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ace_fecha_cambio            DATETIMEOFFSET (0) CONSTRAINT DF_ace_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_ace_aud_causal_excepcion_transparencia PRIMARY KEY CLUSTERED (ace_codigo),
     CONSTRAINT FK_ace_causal_excepcion_transparencia FOREIGN KEY (cet_codigo) REFERENCES sgspi.causal_excepcion_transparencia (cet_codigo),
-    CONSTRAINT FK_ace_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_ace_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_ace_operacion CHECK (ace_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_ace_cet_codigo
@@ -1960,11 +1995,13 @@ CREATE TABLE sgspi.aud_activo_informacion (
     aai_fecha_actualizacion             DATETIMEOFFSET (0) NOT NULL,
     aai_esta_activo                     BIT                NOT NULL,
     per_codigo                          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aai_operacion                       CHAR (1)           CONSTRAINT DF_aai_operacion DEFAULT 'U' NOT NULL,
     aai_usuario_bd                      SYSNAME            CONSTRAINT DF_aai_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aai_fecha_cambio                    DATETIMEOFFSET (0) CONSTRAINT DF_aai_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aai_aud_activo_informacion PRIMARY KEY CLUSTERED (aai_codigo),
     CONSTRAINT FK_aai_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo),
-    CONSTRAINT FK_aai_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aai_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aai_operacion CHECK (aai_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aai_aci_codigo
@@ -1980,11 +2017,13 @@ CREATE TABLE sgspi.aud_activo_informacion_proceso_institucional (
     pri_codigo       INT                NOT NULL,
     aap_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aap_operacion    CHAR (1)           CONSTRAINT DF_aap_operacion DEFAULT 'U' NOT NULL,
     aap_usuario_bd   SYSNAME            CONSTRAINT DF_aap_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aap_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aap_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aap_aud_activo_informacion_proceso_institucional PRIMARY KEY CLUSTERED (aap_codigo),
     CONSTRAINT FK_aap_activo_informacion_proceso_institucional FOREIGN KEY (aci_codigo, pri_codigo) REFERENCES sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo),
-    CONSTRAINT FK_aap_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aap_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aap_operacion CHECK (aap_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aap_aci_codigo_pri_codigo
@@ -2000,11 +2039,13 @@ CREATE TABLE sgspi.aud_activo_informacion_sede (
     sus_codigo       INT                NOT NULL,
     aas_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aas_operacion    CHAR (1)           CONSTRAINT DF_aas_operacion DEFAULT 'U' NOT NULL,
     aas_usuario_bd   SYSNAME            CONSTRAINT DF_aas_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aas_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aas_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aas_aud_activo_informacion_sede PRIMARY KEY CLUSTERED (aas_codigo),
     CONSTRAINT FK_aas_activo_informacion_sede FOREIGN KEY (aci_codigo, sus_codigo) REFERENCES sgspi.activo_informacion_sede (aci_codigo, sus_codigo),
-    CONSTRAINT FK_aas_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aas_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aas_operacion CHECK (aas_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aas_aci_codigo_sus_codigo
@@ -2022,11 +2063,13 @@ CREATE TABLE sgspi.aud_activo_informacion_responsable (
     air_tipo_responsabilidad NVARCHAR (20)      NOT NULL,
     aar_esta_activo          BIT                NOT NULL,
     per_codigo               INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aar_operacion            CHAR (1)           CONSTRAINT DF_aar_operacion DEFAULT 'U' NOT NULL,
     aar_usuario_bd           SYSNAME            CONSTRAINT DF_aar_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aar_fecha_cambio         DATETIMEOFFSET (0) CONSTRAINT DF_aar_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aar_aud_activo_informacion_responsable PRIMARY KEY CLUSTERED (aar_codigo),
     CONSTRAINT FK_aar_activo_informacion_responsable FOREIGN KEY (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad) REFERENCES sgspi.activo_informacion_responsable (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad),
-    CONSTRAINT FK_aar_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aar_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aar_operacion CHECK (aar_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aar_aci_codigo_car_codigo_uaa_codigo_air_tipo_responsabilidad
@@ -2046,11 +2089,13 @@ CREATE TABLE sgspi.aud_sistema_informacion_ficha (
     asf_descripcion_general  NVARCHAR (1000)    NOT NULL,
     asf_esta_activo          BIT                NOT NULL,
     per_codigo               INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    asf_operacion            CHAR (1)           CONSTRAINT DF_asf_operacion DEFAULT 'U' NOT NULL,
     asf_usuario_bd           SYSNAME            CONSTRAINT DF_asf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asf_fecha_cambio         DATETIMEOFFSET (0) CONSTRAINT DF_asf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_asf_aud_sistema_informacion_ficha PRIMARY KEY CLUSTERED (asf_codigo),
     CONSTRAINT FK_asf_sistema_informacion_ficha FOREIGN KEY (sif_codigo) REFERENCES sgspi.sistema_informacion_ficha (sif_codigo),
-    CONSTRAINT FK_asf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_asf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_asf_operacion CHECK (asf_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_asf_sif_codigo
@@ -2068,11 +2113,13 @@ CREATE TABLE sgspi.aud_modulo_sistema_informacion (
     ami_usuarios_objetivo NVARCHAR (150)     NULL,
     ami_esta_activo       BIT                NOT NULL,
     per_codigo            INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    ami_operacion         CHAR (1)           CONSTRAINT DF_ami_operacion DEFAULT 'U' NOT NULL,
     ami_usuario_bd        SYSNAME            CONSTRAINT DF_ami_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ami_fecha_cambio      DATETIMEOFFSET (0) CONSTRAINT DF_ami_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_ami_aud_modulo_sistema_informacion PRIMARY KEY CLUSTERED (ami_codigo),
     CONSTRAINT FK_ami_modulo_sistema_informacion FOREIGN KEY (msi_codigo) REFERENCES sgspi.modulo_sistema_informacion (msi_codigo),
-    CONSTRAINT FK_ami_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_ami_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_ami_operacion CHECK (ami_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_ami_msi_codigo
@@ -2089,11 +2136,13 @@ CREATE TABLE sgspi.aud_serie_documental_catalogo (
     aso_nombre_serie NVARCHAR (150)     NOT NULL,
     aso_esta_activa  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aso_operacion    CHAR (1)           CONSTRAINT DF_aso_operacion DEFAULT 'U' NOT NULL,
     aso_usuario_bd   SYSNAME            CONSTRAINT DF_aso_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aso_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aso_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aso_aud_serie_documental_catalogo PRIMARY KEY CLUSTERED (aso_codigo),
     CONSTRAINT FK_aso_serie_documental_catalogo FOREIGN KEY (sdo_codigo) REFERENCES sgspi.serie_documental_catalogo (sdo_codigo),
-    CONSTRAINT FK_aso_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aso_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aso_operacion CHECK (aso_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aso_sdo_codigo
@@ -2111,11 +2160,13 @@ CREATE TABLE sgspi.aud_subserie_documental_catalogo (
     asd_nombre_subserie NVARCHAR (200)     NOT NULL,
     asd_esta_activa     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    asd_operacion       CHAR (1)           CONSTRAINT DF_asd_operacion DEFAULT 'U' NOT NULL,
     asd_usuario_bd      SYSNAME            CONSTRAINT DF_asd_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asd_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_asd_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_asd_aud_subserie_documental_catalogo PRIMARY KEY CLUSTERED (asd_codigo),
     CONSTRAINT FK_asd_subserie_documental_catalogo FOREIGN KEY (sbd_codigo) REFERENCES sgspi.subserie_documental_catalogo (sbd_codigo),
-    CONSTRAINT FK_asd_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_asd_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_asd_operacion CHECK (asd_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_asd_sbd_codigo
@@ -2134,11 +2185,13 @@ CREATE TABLE sgspi.aud_unidad_productora_cuadro_clasificacion_documental (
     auc_nombre_unidad       NVARCHAR (150)     NOT NULL,
     auc_esta_activa         BIT                NOT NULL,
     per_codigo              INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    auc_operacion           CHAR (1)           CONSTRAINT DF_auc_operacion DEFAULT 'U' NOT NULL,
     auc_usuario_bd          SYSNAME            CONSTRAINT DF_auc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     auc_fecha_cambio        DATETIMEOFFSET (0) CONSTRAINT DF_auc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_auc_aud_unidad_productora_cuadro_clasificacion_documental PRIMARY KEY CLUSTERED (auc_codigo),
     CONSTRAINT FK_auc_unidad_productora_cuadro_clasificacion_documental FOREIGN KEY (upc_codigo) REFERENCES sgspi.unidad_productora_cuadro_clasificacion_documental (upc_codigo),
-    CONSTRAINT FK_auc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_auc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_auc_operacion CHECK (auc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_auc_upc_codigo
@@ -2155,11 +2208,13 @@ CREATE TABLE sgspi.aud_periodicidad_catalogo (
     apc_orden        TINYINT            NOT NULL,
     apc_esta_activa  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    apc_operacion    CHAR (1)           CONSTRAINT DF_apc_operacion DEFAULT 'U' NOT NULL,
     apc_usuario_bd   SYSNAME            CONSTRAINT DF_apc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_apc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_apc_aud_periodicidad_catalogo PRIMARY KEY CLUSTERED (apc_codigo),
     CONSTRAINT FK_apc_periodicidad_catalogo FOREIGN KEY (pdc_codigo) REFERENCES sgspi.periodicidad_catalogo (pdc_codigo),
-    CONSTRAINT FK_apc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_apc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_apc_operacion CHECK (apc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_apc_pdc_codigo
@@ -2176,11 +2231,13 @@ CREATE TABLE sgspi.aud_estado_publicacion_catalogo (
     aep_descripcion  NVARCHAR (255)     NULL,
     aep_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aep_operacion    CHAR (1)           CONSTRAINT DF_aep_operacion DEFAULT 'U' NOT NULL,
     aep_usuario_bd   SYSNAME            CONSTRAINT DF_aep_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aep_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aep_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aep_aud_estado_publicacion_catalogo PRIMARY KEY CLUSTERED (aep_codigo),
     CONSTRAINT FK_aep_estado_publicacion_catalogo FOREIGN KEY (epc_codigo) REFERENCES sgspi.estado_publicacion_catalogo (epc_codigo),
-    CONSTRAINT FK_aep_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aep_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aep_operacion CHECK (aep_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aep_epc_codigo
@@ -2196,11 +2253,13 @@ CREATE TABLE sgspi.aud_soporte_registro_catalogo (
     asc_nombre       NVARCHAR (30)      NOT NULL,
     asc_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    asc_operacion    CHAR (1)           CONSTRAINT DF_asc_operacion DEFAULT 'U' NOT NULL,
     asc_usuario_bd   SYSNAME            CONSTRAINT DF_asc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_asc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_asc_aud_soporte_registro_catalogo PRIMARY KEY CLUSTERED (asc_codigo),
     CONSTRAINT FK_asc_soporte_registro_catalogo FOREIGN KEY (src_codigo) REFERENCES sgspi.soporte_registro_catalogo (src_codigo),
-    CONSTRAINT FK_asc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_asc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_asc_operacion CHECK (asc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_asc_src_codigo
@@ -2216,11 +2275,13 @@ CREATE TABLE sgspi.aud_medio_conservacion_catalogo (
     amc_nombre       NVARCHAR (30)      NOT NULL,
     amc_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    amc_operacion    CHAR (1)           CONSTRAINT DF_amc_operacion DEFAULT 'U' NOT NULL,
     amc_usuario_bd   SYSNAME            CONSTRAINT DF_amc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     amc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_amc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_amc_aud_medio_conservacion_catalogo PRIMARY KEY CLUSTERED (amc_codigo),
     CONSTRAINT FK_amc_medio_conservacion_catalogo FOREIGN KEY (mcc_codigo) REFERENCES sgspi.medio_conservacion_catalogo (mcc_codigo),
-    CONSTRAINT FK_amc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_amc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_amc_operacion CHECK (amc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_amc_mcc_codigo
@@ -2237,11 +2298,13 @@ CREATE TABLE sgspi.aud_idioma_catalogo (
     aii_nombre       NVARCHAR (50)      NOT NULL,
     aii_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aii_operacion    CHAR (1)           CONSTRAINT DF_aii_operacion DEFAULT 'U' NOT NULL,
     aii_usuario_bd   SYSNAME            CONSTRAINT DF_aii_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aii_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aii_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aii_aud_idioma_catalogo PRIMARY KEY CLUSTERED (aii_codigo),
     CONSTRAINT FK_aii_idioma_catalogo FOREIGN KEY (idi_codigo) REFERENCES sgspi.idioma_catalogo (idi_codigo),
-    CONSTRAINT FK_aii_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aii_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aii_operacion CHECK (aii_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aii_idi_codigo
@@ -2257,11 +2320,13 @@ CREATE TABLE sgspi.aud_formato_archivo_catalogo (
     afa_nombre       NVARCHAR (60)      NOT NULL,
     afa_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    afa_operacion    CHAR (1)           CONSTRAINT DF_afa_operacion DEFAULT 'U' NOT NULL,
     afa_usuario_bd   SYSNAME            CONSTRAINT DF_afa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     afa_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_afa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_afa_aud_formato_archivo_catalogo PRIMARY KEY CLUSTERED (afa_codigo),
     CONSTRAINT FK_afa_formato_archivo_catalogo FOREIGN KEY (fac_codigo) REFERENCES sgspi.formato_archivo_catalogo (fac_codigo),
-    CONSTRAINT FK_afa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_afa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_afa_operacion CHECK (afa_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_afa_fac_codigo
@@ -2286,11 +2351,13 @@ CREATE TABLE sgspi.aud_activo_documental (
     aao_fecha_actualizacion           DATETIMEOFFSET (0) NOT NULL,
     aao_esta_activo                   BIT                NOT NULL,
     per_codigo                        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aao_operacion                     CHAR (1)           CONSTRAINT DF_aao_operacion DEFAULT 'U' NOT NULL,
     aao_usuario_bd                    SYSNAME            CONSTRAINT DF_aao_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aao_fecha_cambio                  DATETIMEOFFSET (0) CONSTRAINT DF_aao_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aao_aud_activo_documental PRIMARY KEY CLUSTERED (aao_codigo),
     CONSTRAINT FK_aao_activo_documental FOREIGN KEY (ado_codigo) REFERENCES sgspi.activo_documental (ado_codigo),
-    CONSTRAINT FK_aao_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aao_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aao_operacion CHECK (aao_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aao_ado_codigo
@@ -2306,11 +2373,13 @@ CREATE TABLE sgspi.aud_activo_documental_soporte_registro (
     src_codigo       SMALLINT           NOT NULL,
     aad_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aad_operacion    CHAR (1)           CONSTRAINT DF_aad_operacion DEFAULT 'U' NOT NULL,
     aad_usuario_bd   SYSNAME            CONSTRAINT DF_aad_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aad_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aad_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aad_aud_activo_documental_soporte_registro PRIMARY KEY CLUSTERED (aad_codigo),
     CONSTRAINT FK_aad_activo_documental_soporte_registro FOREIGN KEY (ado_codigo, src_codigo) REFERENCES sgspi.activo_documental_soporte_registro (ado_codigo, src_codigo),
-    CONSTRAINT FK_aad_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aad_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aad_operacion CHECK (aad_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aad_ado_codigo_src_codigo
@@ -2326,11 +2395,13 @@ CREATE TABLE sgspi.aud_activo_documental_medio_conservacion (
     mcc_codigo       SMALLINT           NOT NULL,
     aam_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aam_operacion    CHAR (1)           CONSTRAINT DF_aam_operacion DEFAULT 'U' NOT NULL,
     aam_usuario_bd   SYSNAME            CONSTRAINT DF_aam_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aam_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aam_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aam_aud_activo_documental_medio_conservacion PRIMARY KEY CLUSTERED (aam_codigo),
     CONSTRAINT FK_aam_activo_documental_medio_conservacion FOREIGN KEY (ado_codigo, mcc_codigo) REFERENCES sgspi.activo_documental_medio_conservacion (ado_codigo, mcc_codigo),
-    CONSTRAINT FK_aam_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aam_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aam_operacion CHECK (aam_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aam_ado_codigo_mcc_codigo
@@ -2346,11 +2417,13 @@ CREATE TABLE sgspi.aud_activo_documental_idioma (
     idi_codigo       SMALLINT           NOT NULL,
     aid_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aid_operacion    CHAR (1)           CONSTRAINT DF_aid_operacion DEFAULT 'U' NOT NULL,
     aid_usuario_bd   SYSNAME            CONSTRAINT DF_aid_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aid_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aid_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aid_aud_activo_documental_idioma PRIMARY KEY CLUSTERED (aid_codigo),
     CONSTRAINT FK_aid_activo_documental_idioma FOREIGN KEY (ado_codigo, idi_codigo) REFERENCES sgspi.activo_documental_idioma (ado_codigo, idi_codigo),
-    CONSTRAINT FK_aid_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aid_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aid_operacion CHECK (aid_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aid_ado_codigo_idi_codigo
@@ -2366,11 +2439,13 @@ CREATE TABLE sgspi.aud_activo_documental_formato_archivo (
     fac_codigo       SMALLINT           NOT NULL,
     afd_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    afd_operacion    CHAR (1)           CONSTRAINT DF_afd_operacion DEFAULT 'U' NOT NULL,
     afd_usuario_bd   SYSNAME            CONSTRAINT DF_afd_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     afd_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_afd_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_afd_aud_activo_documental_formato_archivo PRIMARY KEY CLUSTERED (afd_codigo),
     CONSTRAINT FK_afd_activo_documental_formato_archivo FOREIGN KEY (ado_codigo, fac_codigo) REFERENCES sgspi.activo_documental_formato_archivo (ado_codigo, fac_codigo),
-    CONSTRAINT FK_afd_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_afd_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_afd_operacion CHECK (afd_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_afd_ado_codigo_fac_codigo
@@ -2386,11 +2461,13 @@ CREATE TABLE sgspi.aud_activo_documental_unidad_productora (
     upc_codigo       INT                NOT NULL,
     aau_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aau_operacion    CHAR (1)           CONSTRAINT DF_aau_operacion DEFAULT 'U' NOT NULL,
     aau_usuario_bd   SYSNAME            CONSTRAINT DF_aau_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aau_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aau_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aau_aud_activo_documental_unidad_productora PRIMARY KEY CLUSTERED (aau_codigo),
     CONSTRAINT FK_aau_activo_documental_unidad_productora FOREIGN KEY (ado_codigo, upc_codigo) REFERENCES sgspi.activo_documental_unidad_productora (ado_codigo, upc_codigo),
-    CONSTRAINT FK_aau_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aau_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aau_operacion CHECK (aau_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aau_ado_codigo_upc_codigo
@@ -2409,11 +2486,13 @@ CREATE TABLE sgspi.aud_escala_probabilidad (
     aer_frecuencia_referencia NVARCHAR (100)     NOT NULL,
     aer_esta_activa           BIT                NOT NULL,
     per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aer_operacion             CHAR (1)           CONSTRAINT DF_aer_operacion DEFAULT 'U' NOT NULL,
     aer_usuario_bd            SYSNAME            CONSTRAINT DF_aer_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aer_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_aer_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aer_aud_escala_probabilidad PRIMARY KEY CLUSTERED (aer_codigo),
     CONSTRAINT FK_aer_escala_probabilidad FOREIGN KEY (epr_codigo) REFERENCES sgspi.escala_probabilidad (epr_codigo),
-    CONSTRAINT FK_aer_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aer_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aer_operacion CHECK (aer_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aer_epr_codigo
@@ -2432,11 +2511,13 @@ CREATE TABLE sgspi.aud_escala_impacto (
     aem_descripcion_operativa      NVARCHAR (1000)    NULL,
     aem_esta_activa                BIT                NOT NULL,
     per_codigo                     INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aem_operacion                  CHAR (1)           CONSTRAINT DF_aem_operacion DEFAULT 'U' NOT NULL,
     aem_usuario_bd                 SYSNAME            CONSTRAINT DF_aem_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aem_fecha_cambio               DATETIMEOFFSET (0) CONSTRAINT DF_aem_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aem_aud_escala_impacto PRIMARY KEY CLUSTERED (aem_codigo),
     CONSTRAINT FK_aem_escala_impacto FOREIGN KEY (eim_codigo) REFERENCES sgspi.escala_impacto (eim_codigo),
-    CONSTRAINT FK_aem_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aem_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aem_operacion CHECK (aem_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aem_eim_codigo
@@ -2453,11 +2534,13 @@ CREATE TABLE sgspi.aud_zona_riesgo_catalogo (
     azc_orden        TINYINT            NOT NULL,
     azc_esta_activa  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    azc_operacion    CHAR (1)           CONSTRAINT DF_azc_operacion DEFAULT 'U' NOT NULL,
     azc_usuario_bd   SYSNAME            CONSTRAINT DF_azc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     azc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_azc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_azc_aud_zona_riesgo_catalogo PRIMARY KEY CLUSTERED (azc_codigo),
     CONSTRAINT FK_azc_zona_riesgo_catalogo FOREIGN KEY (zrc_codigo) REFERENCES sgspi.zona_riesgo_catalogo (zrc_codigo),
-    CONSTRAINT FK_azc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_azc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_azc_operacion CHECK (azc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_azc_zrc_codigo
@@ -2477,11 +2560,13 @@ CREATE TABLE sgspi.aud_matriz_valoracion_riesgo (
     amr_requiere_aprobacion_comite        BIT                NOT NULL,
     amr_esta_activa                       BIT                NOT NULL,
     per_codigo                            INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    amr_operacion                         CHAR (1)           CONSTRAINT DF_amr_operacion DEFAULT 'U' NOT NULL,
     amr_usuario_bd                        SYSNAME            CONSTRAINT DF_amr_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     amr_fecha_cambio                      DATETIMEOFFSET (0) CONSTRAINT DF_amr_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_amr_aud_matriz_valoracion_riesgo PRIMARY KEY CLUSTERED (amr_codigo),
     CONSTRAINT FK_amr_matriz_valoracion_riesgo FOREIGN KEY (epr_codigo, eim_codigo) REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
-    CONSTRAINT FK_amr_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_amr_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_amr_operacion CHECK (amr_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_amr_epr_codigo_eim_codigo
@@ -2516,11 +2601,13 @@ CREATE TABLE sgspi.aud_evento_incertidumbre_activo (
     aea_fecha_actualizacion      DATETIMEOFFSET (0) NOT NULL,
     aea_esta_activo              BIT                NOT NULL,
     per_codigo                   INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aea_operacion                CHAR (1)           CONSTRAINT DF_aea_operacion DEFAULT 'U' NOT NULL,
     aea_usuario_bd               SYSNAME            CONSTRAINT DF_aea_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aea_fecha_cambio             DATETIMEOFFSET (0) CONSTRAINT DF_aea_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aea_aud_evento_incertidumbre_activo PRIMARY KEY CLUSTERED (aea_codigo),
     CONSTRAINT FK_aea_evento_incertidumbre_activo FOREIGN KEY (eia_codigo) REFERENCES sgspi.evento_incertidumbre_activo (eia_codigo),
-    CONSTRAINT FK_aea_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aea_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aea_operacion CHECK (aea_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aea_eia_codigo
@@ -2538,11 +2625,13 @@ CREATE TABLE sgspi.aud_estrategia_tratamiento_catalogo (
     aet_descripcion          NVARCHAR (255)     NULL,
     aet_esta_activa          BIT                NOT NULL,
     per_codigo               INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aet_operacion            CHAR (1)           CONSTRAINT DF_aet_operacion DEFAULT 'U' NOT NULL,
     aet_usuario_bd           SYSNAME            CONSTRAINT DF_aet_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aet_fecha_cambio         DATETIMEOFFSET (0) CONSTRAINT DF_aet_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aet_aud_estrategia_tratamiento_catalogo PRIMARY KEY CLUSTERED (aet_codigo),
     CONSTRAINT FK_aet_estrategia_tratamiento_catalogo FOREIGN KEY (etc_codigo) REFERENCES sgspi.estrategia_tratamiento_catalogo (etc_codigo),
-    CONSTRAINT FK_aet_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aet_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aet_operacion CHECK (aet_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aet_etc_codigo
@@ -2578,11 +2667,13 @@ CREATE TABLE sgspi.aud_plan_tratamiento (
     apt_fecha_actualizacion        DATETIMEOFFSET (0) NOT NULL,
     apt_esta_activo                BIT                NOT NULL,
     per_codigo                     INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    apt_operacion                  CHAR (1)           CONSTRAINT DF_apt_operacion DEFAULT 'U' NOT NULL,
     apt_usuario_bd                 SYSNAME            CONSTRAINT DF_apt_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apt_fecha_cambio               DATETIMEOFFSET (0) CONSTRAINT DF_apt_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_apt_aud_plan_tratamiento PRIMARY KEY CLUSTERED (apt_codigo),
     CONSTRAINT FK_apt_plan_tratamiento FOREIGN KEY (plt_codigo) REFERENCES sgspi.plan_tratamiento (plt_codigo),
-    CONSTRAINT FK_apt_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_apt_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_apt_operacion CHECK (apt_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_apt_plt_codigo
@@ -2606,11 +2697,13 @@ CREATE TABLE sgspi.aud_actividad_tratamiento (
     aat_fecha_actualizacion   DATETIMEOFFSET (0) NOT NULL,
     aat_esta_activa           BIT                NOT NULL,
     per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aat_operacion             CHAR (1)           CONSTRAINT DF_aat_operacion DEFAULT 'U' NOT NULL,
     aat_usuario_bd            SYSNAME            CONSTRAINT DF_aat_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aat_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_aat_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aat_aud_actividad_tratamiento PRIMARY KEY CLUSTERED (aat_codigo),
     CONSTRAINT FK_aat_actividad_tratamiento FOREIGN KEY (act_codigo) REFERENCES sgspi.actividad_tratamiento (act_codigo),
-    CONSTRAINT FK_aat_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aat_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aat_operacion CHECK (aat_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aat_act_codigo
@@ -2633,11 +2726,13 @@ CREATE TABLE sgspi.aud_seguimiento_actividad (
     asa_hash_sha256_evidencia        CHAR (64)          NULL,
     asa_esta_activo                  BIT                NOT NULL,
     per_codigo                       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    asa_operacion                    CHAR (1)           CONSTRAINT DF_asa_operacion DEFAULT 'U' NOT NULL,
     asa_usuario_bd                   SYSNAME            CONSTRAINT DF_asa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asa_fecha_cambio                 DATETIMEOFFSET (0) CONSTRAINT DF_asa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_asa_aud_seguimiento_actividad PRIMARY KEY CLUSTERED (asa_codigo),
     CONSTRAINT FK_asa_seguimiento_actividad FOREIGN KEY (sga_codigo) REFERENCES sgspi.seguimiento_actividad (sga_codigo),
-    CONSTRAINT FK_asa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_asa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_asa_operacion CHECK (asa_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_asa_sga_codigo
@@ -2657,11 +2752,13 @@ CREATE TABLE sgspi.aud_estandar_normativo_catalogo (
     aen_anio_edicion  SMALLINT           NULL,
     aen_esta_activo   BIT                NOT NULL,
     per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aen_operacion     CHAR (1)           CONSTRAINT DF_aen_operacion DEFAULT 'U' NOT NULL,
     aen_usuario_bd    SYSNAME            CONSTRAINT DF_aen_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aen_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_aen_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aen_aud_estandar_normativo_catalogo PRIMARY KEY CLUSTERED (aen_codigo),
     CONSTRAINT FK_aen_estandar_normativo_catalogo FOREIGN KEY (enc_codigo) REFERENCES sgspi.estandar_normativo_catalogo (enc_codigo),
-    CONSTRAINT FK_aen_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aen_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aen_operacion CHECK (aen_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aen_enc_codigo
@@ -2681,11 +2778,13 @@ CREATE TABLE sgspi.aud_control_referencia_normativa (
     acn_objetivo_requisito    NVARCHAR (1500)    NOT NULL,
     acn_esta_activo           BIT                NOT NULL,
     per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    acn_operacion             CHAR (1)           CONSTRAINT DF_acn_operacion DEFAULT 'U' NOT NULL,
     acn_usuario_bd            SYSNAME            CONSTRAINT DF_acn_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     acn_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_acn_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_acn_aud_control_referencia_normativa PRIMARY KEY CLUSTERED (acn_codigo),
     CONSTRAINT FK_acn_control_referencia_normativa FOREIGN KEY (crn_codigo) REFERENCES sgspi.control_referencia_normativa (crn_codigo),
-    CONSTRAINT FK_acn_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_acn_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_acn_operacion CHECK (acn_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_acn_crn_codigo
@@ -2702,11 +2801,13 @@ CREATE TABLE sgspi.aud_atributo_control_catalogo (
     acc_valor         NVARCHAR (60)      NOT NULL,
     acc_esta_activo   BIT                NOT NULL,
     per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    acc_operacion     CHAR (1)           CONSTRAINT DF_acc_operacion DEFAULT 'U' NOT NULL,
     acc_usuario_bd    SYSNAME            CONSTRAINT DF_acc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     acc_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_acc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_acc_aud_atributo_control_catalogo PRIMARY KEY CLUSTERED (acc_codigo),
     CONSTRAINT FK_acc_atributo_control_catalogo FOREIGN KEY (aac_codigo) REFERENCES sgspi.atributo_control_catalogo (aac_codigo),
-    CONSTRAINT FK_acc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_acc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_acc_operacion CHECK (acc_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_acc_aac_codigo
@@ -2722,11 +2823,13 @@ CREATE TABLE sgspi.aud_control_referencia_normativa_atributo (
     aac_codigo       SMALLINT           NOT NULL,
     aca_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aca_operacion    CHAR (1)           CONSTRAINT DF_aca_operacion DEFAULT 'U' NOT NULL,
     aca_usuario_bd   SYSNAME            CONSTRAINT DF_aca_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aca_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aca_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aca_aud_control_referencia_normativa_atributo PRIMARY KEY CLUSTERED (aca_codigo),
     CONSTRAINT FK_aca_control_referencia_normativa_atributo FOREIGN KEY (crn_codigo, aac_codigo) REFERENCES sgspi.control_referencia_normativa_atributo (crn_codigo, aac_codigo),
-    CONSTRAINT FK_aca_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aca_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aca_operacion CHECK (aca_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aca_crn_codigo_aac_codigo
@@ -2742,11 +2845,13 @@ CREATE TABLE sgspi.aud_plan_tratamiento_control_referencia_normativa (
     crn_codigo       SMALLINT           NOT NULL,
     acp_esta_activo  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    acp_operacion    CHAR (1)           CONSTRAINT DF_acp_operacion DEFAULT 'U' NOT NULL,
     acp_usuario_bd   SYSNAME            CONSTRAINT DF_acp_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     acp_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_acp_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_acp_aud_plan_tratamiento_control_referencia_normativa PRIMARY KEY CLUSTERED (acp_codigo),
     CONSTRAINT FK_acp_plan_tratamiento_control_referencia_normativa FOREIGN KEY (plt_codigo, crn_codigo) REFERENCES sgspi.plan_tratamiento_control_referencia_normativa (plt_codigo, crn_codigo),
-    CONSTRAINT FK_acp_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_acp_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_acp_operacion CHECK (acp_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_acp_plt_codigo_crn_codigo
@@ -2772,11 +2877,13 @@ CREATE TABLE sgspi.aud_evaluacion_aplicabilidad_control (
     aae_fecha_actualizacion         DATETIMEOFFSET (0) NOT NULL,
     aae_esta_activa                 BIT                NOT NULL,
     per_codigo                      INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    aae_operacion                   CHAR (1)           CONSTRAINT DF_aae_operacion DEFAULT 'U' NOT NULL,
     aae_usuario_bd                  SYSNAME            CONSTRAINT DF_aae_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aae_fecha_cambio                DATETIMEOFFSET (0) CONSTRAINT DF_aae_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aae_aud_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (aae_codigo),
     CONSTRAINT FK_aae_evaluacion_aplicabilidad_control FOREIGN KEY (eac_codigo) REFERENCES sgspi.evaluacion_aplicabilidad_control (eac_codigo),
-    CONSTRAINT FK_aae_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_aae_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_aae_operacion CHECK (aae_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_aae_eac_codigo
@@ -2913,7 +3020,7 @@ GO
                                                                     edición en estados con efc_permite_edicion = 1 (50011); (c) mantiene <acr>_fecha_actualizacion.
                                                                     (d) en acf, rpi, aci y eia exigen la persona de la sesión (50017), que sea el creador de lo nuevo (50019) y firman con ella (AP-03);
                                                                     (e) en acf, rpi, ado, eia y eac bloquean altas o traslados hacia una vigencia CERRADA o HISTORICA (50022, D7);
-                                                                    (f) archivan la versión anterior en aud_<tabla> (AP-01); en las tablas sin estos triggers lo hace TR_<acr>_auditoria (5.10.9c).
+                                                                    (f) archivan las altas ('I') y la versión anterior ('U') en aud_<tabla> (AP-01); en las tablas sin estos triggers lo hace TR_<acr>_auditoria (5.10.9c).
                                                                     ==================================================================================================*/
 -- 5.10.1 Trigger sobre [sgspi].[analisis_contexto_factor] ([acf])
 CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
@@ -3075,6 +3182,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                        aaf_fecha_actualizacion,
                        aaf_esta_activo,
                        per_codigo,
+                       aaf_operacion,
                        aaf_usuario_bd,
                        aaf_fecha_cambio
                    )
@@ -3094,6 +3202,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                           d.acf_fecha_actualizacion,
                           d.acf_esta_activo,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -3148,6 +3257,48 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                    WHERE  d.acf_estado_registro <> i.acf_estado_registro
                           AND i.acf_estado_registro = N'VIGENTE';
                END
+           ELSE
+               INSERT INTO sgspi.aud_analisis_contexto_factor (
+                   acf_codigo,
+                   pev_codigo,
+                   pri_codigo,
+                   fec_codigo,
+                   aaf_naturaleza_factor,
+                   aaf_numero_factor,
+                   aaf_descripcion_situacion,
+                   aaf_valor_prioridad,
+                   aaf_impacto_sistema_gestion,
+                   aaf_accion_propuesta,
+                   aaf_estado_registro,
+                   per_codigo_creador,
+                   per_codigo_aprobador,
+                   aaf_fecha_actualizacion,
+                   aaf_esta_activo,
+                   per_codigo,
+                   aaf_operacion,
+                   aaf_usuario_bd,
+                   aaf_fecha_cambio
+               )
+               SELECT i.acf_codigo,
+                      i.pev_codigo,
+                      i.pri_codigo,
+                      i.fec_codigo,
+                      i.acf_naturaleza_factor,
+                      i.acf_numero_factor,
+                      i.acf_descripcion_situacion,
+                      i.acf_valor_prioridad,
+                      i.acf_impacto_sistema_gestion,
+                      i.acf_accion_propuesta,
+                      i.acf_estado_registro,
+                      i.per_codigo_creador,
+                      i.per_codigo_aprobador,
+                      i.acf_fecha_actualizacion,
+                      i.acf_esta_activo,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -3300,6 +3451,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                        ari_fecha_actualizacion,
                        ari_esta_activo,
                        per_codigo,
+                       ari_operacion,
                        ari_usuario_bd,
                        ari_fecha_cambio
                    )
@@ -3317,6 +3469,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                           d.rpi_fecha_actualizacion,
                           d.rpi_esta_activo,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -3367,6 +3520,44 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                    WHERE  d.rpi_estado_registro <> i.rpi_estado_registro
                           AND i.rpi_estado_registro = N'VIGENTE';
                END
+           ELSE
+               INSERT INTO sgspi.aud_requisito_parte_interesada (
+                   rpi_codigo,
+                   pev_codigo,
+                   pai_codigo,
+                   ari_necesidad_expectativa,
+                   ari_valor_poder,
+                   ari_valor_interes,
+                   ari_valor_cumplimiento,
+                   ari_mecanismo_seguimiento,
+                   ari_estado_registro,
+                   per_codigo_creador,
+                   per_codigo_aprobador,
+                   ari_fecha_actualizacion,
+                   ari_esta_activo,
+                   per_codigo,
+                   ari_operacion,
+                   ari_usuario_bd,
+                   ari_fecha_cambio
+               )
+               SELECT i.rpi_codigo,
+                      i.pev_codigo,
+                      i.pai_codigo,
+                      i.rpi_necesidad_expectativa,
+                      i.rpi_valor_poder,
+                      i.rpi_valor_interes,
+                      i.rpi_valor_cumplimiento,
+                      i.rpi_mecanismo_seguimiento,
+                      i.rpi_estado_registro,
+                      i.per_codigo_creador,
+                      i.per_codigo_aprobador,
+                      i.rpi_fecha_actualizacion,
+                      i.rpi_esta_activo,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -3612,6 +3803,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                        aai_fecha_actualizacion,
                        aai_esta_activo,
                        per_codigo,
+                       aai_operacion,
                        aai_usuario_bd,
                        aai_fecha_cambio
                    )
@@ -3649,6 +3841,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                           d.aci_fecha_actualizacion,
                           d.aci_esta_activo,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -3751,6 +3944,84 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                    WHERE  d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
                           AND i.aci_estado_registro = N'EN_REVISION_SGSPI';
                END
+           ELSE
+               INSERT INTO sgspi.aud_activo_informacion (
+                   aci_codigo,
+                   aai_codigo_inventario,
+                   aai_nombre_activo,
+                   aai_descripcion_detallada,
+                   tac_codigo,
+                   uaa_codigo,
+                   esp_codigo,
+                   aai_es_transversal_sedes,
+                   aai_cantidad_unidades,
+                   aai_clasificacion_transparencia,
+                   cet_codigo,
+                   aai_alcance_excepcion,
+                   aai_fundamento_constitucional_legal,
+                   aai_fundamento_juridico_excepcion,
+                   aai_fecha_clasificacion_reserva,
+                   aai_es_reserva_indefinida,
+                   aai_anios_plazo_reserva,
+                   aai_contiene_datos_personales,
+                   aai_contiene_datos_menores,
+                   aai_categoria_dato_personal,
+                   aai_finalidad_recoleccion_pii,
+                   aai_existe_autorizacion_pii,
+                   aai_valor_confidencialidad,
+                   aai_valor_integridad,
+                   aai_valor_disponibilidad,
+                   aai_supera_umbral_social_icc,
+                   aai_supera_umbral_economico_icc,
+                   aai_supera_umbral_ambiental_icc,
+                   aai_estado_registro,
+                   per_codigo_creador,
+                   per_codigo_aprobador,
+                   aai_fecha_actualizacion,
+                   aai_esta_activo,
+                   per_codigo,
+                   aai_operacion,
+                   aai_usuario_bd,
+                   aai_fecha_cambio
+               )
+               SELECT i.aci_codigo,
+                      i.aci_codigo_inventario,
+                      i.aci_nombre_activo,
+                      i.aci_descripcion_detallada,
+                      i.tac_codigo,
+                      i.uaa_codigo,
+                      i.esp_codigo,
+                      i.aci_es_transversal_sedes,
+                      i.aci_cantidad_unidades,
+                      i.aci_clasificacion_transparencia,
+                      i.cet_codigo,
+                      i.aci_alcance_excepcion,
+                      i.aci_fundamento_constitucional_legal,
+                      i.aci_fundamento_juridico_excepcion,
+                      i.aci_fecha_clasificacion_reserva,
+                      i.aci_es_reserva_indefinida,
+                      i.aci_anios_plazo_reserva,
+                      i.aci_contiene_datos_personales,
+                      i.aci_contiene_datos_menores,
+                      i.aci_categoria_dato_personal,
+                      i.aci_finalidad_recoleccion_pii,
+                      i.aci_existe_autorizacion_pii,
+                      i.aci_valor_confidencialidad,
+                      i.aci_valor_integridad,
+                      i.aci_valor_disponibilidad,
+                      i.aci_supera_umbral_social_icc,
+                      i.aci_supera_umbral_economico_icc,
+                      i.aci_supera_umbral_ambiental_icc,
+                      i.aci_estado_registro,
+                      i.per_codigo_creador,
+                      i.per_codigo_aprobador,
+                      i.aci_fecha_actualizacion,
+                      i.aci_esta_activo,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -3864,6 +4135,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                        aao_fecha_actualizacion,
                        aao_esta_activo,
                        per_codigo,
+                       aao_operacion,
                        aao_usuario_bd,
                        aao_fecha_cambio
                    )
@@ -3880,6 +4152,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                           d.ado_fecha_actualizacion,
                           d.ado_esta_activo,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -3917,6 +4190,42 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                               inserted AS i
                               ON i.ado_codigo = t.ado_codigo;
                END
+           ELSE
+               INSERT INTO sgspi.aud_activo_documental (
+                   ado_codigo,
+                   pev_codigo,
+                   sdo_codigo,
+                   sbd_codigo,
+                   pdc_codigo,
+                   aao_fecha_ingreso_tabla_retencion,
+                   aao_fecha_ingreso_archivo,
+                   epc_codigo,
+                   aao_lugar_consulta_ubicacion,
+                   per_codigo_revisor_archivo,
+                   aao_fecha_actualizacion,
+                   aao_esta_activo,
+                   per_codigo,
+                   aao_operacion,
+                   aao_usuario_bd,
+                   aao_fecha_cambio
+               )
+               SELECT i.ado_codigo,
+                      i.pev_codigo,
+                      i.sdo_codigo,
+                      i.sbd_codigo,
+                      i.pdc_codigo,
+                      i.ado_fecha_ingreso_tabla_retencion,
+                      i.ado_fecha_ingreso_archivo,
+                      i.epc_codigo,
+                      i.ado_lugar_consulta_ubicacion,
+                      i.per_codigo_revisor_archivo,
+                      i.ado_fecha_actualizacion,
+                      i.ado_esta_activo,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -4220,6 +4529,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                        aea_fecha_actualizacion,
                        aea_esta_activo,
                        per_codigo,
+                       aea_operacion,
                        aea_usuario_bd,
                        aea_fecha_cambio
                    )
@@ -4246,6 +4556,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                           d.eia_fecha_actualizacion,
                           d.eia_esta_activo,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -4323,6 +4634,62 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                           OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
                               AND i.eia_estado_registro = N'APROBADO_PLANIFICADO');
                END
+           ELSE
+               INSERT INTO sgspi.aud_evento_incertidumbre_activo (
+                   eia_codigo,
+                   pev_codigo,
+                   aea_identificador_evento,
+                   aea_naturaleza_evento,
+                   pri_codigo,
+                   aci_codigo_primario,
+                   aci_codigo_soporte,
+                   tac_codigo_componente,
+                   aea_fuente_generadora,
+                   aea_controles_existentes,
+                   aea_condicion_vulnerabilidad,
+                   aea_efecto_consecuencia,
+                   aea_escenario_operacional,
+                   epr_codigo_inherente,
+                   eim_codigo_inherente,
+                   aea_estado_registro,
+                   per_codigo_creador,
+                   per_codigo_validador_lider,
+                   per_codigo_revisor_sgspi,
+                   per_codigo_aprobador_comite,
+                   aea_fecha_actualizacion,
+                   aea_esta_activo,
+                   per_codigo,
+                   aea_operacion,
+                   aea_usuario_bd,
+                   aea_fecha_cambio
+               )
+               SELECT i.eia_codigo,
+                      i.pev_codigo,
+                      i.eia_identificador_evento,
+                      i.eia_naturaleza_evento,
+                      i.pri_codigo,
+                      i.aci_codigo_primario,
+                      i.aci_codigo_soporte,
+                      i.tac_codigo_componente,
+                      i.eia_fuente_generadora,
+                      i.eia_controles_existentes,
+                      i.eia_condicion_vulnerabilidad,
+                      i.eia_efecto_consecuencia,
+                      i.eia_escenario_operacional,
+                      i.epr_codigo_inherente,
+                      i.eim_codigo_inherente,
+                      i.eia_estado_registro,
+                      i.per_codigo_creador,
+                      i.per_codigo_validador_lider,
+                      i.per_codigo_revisor_sgspi,
+                      i.per_codigo_aprobador_comite,
+                      i.eia_fecha_actualizacion,
+                      i.eia_esta_activo,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -4456,6 +4823,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                        apt_fecha_actualizacion,
                        apt_esta_activo,
                        per_codigo,
+                       apt_operacion,
                        apt_usuario_bd,
                        apt_fecha_cambio
                    )
@@ -4483,6 +4851,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                           d.plt_fecha_actualizacion,
                           d.plt_esta_activo,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -4542,6 +4911,64 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                               inserted AS i
                               ON i.plt_codigo = t.plt_codigo;
                END
+           ELSE
+               INSERT INTO sgspi.aud_plan_tratamiento (
+                   plt_codigo,
+                   eia_codigo,
+                   apt_naturaleza_evento,
+                   etc_codigo,
+                   apt_justificacion_estrategia,
+                   epr_codigo_residual_meta,
+                   eim_codigo_residual_meta,
+                   apt_fecha_inicio,
+                   apt_fecha_fin,
+                   apt_recursos_humanos_tecnicos,
+                   apt_recursos_economicos_desc,
+                   apt_presupuesto_estimado_cop,
+                   apt_restricciones_limitaciones,
+                   apt_nombre_indicador_kpi,
+                   apt_unidad_medida_kpi,
+                   apt_meta_indicador_kpi,
+                   apt_valor_alcanzado_kpi,
+                   apt_es_tratamiento_eficaz,
+                   apt_dictamen_eficacia,
+                   per_codigo_evaluador,
+                   apt_fecha_evaluacion_eficacia,
+                   apt_fecha_actualizacion,
+                   apt_esta_activo,
+                   per_codigo,
+                   apt_operacion,
+                   apt_usuario_bd,
+                   apt_fecha_cambio
+               )
+               SELECT i.plt_codigo,
+                      i.eia_codigo,
+                      i.plt_naturaleza_evento,
+                      i.etc_codigo,
+                      i.plt_justificacion_estrategia,
+                      i.epr_codigo_residual_meta,
+                      i.eim_codigo_residual_meta,
+                      i.plt_fecha_inicio,
+                      i.plt_fecha_fin,
+                      i.plt_recursos_humanos_tecnicos,
+                      i.plt_recursos_economicos_desc,
+                      i.plt_presupuesto_estimado_cop,
+                      i.plt_restricciones_limitaciones,
+                      i.plt_nombre_indicador_kpi,
+                      i.plt_unidad_medida_kpi,
+                      i.plt_meta_indicador_kpi,
+                      i.plt_valor_alcanzado_kpi,
+                      i.plt_es_tratamiento_eficaz,
+                      i.plt_dictamen_eficacia,
+                      i.per_codigo_evaluador,
+                      i.plt_fecha_evaluacion_eficacia,
+                      i.plt_fecha_actualizacion,
+                      i.plt_esta_activo,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -4705,6 +5132,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                        aat_fecha_actualizacion,
                        aat_esta_activa,
                        per_codigo,
+                       aat_operacion,
                        aat_usuario_bd,
                        aat_fecha_cambio
                    )
@@ -4720,6 +5148,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                           d.act_fecha_actualizacion,
                           d.act_esta_activa,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -4755,6 +5184,40 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                               inserted AS i
                               ON i.act_codigo = t.act_codigo;
                END
+           ELSE
+               INSERT INTO sgspi.aud_actividad_tratamiento (
+                   act_codigo,
+                   plt_codigo,
+                   aat_numero_orden,
+                   aat_descripcion_actividad,
+                   car_codigo,
+                   uaa_codigo,
+                   aat_fecha_compromiso,
+                   aat_porcentaje_avance,
+                   aat_estado_actividad,
+                   aat_fecha_actualizacion,
+                   aat_esta_activa,
+                   per_codigo,
+                   aat_operacion,
+                   aat_usuario_bd,
+                   aat_fecha_cambio
+               )
+               SELECT i.act_codigo,
+                      i.plt_codigo,
+                      i.act_numero_orden,
+                      i.act_descripcion_actividad,
+                      i.car_codigo,
+                      i.uaa_codigo,
+                      i.act_fecha_compromiso,
+                      i.act_porcentaje_avance,
+                      i.act_estado_actividad,
+                      i.act_fecha_actualizacion,
+                      i.act_esta_activa,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -4818,6 +5281,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                        aae_fecha_actualizacion,
                        aae_esta_activa,
                        per_codigo,
+                       aae_operacion,
                        aae_usuario_bd,
                        aae_fecha_cambio
                    )
@@ -4835,6 +5299,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                           d.eac_fecha_actualizacion,
                           d.eac_esta_activa,
                           @per_actor,
+                          'U',
                           ORIGINAL_LOGIN(),
                           SYSDATETIMEOFFSET()
                    FROM   deleted AS d
@@ -4874,6 +5339,44 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                               inserted AS i
                               ON i.eac_codigo = t.eac_codigo;
                END
+           ELSE
+               INSERT INTO sgspi.aud_evaluacion_aplicabilidad_control (
+                   eac_codigo,
+                   pev_codigo,
+                   crn_codigo,
+                   aae_es_aplicable,
+                   aae_justificacion_aplicabilidad,
+                   aae_documento_soporte_normativo,
+                   car_codigo,
+                   aae_frecuencia_revision,
+                   aae_evidencia_objetiva_esperada,
+                   aae_estado_implementacion,
+                   aae_observaciones_auditoria,
+                   aae_fecha_actualizacion,
+                   aae_esta_activa,
+                   per_codigo,
+                   aae_operacion,
+                   aae_usuario_bd,
+                   aae_fecha_cambio
+               )
+               SELECT i.eac_codigo,
+                      i.pev_codigo,
+                      i.crn_codigo,
+                      i.eac_es_aplicable,
+                      i.eac_justificacion_aplicabilidad,
+                      i.eac_documento_soporte_normativo,
+                      i.car_codigo,
+                      i.eac_frecuencia_revision,
+                      i.eac_evidencia_objetiva_esperada,
+                      i.eac_estado_implementacion,
+                      i.eac_observaciones_auditoria,
+                      i.eac_fecha_actualizacion,
+                      i.eac_esta_activa,
+                      @per_actor,
+                      'I',
+                      ORIGINAL_LOGIN(),
+                      SYSDATETIMEOFFSET()
+               FROM   inserted AS i;
        END
 
 
@@ -4955,6 +5458,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                asa_hash_sha256_evidencia,
                asa_esta_activo,
                per_codigo,
+               asa_operacion,
                asa_usuario_bd,
                asa_fecha_cambio
            )
@@ -4969,6 +5473,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                   d.sga_hash_sha256_evidencia,
                   d.sga_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -5051,6 +5556,37 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                   ON x.act_codigo = act.act_codigo
                      AND x.rn = 1
            WHERE  act.act_porcentaje_avance <> x.sga_porcentaje_reportado;
+           INSERT INTO sgspi.aud_seguimiento_actividad (
+               sga_codigo,
+               act_codigo,
+               per_codigo_autor,
+               asa_fecha_registro,
+               asa_porcentaje_reportado,
+               asa_descripcion_avance,
+               asa_nombre_archivo_evidencia,
+               asa_uri_almacenamiento_evidencia,
+               asa_hash_sha256_evidencia,
+               asa_esta_activo,
+               per_codigo,
+               asa_operacion,
+               asa_usuario_bd,
+               asa_fecha_cambio
+           )
+           SELECT i.sga_codigo,
+                  i.act_codigo,
+                  i.per_codigo,
+                  i.sga_fecha_registro,
+                  i.sga_porcentaje_reportado,
+                  i.sga_descripcion_avance,
+                  i.sga_nombre_archivo_evidencia,
+                  i.sga_uri_almacenamiento_evidencia,
+                  i.sga_hash_sha256_evidencia,
+                  i.sga_esta_activo,
+                  @per_actor,
+                  'I',
+                  ORIGINAL_LOGIN(),
+                  SYSDATETIMEOFFSET()
+           FROM   inserted AS i;
        END
 
 
@@ -5527,7 +6063,7 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- 5.10.9c Triggers de auditoría [AP-01]: inmutabilidad de las 50 tablas aud_* y archivo de la versión anterior
+-- 5.10.9c Triggers de auditoría [AP-01]: inmutabilidad de las 50 tablas aud_* y archivo de altas ('I') y versiones anteriores ('U')
 -- en las 41 tablas cuyo trigger no se actualiza a sí mismo (las otras 9 lo hacen dentro de su trigger, ver 5.9)
 -- [apv] La auditoría no se edita ni se borra
 CREATE OR ALTER TRIGGER sgspi.TR_apv_inmutabilidad
@@ -5545,10 +6081,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [pev] Bloquea el borrado físico y archiva en [sgspi].[aud_periodo_vigencia] la versión anterior de cada fila modificada
+-- [pev] Bloquea el borrado físico y archiva en [sgspi].[aud_periodo_vigencia] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
     ON sgspi.periodo_vigencia
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -5557,7 +6093,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente periodos de vigencia en [sgspi].[periodo_vigencia].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -5565,6 +6101,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_periodo_vigencia (
+                       pev_codigo,
+                       apv_anio,
+                       apv_fecha_apertura,
+                       apv_fecha_cierre,
+                       apv_estado_vigencia,
+                       apv_esta_activo,
+                       per_codigo,
+                       apv_operacion,
+                       apv_usuario_bd,
+                       apv_fecha_cambio
+                   )
+                   SELECT i.pev_codigo,
+                          i.pev_anio,
+                          i.pev_fecha_apertura,
+                          i.pev_fecha_cierre,
+                          i.pev_estado_vigencia,
+                          i.pev_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_periodo_vigencia (
                pev_codigo,
                apv_anio,
@@ -5573,6 +6137,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                apv_estado_vigencia,
                apv_esta_activo,
                per_codigo,
+               apv_operacion,
                apv_usuario_bd,
                apv_fecha_cambio
            )
@@ -5583,6 +6148,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                   d.pev_estado_vigencia,
                   d.pev_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -5625,10 +6191,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [efc] Bloquea el borrado físico y archiva en [sgspi].[aud_estado_flujo_catalogo] la versión anterior de cada fila modificada
+-- [efc] Bloquea el borrado físico y archiva en [sgspi].[aud_estado_flujo_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
     ON sgspi.estado_flujo_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -5637,7 +6203,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[estado_flujo_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -5645,6 +6211,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_estado_flujo_catalogo (
+                       efc_codigo,
+                       aec_dominio,
+                       aec_identificador,
+                       aec_nombre,
+                       aec_es_inicial,
+                       aec_permite_edicion,
+                       aec_esta_activo,
+                       per_codigo,
+                       aec_operacion,
+                       aec_usuario_bd,
+                       aec_fecha_cambio
+                   )
+                   SELECT i.efc_codigo,
+                          i.efc_dominio,
+                          i.efc_identificador,
+                          i.efc_nombre,
+                          i.efc_es_inicial,
+                          i.efc_permite_edicion,
+                          i.efc_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_estado_flujo_catalogo (
                efc_codigo,
                aec_dominio,
@@ -5654,6 +6250,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
                aec_permite_edicion,
                aec_esta_activo,
                per_codigo,
+               aec_operacion,
                aec_usuario_bd,
                aec_fecha_cambio
            )
@@ -5665,6 +6262,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
                   d.efc_permite_edicion,
                   d.efc_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -5709,10 +6307,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [tef] Bloquea el borrado físico y archiva en [sgspi].[aud_transicion_estado_flujo] la versión anterior de cada fila modificada
+-- [tef] Bloquea el borrado físico y archiva en [sgspi].[aud_transicion_estado_flujo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
     ON sgspi.transicion_estado_flujo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -5721,7 +6319,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[transicion_estado_flujo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -5729,6 +6327,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_transicion_estado_flujo (
+                       tef_codigo,
+                       efc_dominio,
+                       efc_identificador_origen,
+                       efc_identificador_destino,
+                       atf_rol_requerido,
+                       atf_esta_activa,
+                       per_codigo,
+                       atf_operacion,
+                       atf_usuario_bd,
+                       atf_fecha_cambio
+                   )
+                   SELECT i.tef_codigo,
+                          i.efc_dominio,
+                          i.efc_identificador_origen,
+                          i.efc_identificador_destino,
+                          i.tef_rol_requerido,
+                          i.tef_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_transicion_estado_flujo (
                tef_codigo,
                efc_dominio,
@@ -5737,6 +6363,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
                atf_rol_requerido,
                atf_esta_activa,
                per_codigo,
+               atf_operacion,
                atf_usuario_bd,
                atf_fecha_cambio
            )
@@ -5747,6 +6374,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
                   d.tef_rol_requerido,
                   d.tef_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -5789,10 +6417,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [tpr] Bloquea el borrado físico y archiva en [sgspi].[aud_tipo_proceso_catalogo] la versión anterior de cada fila modificada
+-- [tpr] Bloquea el borrado físico y archiva en [sgspi].[aud_tipo_proceso_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
     ON sgspi.tipo_proceso_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -5801,7 +6429,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[tipo_proceso_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -5809,6 +6437,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_tipo_proceso_catalogo (
+                       tpr_codigo,
+                       atr_identificador,
+                       atr_nombre,
+                       atr_descripcion,
+                       atr_esta_activo,
+                       per_codigo,
+                       atr_operacion,
+                       atr_usuario_bd,
+                       atr_fecha_cambio
+                   )
+                   SELECT i.tpr_codigo,
+                          i.tpr_identificador,
+                          i.tpr_nombre,
+                          i.tpr_descripcion,
+                          i.tpr_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_tipo_proceso_catalogo (
                tpr_codigo,
                atr_identificador,
@@ -5816,6 +6470,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
                atr_descripcion,
                atr_esta_activo,
                per_codigo,
+               atr_operacion,
                atr_usuario_bd,
                atr_fecha_cambio
            )
@@ -5825,6 +6480,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
                   d.tpr_descripcion,
                   d.tpr_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -5865,10 +6521,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [pri] Bloquea el borrado físico y archiva en [sgspi].[aud_proceso_institucional] la versión anterior de cada fila modificada
+-- [pri] Bloquea el borrado físico y archiva en [sgspi].[aud_proceso_institucional] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
     ON sgspi.proceso_institucional
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -5877,7 +6533,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[proceso_institucional].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -5885,6 +6541,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_proceso_institucional (
+                       pri_codigo,
+                       api_identificador,
+                       api_nombre,
+                       tpr_codigo,
+                       uaa_codigo_lider,
+                       car_codigo_lider,
+                       api_esta_activo,
+                       per_codigo,
+                       api_operacion,
+                       api_usuario_bd,
+                       api_fecha_cambio
+                   )
+                   SELECT i.pri_codigo,
+                          i.pri_identificador,
+                          i.pri_nombre,
+                          i.tpr_codigo,
+                          i.uaa_codigo_lider,
+                          i.car_codigo_lider,
+                          i.pri_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_proceso_institucional (
                pri_codigo,
                api_identificador,
@@ -5894,6 +6580,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
                car_codigo_lider,
                api_esta_activo,
                per_codigo,
+               api_operacion,
                api_usuario_bd,
                api_fecha_cambio
            )
@@ -5905,6 +6592,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
                   d.car_codigo_lider,
                   d.pri_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -5949,10 +6637,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [piu] Bloquea el borrado físico y archiva en [sgspi].[aud_proceso_institucional_uaa] la versión anterior de cada fila modificada
+-- [piu] Bloquea el borrado físico y archiva en [sgspi].[aud_proceso_institucional_uaa] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
     ON sgspi.proceso_institucional_uaa
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -5961,8 +6649,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[proceso_institucional_uaa].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_proceso_institucional_uaa (
+                       pri_codigo,
+                       uaa_codigo,
+                       apu_esta_activo,
+                       per_codigo,
+                       apu_operacion,
+                       apu_usuario_bd,
+                       apu_fecha_cambio
+                   )
+                   SELECT i.pri_codigo,
+                          i.uaa_codigo,
+                          i.piu_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -5970,17 +6686,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
                                          WHERE  i.pri_codigo = d.pri_codigo
                                                 AND i.uaa_codigo = d.uaa_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[proceso_institucional_uaa]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_proceso_institucional_uaa (
                pri_codigo,
                uaa_codigo,
                apu_esta_activo,
                per_codigo,
+               apu_operacion,
                apu_usuario_bd,
                apu_fecha_cambio
            )
@@ -5988,6 +6699,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
                   d.uaa_codigo,
                   d.piu_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6023,10 +6735,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [fec] Bloquea el borrado físico y archiva en [sgspi].[aud_factor_entorno_catalogo] la versión anterior de cada fila modificada
+-- [fec] Bloquea el borrado físico y archiva en [sgspi].[aud_factor_entorno_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
     ON sgspi.factor_entorno_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6035,7 +6747,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[factor_entorno_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6043,6 +6755,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_factor_entorno_catalogo (
+                       fec_codigo,
+                       afc_nombre_factor,
+                       afc_ambito_entorno,
+                       afc_descripcion,
+                       afc_esta_activo,
+                       per_codigo,
+                       afc_operacion,
+                       afc_usuario_bd,
+                       afc_fecha_cambio
+                   )
+                   SELECT i.fec_codigo,
+                          i.fec_nombre_factor,
+                          i.fec_ambito_entorno,
+                          i.fec_descripcion,
+                          i.fec_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_factor_entorno_catalogo (
                fec_codigo,
                afc_nombre_factor,
@@ -6050,6 +6788,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
                afc_descripcion,
                afc_esta_activo,
                per_codigo,
+               afc_operacion,
                afc_usuario_bd,
                afc_fecha_cambio
            )
@@ -6059,6 +6798,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
                   d.fec_descripcion,
                   d.fec_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6115,10 +6855,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [pai] Bloquea el borrado físico y archiva en [sgspi].[aud_parte_interesada] la versión anterior de cada fila modificada
+-- [pai] Bloquea el borrado físico y archiva en [sgspi].[aud_parte_interesada] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
     ON sgspi.parte_interesada
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6127,7 +6867,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[parte_interesada].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6135,6 +6875,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_parte_interesada (
+                       pai_codigo,
+                       apa_nombre,
+                       apa_origen,
+                       apa_descripcion_rol,
+                       apa_esta_activa,
+                       per_codigo,
+                       apa_operacion,
+                       apa_usuario_bd,
+                       apa_fecha_cambio
+                   )
+                   SELECT i.pai_codigo,
+                          i.pai_nombre,
+                          i.pai_origen,
+                          i.pai_descripcion_rol,
+                          i.pai_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_parte_interesada (
                pai_codigo,
                apa_nombre,
@@ -6142,6 +6908,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
                apa_descripcion_rol,
                apa_esta_activa,
                per_codigo,
+               apa_operacion,
                apa_usuario_bd,
                apa_fecha_cambio
            )
@@ -6151,6 +6918,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
                   d.pai_descripcion_rol,
                   d.pai_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6207,10 +6975,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [rpc] Bloquea el borrado físico y archiva en [sgspi].[aud_requisito_parte_interesada_cuestionario] la versión anterior de cada fila modificada
+-- [rpc] Bloquea el borrado físico y archiva en [sgspi].[aud_requisito_parte_interesada_cuestionario] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_rpc_auditoria
     ON sgspi.requisito_parte_interesada_cuestionario
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6219,8 +6987,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[requisito_parte_interesada_cuestionario].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_requisito_parte_interesada_cuestionario (
+                       rpi_codigo,
+                       rpc_numero_pregunta,
+                       arc_esta_activo,
+                       per_codigo,
+                       arc_operacion,
+                       arc_usuario_bd,
+                       arc_fecha_cambio
+                   )
+                   SELECT i.rpi_codigo,
+                          i.rpc_numero_pregunta,
+                          i.rpc_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -6228,17 +7024,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpc_auditoria
                                          WHERE  i.rpi_codigo = d.rpi_codigo
                                                 AND i.rpc_numero_pregunta = d.rpc_numero_pregunta))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[requisito_parte_interesada_cuestionario]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_requisito_parte_interesada_cuestionario (
                rpi_codigo,
                rpc_numero_pregunta,
                arc_esta_activo,
                per_codigo,
+               arc_operacion,
                arc_usuario_bd,
                arc_fecha_cambio
            )
@@ -6246,6 +7037,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpc_auditoria
                   d.rpc_numero_pregunta,
                   d.rpc_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6281,10 +7073,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [rpp] Bloquea el borrado físico y archiva en [sgspi].[aud_requisito_parte_interesada_proceso_institucional] la versión anterior de cada fila modificada
+-- [rpp] Bloquea el borrado físico y archiva en [sgspi].[aud_requisito_parte_interesada_proceso_institucional] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
     ON sgspi.requisito_parte_interesada_proceso_institucional
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6293,8 +7085,38 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[requisito_parte_interesada_proceso_institucional].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_requisito_parte_interesada_proceso_institucional (
+                       rpi_codigo,
+                       pri_codigo,
+                       arp_fecha_registro,
+                       arp_esta_activo,
+                       per_codigo,
+                       arp_operacion,
+                       arp_usuario_bd,
+                       arp_fecha_cambio
+                   )
+                   SELECT i.rpi_codigo,
+                          i.pri_codigo,
+                          i.rpp_fecha_registro,
+                          i.rpp_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -6302,18 +7124,13 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
                                          WHERE  i.rpi_codigo = d.rpi_codigo
                                                 AND i.pri_codigo = d.pri_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[requisito_parte_interesada_proceso_institucional]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_requisito_parte_interesada_proceso_institucional (
                rpi_codigo,
                pri_codigo,
                arp_fecha_registro,
                arp_esta_activo,
                per_codigo,
+               arp_operacion,
                arp_usuario_bd,
                arp_fecha_cambio
            )
@@ -6322,6 +7139,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
                   d.rpp_fecha_registro,
                   d.rpp_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6359,10 +7177,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [tac] Bloquea el borrado físico y archiva en [sgspi].[aud_tipo_activo_catalogo] la versión anterior de cada fila modificada
+-- [tac] Bloquea el borrado físico y archiva en [sgspi].[aud_tipo_activo_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
     ON sgspi.tipo_activo_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6371,7 +7189,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[tipo_activo_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6379,6 +7197,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_tipo_activo_catalogo (
+                       tac_codigo,
+                       atc_codigo_padre,
+                       atc_nivel_taxonomia,
+                       atc_nombre,
+                       atc_ejemplos_ref,
+                       atc_esta_activo,
+                       per_codigo,
+                       atc_operacion,
+                       atc_usuario_bd,
+                       atc_fecha_cambio
+                   )
+                   SELECT i.tac_codigo,
+                          i.tac_codigo_padre,
+                          i.tac_nivel_taxonomia,
+                          i.tac_nombre,
+                          i.tac_ejemplos_ref,
+                          i.tac_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_tipo_activo_catalogo (
                tac_codigo,
                atc_codigo_padre,
@@ -6387,6 +7233,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
                atc_ejemplos_ref,
                atc_esta_activo,
                per_codigo,
+               atc_operacion,
                atc_usuario_bd,
                atc_fecha_cambio
            )
@@ -6397,6 +7244,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
                   d.tac_ejemplos_ref,
                   d.tac_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6439,10 +7287,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [cet] Bloquea el borrado físico y archiva en [sgspi].[aud_causal_excepcion_transparencia] la versión anterior de cada fila modificada
+-- [cet] Bloquea el borrado físico y archiva en [sgspi].[aud_causal_excepcion_transparencia] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
     ON sgspi.causal_excepcion_transparencia
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6451,7 +7299,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[causal_excepcion_transparencia].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6459,6 +7307,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_causal_excepcion_transparencia (
+                       cet_codigo,
+                       ace_nivel_reserva_aplicable,
+                       ace_numeral_causal,
+                       ace_descripcion_causal,
+                       ace_norma_referencia,
+                       ace_esta_activa,
+                       per_codigo,
+                       ace_operacion,
+                       ace_usuario_bd,
+                       ace_fecha_cambio
+                   )
+                   SELECT i.cet_codigo,
+                          i.cet_nivel_reserva_aplicable,
+                          i.cet_numeral_causal,
+                          i.cet_descripcion_causal,
+                          i.cet_norma_referencia,
+                          i.cet_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_causal_excepcion_transparencia (
                cet_codigo,
                ace_nivel_reserva_aplicable,
@@ -6467,6 +7343,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
                ace_norma_referencia,
                ace_esta_activa,
                per_codigo,
+               ace_operacion,
                ace_usuario_bd,
                ace_fecha_cambio
            )
@@ -6477,6 +7354,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
                   d.cet_norma_referencia,
                   d.cet_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6535,10 +7413,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [aip] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_informacion_proceso_institucional] la versión anterior de cada fila modificada
+-- [aip] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_informacion_proceso_institucional] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
     ON sgspi.activo_informacion_proceso_institucional
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6547,8 +7425,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_informacion_proceso_institucional].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_informacion_proceso_institucional (
+                       aci_codigo,
+                       pri_codigo,
+                       aap_esta_activo,
+                       per_codigo,
+                       aap_operacion,
+                       aap_usuario_bd,
+                       aap_fecha_cambio
+                   )
+                   SELECT i.aci_codigo,
+                          i.pri_codigo,
+                          i.aip_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -6556,17 +7462,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
                                          WHERE  i.aci_codigo = d.aci_codigo
                                                 AND i.pri_codigo = d.pri_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_informacion_proceso_institucional]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_informacion_proceso_institucional (
                aci_codigo,
                pri_codigo,
                aap_esta_activo,
                per_codigo,
+               aap_operacion,
                aap_usuario_bd,
                aap_fecha_cambio
            )
@@ -6574,6 +7475,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
                   d.pri_codigo,
                   d.aip_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6609,10 +7511,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [ais] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_informacion_sede] la versión anterior de cada fila modificada
+-- [ais] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_informacion_sede] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
     ON sgspi.activo_informacion_sede
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6621,8 +7523,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_informacion_sede].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_informacion_sede (
+                       aci_codigo,
+                       sus_codigo,
+                       aas_esta_activo,
+                       per_codigo,
+                       aas_operacion,
+                       aas_usuario_bd,
+                       aas_fecha_cambio
+                   )
+                   SELECT i.aci_codigo,
+                          i.sus_codigo,
+                          i.ais_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -6630,17 +7560,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
                                          WHERE  i.aci_codigo = d.aci_codigo
                                                 AND i.sus_codigo = d.sus_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_informacion_sede]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_informacion_sede (
                aci_codigo,
                sus_codigo,
                aas_esta_activo,
                per_codigo,
+               aas_operacion,
                aas_usuario_bd,
                aas_fecha_cambio
            )
@@ -6648,6 +7573,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
                   d.sus_codigo,
                   d.ais_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6683,10 +7609,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [air] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_informacion_responsable] la versión anterior de cada fila modificada
+-- [air] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_informacion_responsable] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
     ON sgspi.activo_informacion_responsable
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6695,8 +7621,40 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_informacion_responsable].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_informacion_responsable (
+                       aci_codigo,
+                       car_codigo,
+                       uaa_codigo,
+                       air_tipo_responsabilidad,
+                       aar_esta_activo,
+                       per_codigo,
+                       aar_operacion,
+                       aar_usuario_bd,
+                       aar_fecha_cambio
+                   )
+                   SELECT i.aci_codigo,
+                          i.car_codigo,
+                          i.uaa_codigo,
+                          i.air_tipo_responsabilidad,
+                          i.air_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -6706,12 +7664,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                                                 AND i.uaa_codigo = d.uaa_codigo
                                                 AND i.air_tipo_responsabilidad = d.air_tipo_responsabilidad))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_informacion_responsable]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_informacion_responsable (
                aci_codigo,
                car_codigo,
@@ -6719,6 +7671,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                air_tipo_responsabilidad,
                aar_esta_activo,
                per_codigo,
+               aar_operacion,
                aar_usuario_bd,
                aar_fecha_cambio
            )
@@ -6728,6 +7681,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                   d.air_tipo_responsabilidad,
                   d.air_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6765,10 +7719,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [sif] Bloquea el borrado físico y archiva en [sgspi].[aud_sistema_informacion_ficha] la versión anterior de cada fila modificada
+-- [sif] Bloquea el borrado físico y archiva en [sgspi].[aud_sistema_informacion_ficha] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
     ON sgspi.sistema_informacion_ficha
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6777,7 +7731,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[sistema_informacion_ficha].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6785,6 +7739,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_sistema_informacion_ficha (
+                       sif_codigo,
+                       aci_codigo,
+                       asf_nombre_sistema,
+                       asf_modalidad_desarrollo,
+                       asf_fabricante_proveedor,
+                       asf_descripcion_general,
+                       asf_esta_activo,
+                       per_codigo,
+                       asf_operacion,
+                       asf_usuario_bd,
+                       asf_fecha_cambio
+                   )
+                   SELECT i.sif_codigo,
+                          i.aci_codigo,
+                          i.sif_nombre_sistema,
+                          i.sif_modalidad_desarrollo,
+                          i.sif_fabricante_proveedor,
+                          i.sif_descripcion_general,
+                          i.sif_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_sistema_informacion_ficha (
                sif_codigo,
                aci_codigo,
@@ -6794,6 +7778,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                asf_descripcion_general,
                asf_esta_activo,
                per_codigo,
+               asf_operacion,
                asf_usuario_bd,
                asf_fecha_cambio
            )
@@ -6805,6 +7790,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                   d.sif_descripcion_general,
                   d.sif_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6849,10 +7835,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [msi] Bloquea el borrado físico y archiva en [sgspi].[aud_modulo_sistema_informacion] la versión anterior de cada fila modificada
+-- [msi] Bloquea el borrado físico y archiva en [sgspi].[aud_modulo_sistema_informacion] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
     ON sgspi.modulo_sistema_informacion
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6861,7 +7847,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[modulo_sistema_informacion].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6869,6 +7855,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_modulo_sistema_informacion (
+                       msi_codigo,
+                       sif_codigo,
+                       ami_nombre_modulo,
+                       ami_usuarios_objetivo,
+                       ami_esta_activo,
+                       per_codigo,
+                       ami_operacion,
+                       ami_usuario_bd,
+                       ami_fecha_cambio
+                   )
+                   SELECT i.msi_codigo,
+                          i.sif_codigo,
+                          i.msi_nombre_modulo,
+                          i.msi_usuarios_objetivo,
+                          i.msi_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_modulo_sistema_informacion (
                msi_codigo,
                sif_codigo,
@@ -6876,6 +7888,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                ami_usuarios_objetivo,
                ami_esta_activo,
                per_codigo,
+               ami_operacion,
                ami_usuario_bd,
                ami_fecha_cambio
            )
@@ -6885,6 +7898,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                   d.msi_usuarios_objetivo,
                   d.msi_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6925,10 +7939,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [sdo] Bloquea el borrado físico y archiva en [sgspi].[aud_serie_documental_catalogo] la versión anterior de cada fila modificada
+-- [sdo] Bloquea el borrado físico y archiva en [sgspi].[aud_serie_documental_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_sdo_auditoria
     ON sgspi.serie_documental_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -6937,7 +7951,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sdo_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[serie_documental_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6945,12 +7959,37 @@ CREATE OR ALTER TRIGGER sgspi.TR_sdo_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_serie_documental_catalogo (
+                       sdo_codigo,
+                       aso_numero_ccd,
+                       aso_nombre_serie,
+                       aso_esta_activa,
+                       per_codigo,
+                       aso_operacion,
+                       aso_usuario_bd,
+                       aso_fecha_cambio
+                   )
+                   SELECT i.sdo_codigo,
+                          i.sdo_numero_ccd,
+                          i.sdo_nombre_serie,
+                          i.sdo_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_serie_documental_catalogo (
                sdo_codigo,
                aso_numero_ccd,
                aso_nombre_serie,
                aso_esta_activa,
                per_codigo,
+               aso_operacion,
                aso_usuario_bd,
                aso_fecha_cambio
            )
@@ -6959,6 +7998,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sdo_auditoria
                   d.sdo_nombre_serie,
                   d.sdo_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -6997,10 +8037,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [sbd] Bloquea el borrado físico y archiva en [sgspi].[aud_subserie_documental_catalogo] la versión anterior de cada fila modificada
+-- [sbd] Bloquea el borrado físico y archiva en [sgspi].[aud_subserie_documental_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
     ON sgspi.subserie_documental_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7009,7 +8049,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[subserie_documental_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7017,6 +8057,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_subserie_documental_catalogo (
+                       sbd_codigo,
+                       sdo_codigo,
+                       asd_numero_ccd,
+                       asd_nombre_subserie,
+                       asd_esta_activa,
+                       per_codigo,
+                       asd_operacion,
+                       asd_usuario_bd,
+                       asd_fecha_cambio
+                   )
+                   SELECT i.sbd_codigo,
+                          i.sdo_codigo,
+                          i.sbd_numero_ccd,
+                          i.sbd_nombre_subserie,
+                          i.sbd_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_subserie_documental_catalogo (
                sbd_codigo,
                sdo_codigo,
@@ -7024,6 +8090,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
                asd_nombre_subserie,
                asd_esta_activa,
                per_codigo,
+               asd_operacion,
                asd_usuario_bd,
                asd_fecha_cambio
            )
@@ -7033,6 +8100,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
                   d.sbd_nombre_subserie,
                   d.sbd_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7073,10 +8141,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [upc] Bloquea el borrado físico y archiva en [sgspi].[aud_unidad_productora_cuadro_clasificacion_documental] la versión anterior de cada fila modificada
+-- [upc] Bloquea el borrado físico y archiva en [sgspi].[aud_unidad_productora_cuadro_clasificacion_documental] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
     ON sgspi.unidad_productora_cuadro_clasificacion_documental
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7085,7 +8153,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[unidad_productora_cuadro_clasificacion_documental].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7093,6 +8161,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_unidad_productora_cuadro_clasificacion_documental (
+                       upc_codigo,
+                       auc_nodo_jerarquico,
+                       auc_codigo_archivistico,
+                       uaa_codigo,
+                       auc_nombre_unidad,
+                       auc_esta_activa,
+                       per_codigo,
+                       auc_operacion,
+                       auc_usuario_bd,
+                       auc_fecha_cambio
+                   )
+                   SELECT i.upc_codigo,
+                          i.upc_nodo_jerarquico,
+                          i.upc_codigo_archivistico,
+                          i.uaa_codigo,
+                          i.upc_nombre_unidad,
+                          i.upc_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_unidad_productora_cuadro_clasificacion_documental (
                upc_codigo,
                auc_nodo_jerarquico,
@@ -7101,6 +8197,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
                auc_nombre_unidad,
                auc_esta_activa,
                per_codigo,
+               auc_operacion,
                auc_usuario_bd,
                auc_fecha_cambio
            )
@@ -7111,6 +8208,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
                   d.upc_nombre_unidad,
                   d.upc_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7153,10 +8251,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [pdc] Bloquea el borrado físico y archiva en [sgspi].[aud_periodicidad_catalogo] la versión anterior de cada fila modificada
+-- [pdc] Bloquea el borrado físico y archiva en [sgspi].[aud_periodicidad_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_pdc_auditoria
     ON sgspi.periodicidad_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7165,7 +8263,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pdc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[periodicidad_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7173,12 +8271,37 @@ CREATE OR ALTER TRIGGER sgspi.TR_pdc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_periodicidad_catalogo (
+                       pdc_codigo,
+                       apc_nombre,
+                       apc_orden,
+                       apc_esta_activa,
+                       per_codigo,
+                       apc_operacion,
+                       apc_usuario_bd,
+                       apc_fecha_cambio
+                   )
+                   SELECT i.pdc_codigo,
+                          i.pdc_nombre,
+                          i.pdc_orden,
+                          i.pdc_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_periodicidad_catalogo (
                pdc_codigo,
                apc_nombre,
                apc_orden,
                apc_esta_activa,
                per_codigo,
+               apc_operacion,
                apc_usuario_bd,
                apc_fecha_cambio
            )
@@ -7187,6 +8310,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pdc_auditoria
                   d.pdc_orden,
                   d.pdc_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7225,10 +8349,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [epc] Bloquea el borrado físico y archiva en [sgspi].[aud_estado_publicacion_catalogo] la versión anterior de cada fila modificada
+-- [epc] Bloquea el borrado físico y archiva en [sgspi].[aud_estado_publicacion_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_epc_auditoria
     ON sgspi.estado_publicacion_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7237,7 +8361,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_epc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[estado_publicacion_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7245,12 +8369,37 @@ CREATE OR ALTER TRIGGER sgspi.TR_epc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_estado_publicacion_catalogo (
+                       epc_codigo,
+                       aep_nombre,
+                       aep_descripcion,
+                       aep_esta_activo,
+                       per_codigo,
+                       aep_operacion,
+                       aep_usuario_bd,
+                       aep_fecha_cambio
+                   )
+                   SELECT i.epc_codigo,
+                          i.epc_nombre,
+                          i.epc_descripcion,
+                          i.epc_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_estado_publicacion_catalogo (
                epc_codigo,
                aep_nombre,
                aep_descripcion,
                aep_esta_activo,
                per_codigo,
+               aep_operacion,
                aep_usuario_bd,
                aep_fecha_cambio
            )
@@ -7259,6 +8408,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_epc_auditoria
                   d.epc_descripcion,
                   d.epc_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7297,10 +8447,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [src] Bloquea el borrado físico y archiva en [sgspi].[aud_soporte_registro_catalogo] la versión anterior de cada fila modificada
+-- [src] Bloquea el borrado físico y archiva en [sgspi].[aud_soporte_registro_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_src_auditoria
     ON sgspi.soporte_registro_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7309,7 +8459,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_src_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[soporte_registro_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7317,11 +8467,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_src_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_soporte_registro_catalogo (
+                       src_codigo,
+                       asc_nombre,
+                       asc_esta_activo,
+                       per_codigo,
+                       asc_operacion,
+                       asc_usuario_bd,
+                       asc_fecha_cambio
+                   )
+                   SELECT i.src_codigo,
+                          i.src_nombre,
+                          i.src_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_soporte_registro_catalogo (
                src_codigo,
                asc_nombre,
                asc_esta_activo,
                per_codigo,
+               asc_operacion,
                asc_usuario_bd,
                asc_fecha_cambio
            )
@@ -7329,6 +8502,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_src_auditoria
                   d.src_nombre,
                   d.src_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7365,10 +8539,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [mcc] Bloquea el borrado físico y archiva en [sgspi].[aud_medio_conservacion_catalogo] la versión anterior de cada fila modificada
+-- [mcc] Bloquea el borrado físico y archiva en [sgspi].[aud_medio_conservacion_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_mcc_auditoria
     ON sgspi.medio_conservacion_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7377,7 +8551,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_mcc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[medio_conservacion_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7385,11 +8559,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_mcc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_medio_conservacion_catalogo (
+                       mcc_codigo,
+                       amc_nombre,
+                       amc_esta_activo,
+                       per_codigo,
+                       amc_operacion,
+                       amc_usuario_bd,
+                       amc_fecha_cambio
+                   )
+                   SELECT i.mcc_codigo,
+                          i.mcc_nombre,
+                          i.mcc_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_medio_conservacion_catalogo (
                mcc_codigo,
                amc_nombre,
                amc_esta_activo,
                per_codigo,
+               amc_operacion,
                amc_usuario_bd,
                amc_fecha_cambio
            )
@@ -7397,6 +8594,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_mcc_auditoria
                   d.mcc_nombre,
                   d.mcc_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7433,10 +8631,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [idi] Bloquea el borrado físico y archiva en [sgspi].[aud_idioma_catalogo] la versión anterior de cada fila modificada
+-- [idi] Bloquea el borrado físico y archiva en [sgspi].[aud_idioma_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_idi_auditoria
     ON sgspi.idioma_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7445,7 +8643,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_idi_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[idioma_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7453,12 +8651,37 @@ CREATE OR ALTER TRIGGER sgspi.TR_idi_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_idioma_catalogo (
+                       idi_codigo,
+                       aii_codigo_iso,
+                       aii_nombre,
+                       aii_esta_activo,
+                       per_codigo,
+                       aii_operacion,
+                       aii_usuario_bd,
+                       aii_fecha_cambio
+                   )
+                   SELECT i.idi_codigo,
+                          i.idi_codigo_iso,
+                          i.idi_nombre,
+                          i.idi_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_idioma_catalogo (
                idi_codigo,
                aii_codigo_iso,
                aii_nombre,
                aii_esta_activo,
                per_codigo,
+               aii_operacion,
                aii_usuario_bd,
                aii_fecha_cambio
            )
@@ -7467,6 +8690,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_idi_auditoria
                   d.idi_nombre,
                   d.idi_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7505,10 +8729,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [fac] Bloquea el borrado físico y archiva en [sgspi].[aud_formato_archivo_catalogo] la versión anterior de cada fila modificada
+-- [fac] Bloquea el borrado físico y archiva en [sgspi].[aud_formato_archivo_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_fac_auditoria
     ON sgspi.formato_archivo_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7517,7 +8741,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_fac_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[formato_archivo_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7525,11 +8749,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_fac_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_formato_archivo_catalogo (
+                       fac_codigo,
+                       afa_nombre,
+                       afa_esta_activo,
+                       per_codigo,
+                       afa_operacion,
+                       afa_usuario_bd,
+                       afa_fecha_cambio
+                   )
+                   SELECT i.fac_codigo,
+                          i.fac_nombre,
+                          i.fac_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_formato_archivo_catalogo (
                fac_codigo,
                afa_nombre,
                afa_esta_activo,
                per_codigo,
+               afa_operacion,
                afa_usuario_bd,
                afa_fecha_cambio
            )
@@ -7537,6 +8784,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_fac_auditoria
                   d.fac_nombre,
                   d.fac_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7589,10 +8837,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [ads] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_soporte_registro] la versión anterior de cada fila modificada
+-- [ads] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_soporte_registro] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
     ON sgspi.activo_documental_soporte_registro
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7601,8 +8849,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_soporte_registro].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_soporte_registro (
+                       ado_codigo,
+                       src_codigo,
+                       aad_esta_activo,
+                       per_codigo,
+                       aad_operacion,
+                       aad_usuario_bd,
+                       aad_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.src_codigo,
+                          i.ads_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -7610,17 +8886,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
                                          WHERE  i.ado_codigo = d.ado_codigo
                                                 AND i.src_codigo = d.src_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_soporte_registro]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_documental_soporte_registro (
                ado_codigo,
                src_codigo,
                aad_esta_activo,
                per_codigo,
+               aad_operacion,
                aad_usuario_bd,
                aad_fecha_cambio
            )
@@ -7628,6 +8899,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
                   d.src_codigo,
                   d.ads_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7663,10 +8935,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [adm] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_medio_conservacion] la versión anterior de cada fila modificada
+-- [adm] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_medio_conservacion] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
     ON sgspi.activo_documental_medio_conservacion
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7675,8 +8947,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_medio_conservacion].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_medio_conservacion (
+                       ado_codigo,
+                       mcc_codigo,
+                       aam_esta_activo,
+                       per_codigo,
+                       aam_operacion,
+                       aam_usuario_bd,
+                       aam_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.mcc_codigo,
+                          i.adm_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -7684,17 +8984,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                                          WHERE  i.ado_codigo = d.ado_codigo
                                                 AND i.mcc_codigo = d.mcc_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_medio_conservacion]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_documental_medio_conservacion (
                ado_codigo,
                mcc_codigo,
                aam_esta_activo,
                per_codigo,
+               aam_operacion,
                aam_usuario_bd,
                aam_fecha_cambio
            )
@@ -7702,6 +8997,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                   d.mcc_codigo,
                   d.adm_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7737,10 +9033,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [adi] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_idioma] la versión anterior de cada fila modificada
+-- [adi] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_idioma] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
     ON sgspi.activo_documental_idioma
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7749,8 +9045,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_idioma].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_idioma (
+                       ado_codigo,
+                       idi_codigo,
+                       aid_esta_activo,
+                       per_codigo,
+                       aid_operacion,
+                       aid_usuario_bd,
+                       aid_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.idi_codigo,
+                          i.adi_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -7758,17 +9082,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
                                          WHERE  i.ado_codigo = d.ado_codigo
                                                 AND i.idi_codigo = d.idi_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_idioma]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_documental_idioma (
                ado_codigo,
                idi_codigo,
                aid_esta_activo,
                per_codigo,
+               aid_operacion,
                aid_usuario_bd,
                aid_fecha_cambio
            )
@@ -7776,6 +9095,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
                   d.idi_codigo,
                   d.adi_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7811,10 +9131,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [adf] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_formato_archivo] la versión anterior de cada fila modificada
+-- [adf] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_formato_archivo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
     ON sgspi.activo_documental_formato_archivo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7823,8 +9143,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_formato_archivo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_formato_archivo (
+                       ado_codigo,
+                       fac_codigo,
+                       afd_esta_activo,
+                       per_codigo,
+                       afd_operacion,
+                       afd_usuario_bd,
+                       afd_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.fac_codigo,
+                          i.adf_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -7832,17 +9180,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                                          WHERE  i.ado_codigo = d.ado_codigo
                                                 AND i.fac_codigo = d.fac_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_formato_archivo]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_documental_formato_archivo (
                ado_codigo,
                fac_codigo,
                afd_esta_activo,
                per_codigo,
+               afd_operacion,
                afd_usuario_bd,
                afd_fecha_cambio
            )
@@ -7850,6 +9193,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                   d.fac_codigo,
                   d.adf_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7885,10 +9229,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [adu] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_unidad_productora] la versión anterior de cada fila modificada
+-- [adu] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_unidad_productora] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
     ON sgspi.activo_documental_unidad_productora
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7897,8 +9241,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_unidad_productora].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_unidad_productora (
+                       ado_codigo,
+                       upc_codigo,
+                       aau_esta_activo,
+                       per_codigo,
+                       aau_operacion,
+                       aau_usuario_bd,
+                       aau_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.upc_codigo,
+                          i.adu_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -7906,17 +9278,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
                                          WHERE  i.ado_codigo = d.ado_codigo
                                                 AND i.upc_codigo = d.upc_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_unidad_productora]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_activo_documental_unidad_productora (
                ado_codigo,
                upc_codigo,
                aau_esta_activo,
                per_codigo,
+               aau_operacion,
                aau_usuario_bd,
                aau_fecha_cambio
            )
@@ -7924,6 +9291,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
                   d.upc_codigo,
                   d.adu_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -7959,10 +9327,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [epr] Bloquea el borrado físico y archiva en [sgspi].[aud_escala_probabilidad] la versión anterior de cada fila modificada
+-- [epr] Bloquea el borrado físico y archiva en [sgspi].[aud_escala_probabilidad] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_epr_auditoria
     ON sgspi.escala_probabilidad
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -7971,20 +9339,48 @@ CREATE OR ALTER TRIGGER sgspi.TR_epr_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[escala_probabilidad].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.epr_codigo = d.epr_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[escala_probabilidad]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
                                         WHERE    u.us = ORIGINAL_LOGIN()
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_escala_probabilidad (
+                       epr_codigo,
+                       aer_codigo_letra,
+                       aer_nombre_nivel,
+                       aer_descripcion_criterio,
+                       aer_frecuencia_referencia,
+                       aer_esta_activa,
+                       per_codigo,
+                       aer_operacion,
+                       aer_usuario_bd,
+                       aer_fecha_cambio
+                   )
+                   SELECT i.epr_codigo,
+                          i.epr_codigo_letra,
+                          i.epr_nombre_nivel,
+                          i.epr_descripcion_criterio,
+                          i.epr_frecuencia_referencia,
+                          i.epr_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.epr_codigo = d.epr_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[escala_probabilidad]; desactive la fila y cree una nueva.', 1;
            INSERT INTO sgspi.aud_escala_probabilidad (
                epr_codigo,
                aer_codigo_letra,
@@ -7993,6 +9389,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_epr_auditoria
                aer_frecuencia_referencia,
                aer_esta_activa,
                per_codigo,
+               aer_operacion,
                aer_usuario_bd,
                aer_fecha_cambio
            )
@@ -8003,6 +9400,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_epr_auditoria
                   d.epr_frecuencia_referencia,
                   d.epr_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8045,10 +9443,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [eim] Bloquea el borrado físico y archiva en [sgspi].[aud_escala_impacto] la versión anterior de cada fila modificada
+-- [eim] Bloquea el borrado físico y archiva en [sgspi].[aud_escala_impacto] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_eim_auditoria
     ON sgspi.escala_impacto
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8057,20 +9455,48 @@ CREATE OR ALTER TRIGGER sgspi.TR_eim_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[escala_impacto].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.eim_codigo = d.eim_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[escala_impacto]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
                                         WHERE    u.us = ORIGINAL_LOGIN()
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_escala_impacto (
+                       eim_codigo,
+                       aem_nombre_impacto_negativo,
+                       aem_nombre_impacto_positivo,
+                       aem_descripcion_organizacional,
+                       aem_descripcion_operativa,
+                       aem_esta_activa,
+                       per_codigo,
+                       aem_operacion,
+                       aem_usuario_bd,
+                       aem_fecha_cambio
+                   )
+                   SELECT i.eim_codigo,
+                          i.eim_nombre_impacto_negativo,
+                          i.eim_nombre_impacto_positivo,
+                          i.eim_descripcion_organizacional,
+                          i.eim_descripcion_operativa,
+                          i.eim_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.eim_codigo = d.eim_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[escala_impacto]; desactive la fila y cree una nueva.', 1;
            INSERT INTO sgspi.aud_escala_impacto (
                eim_codigo,
                aem_nombre_impacto_negativo,
@@ -8079,6 +9505,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eim_auditoria
                aem_descripcion_operativa,
                aem_esta_activa,
                per_codigo,
+               aem_operacion,
                aem_usuario_bd,
                aem_fecha_cambio
            )
@@ -8089,6 +9516,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eim_auditoria
                   d.eim_descripcion_operativa,
                   d.eim_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8131,10 +9559,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [zrc] Bloquea el borrado físico y archiva en [sgspi].[aud_zona_riesgo_catalogo] la versión anterior de cada fila modificada
+-- [zrc] Bloquea el borrado físico y archiva en [sgspi].[aud_zona_riesgo_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_zrc_auditoria
     ON sgspi.zona_riesgo_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8143,26 +9571,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_zrc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[zona_riesgo_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.zrc_codigo = d.zrc_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[zona_riesgo_catalogo]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
                                         WHERE    u.us = ORIGINAL_LOGIN()
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_zona_riesgo_catalogo (
+                       zrc_codigo,
+                       azc_nombre_nivel,
+                       azc_orden,
+                       azc_esta_activa,
+                       per_codigo,
+                       azc_operacion,
+                       azc_usuario_bd,
+                       azc_fecha_cambio
+                   )
+                   SELECT i.zrc_codigo,
+                          i.zrc_nombre_nivel,
+                          i.zrc_orden,
+                          i.zrc_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.zrc_codigo = d.zrc_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[zona_riesgo_catalogo]; desactive la fila y cree una nueva.', 1;
            INSERT INTO sgspi.aud_zona_riesgo_catalogo (
                zrc_codigo,
                azc_nombre_nivel,
                azc_orden,
                azc_esta_activa,
                per_codigo,
+               azc_operacion,
                azc_usuario_bd,
                azc_fecha_cambio
            )
@@ -8171,6 +9624,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_zrc_auditoria
                   d.zrc_orden,
                   d.zrc_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8209,10 +9663,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [mvr] Bloquea el borrado físico y archiva en [sgspi].[aud_matriz_valoracion_riesgo] la versión anterior de cada fila modificada
+-- [mvr] Bloquea el borrado físico y archiva en [sgspi].[aud_matriz_valoracion_riesgo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
     ON sgspi.matriz_valoracion_riesgo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8221,8 +9675,44 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[matriz_valoracion_riesgo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_matriz_valoracion_riesgo (
+                       epr_codigo,
+                       eim_codigo,
+                       zrc_codigo,
+                       amr_directriz_tratamiento_riesgo,
+                       amr_directriz_tratamiento_oportunidad,
+                       amr_requiere_aprobacion_comite,
+                       amr_esta_activa,
+                       per_codigo,
+                       amr_operacion,
+                       amr_usuario_bd,
+                       amr_fecha_cambio
+                   )
+                   SELECT i.epr_codigo,
+                          i.eim_codigo,
+                          i.zrc_codigo,
+                          i.mvr_directriz_tratamiento_riesgo,
+                          i.mvr_directriz_tratamiento_oportunidad,
+                          i.mvr_requiere_aprobacion_comite,
+                          i.mvr_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -8230,12 +9720,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
                                          WHERE  i.epr_codigo = d.epr_codigo
                                                 AND i.eim_codigo = d.eim_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[matriz_valoracion_riesgo]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_matriz_valoracion_riesgo (
                epr_codigo,
                eim_codigo,
@@ -8245,6 +9729,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
                amr_requiere_aprobacion_comite,
                amr_esta_activa,
                per_codigo,
+               amr_operacion,
                amr_usuario_bd,
                amr_fecha_cambio
            )
@@ -8256,6 +9741,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
                   d.mvr_requiere_aprobacion_comite,
                   d.mvr_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8315,10 +9801,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [etc] Bloquea el borrado físico y archiva en [sgspi].[aud_estrategia_tratamiento_catalogo] la versión anterior de cada fila modificada
+-- [etc] Bloquea el borrado físico y archiva en [sgspi].[aud_estrategia_tratamiento_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
     ON sgspi.estrategia_tratamiento_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8327,7 +9813,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[estrategia_tratamiento_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8335,6 +9821,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_estrategia_tratamiento_catalogo (
+                       etc_codigo,
+                       aet_nombre_estrategia,
+                       aet_naturaleza_aplicable,
+                       aet_descripcion,
+                       aet_esta_activa,
+                       per_codigo,
+                       aet_operacion,
+                       aet_usuario_bd,
+                       aet_fecha_cambio
+                   )
+                   SELECT i.etc_codigo,
+                          i.etc_nombre_estrategia,
+                          i.etc_naturaleza_aplicable,
+                          i.etc_descripcion,
+                          i.etc_esta_activa,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_estrategia_tratamiento_catalogo (
                etc_codigo,
                aet_nombre_estrategia,
@@ -8342,6 +9854,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
                aet_descripcion,
                aet_esta_activa,
                per_codigo,
+               aet_operacion,
                aet_usuario_bd,
                aet_fecha_cambio
            )
@@ -8351,6 +9864,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
                   d.etc_descripcion,
                   d.etc_esta_activa,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8439,10 +9953,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [enc] Bloquea el borrado físico y archiva en [sgspi].[aud_estandar_normativo_catalogo] la versión anterior de cada fila modificada
+-- [enc] Bloquea el borrado físico y archiva en [sgspi].[aud_estandar_normativo_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
     ON sgspi.estandar_normativo_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8451,7 +9965,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[estandar_normativo_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8459,6 +9973,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_estandar_normativo_catalogo (
+                       enc_codigo,
+                       aen_identificador,
+                       aen_familia_norma,
+                       aen_nombre,
+                       aen_organismo,
+                       aen_anio_edicion,
+                       aen_esta_activo,
+                       per_codigo,
+                       aen_operacion,
+                       aen_usuario_bd,
+                       aen_fecha_cambio
+                   )
+                   SELECT i.enc_codigo,
+                          i.enc_identificador,
+                          i.enc_familia_norma,
+                          i.enc_nombre,
+                          i.enc_organismo,
+                          i.enc_anio_edicion,
+                          i.enc_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_estandar_normativo_catalogo (
                enc_codigo,
                aen_identificador,
@@ -8468,6 +10012,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
                aen_anio_edicion,
                aen_esta_activo,
                per_codigo,
+               aen_operacion,
                aen_usuario_bd,
                aen_fecha_cambio
            )
@@ -8479,6 +10024,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
                   d.enc_anio_edicion,
                   d.enc_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8523,10 +10069,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [crn] Bloquea el borrado físico y archiva en [sgspi].[aud_control_referencia_normativa] la versión anterior de cada fila modificada
+-- [crn] Bloquea el borrado físico y archiva en [sgspi].[aud_control_referencia_normativa] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
     ON sgspi.control_referencia_normativa
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8535,7 +10081,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[control_referencia_normativa].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8543,6 +10089,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_control_referencia_normativa (
+                       crn_codigo,
+                       enc_codigo,
+                       acn_rol_privacidad_pii,
+                       acn_identificador_control,
+                       acn_nombre_control,
+                       acn_objetivo_requisito,
+                       acn_esta_activo,
+                       per_codigo,
+                       acn_operacion,
+                       acn_usuario_bd,
+                       acn_fecha_cambio
+                   )
+                   SELECT i.crn_codigo,
+                          i.enc_codigo,
+                          i.crn_rol_privacidad_pii,
+                          i.crn_identificador_control,
+                          i.crn_nombre_control,
+                          i.crn_objetivo_requisito,
+                          i.crn_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_control_referencia_normativa (
                crn_codigo,
                enc_codigo,
@@ -8552,6 +10128,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
                acn_objetivo_requisito,
                acn_esta_activo,
                per_codigo,
+               acn_operacion,
                acn_usuario_bd,
                acn_fecha_cambio
            )
@@ -8563,6 +10140,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
                   d.crn_objetivo_requisito,
                   d.crn_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8607,10 +10185,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [aac] Bloquea el borrado físico y archiva en [sgspi].[aud_atributo_control_catalogo] la versión anterior de cada fila modificada
+-- [aac] Bloquea el borrado físico y archiva en [sgspi].[aud_atributo_control_catalogo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_aac_auditoria
     ON sgspi.atributo_control_catalogo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8619,7 +10197,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aac_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[atributo_control_catalogo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8627,12 +10205,37 @@ CREATE OR ALTER TRIGGER sgspi.TR_aac_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_atributo_control_catalogo (
+                       aac_codigo,
+                       acc_tipo_atributo,
+                       acc_valor,
+                       acc_esta_activo,
+                       per_codigo,
+                       acc_operacion,
+                       acc_usuario_bd,
+                       acc_fecha_cambio
+                   )
+                   SELECT i.aac_codigo,
+                          i.aac_tipo_atributo,
+                          i.aac_valor,
+                          i.aac_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_atributo_control_catalogo (
                aac_codigo,
                acc_tipo_atributo,
                acc_valor,
                acc_esta_activo,
                per_codigo,
+               acc_operacion,
                acc_usuario_bd,
                acc_fecha_cambio
            )
@@ -8641,6 +10244,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aac_auditoria
                   d.aac_valor,
                   d.aac_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8679,10 +10283,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [cra] Bloquea el borrado físico y archiva en [sgspi].[aud_control_referencia_normativa_atributo] la versión anterior de cada fila modificada
+-- [cra] Bloquea el borrado físico y archiva en [sgspi].[aud_control_referencia_normativa_atributo] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
     ON sgspi.control_referencia_normativa_atributo
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8691,8 +10295,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[control_referencia_normativa_atributo].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_control_referencia_normativa_atributo (
+                       crn_codigo,
+                       aac_codigo,
+                       aca_esta_activo,
+                       per_codigo,
+                       aca_operacion,
+                       aca_usuario_bd,
+                       aca_fecha_cambio
+                   )
+                   SELECT i.crn_codigo,
+                          i.aac_codigo,
+                          i.cra_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -8700,17 +10332,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
                                          WHERE  i.crn_codigo = d.crn_codigo
                                                 AND i.aac_codigo = d.aac_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[control_referencia_normativa_atributo]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_control_referencia_normativa_atributo (
                crn_codigo,
                aac_codigo,
                aca_esta_activo,
                per_codigo,
+               aca_operacion,
                aca_usuario_bd,
                aca_fecha_cambio
            )
@@ -8718,6 +10345,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
                   d.aac_codigo,
                   d.cra_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d
@@ -8753,10 +10381,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- [ptc] Bloquea el borrado físico y archiva en [sgspi].[aud_plan_tratamiento_control_referencia_normativa] la versión anterior de cada fila modificada
+-- [ptc] Bloquea el borrado físico y archiva en [sgspi].[aud_plan_tratamiento_control_referencia_normativa] las altas ('I') y la versión anterior de cada fila modificada ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
     ON sgspi.plan_tratamiento_control_referencia_normativa
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -8765,8 +10393,36 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
+           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
+                                        FROM     dbo.usuario_general AS u
+                                        WHERE    u.us = ORIGINAL_LOGIN()
+                                        ORDER BY u.uid);
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_plan_tratamiento_control_referencia_normativa (
+                       plt_codigo,
+                       crn_codigo,
+                       acp_esta_activo,
+                       per_codigo,
+                       acp_operacion,
+                       acp_usuario_bd,
+                       acp_fecha_cambio
+                   )
+                   SELECT i.plt_codigo,
+                          i.crn_codigo,
+                          i.ptc_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            IF EXISTS (SELECT 1
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
@@ -8774,17 +10430,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
                                          WHERE  i.plt_codigo = d.plt_codigo
                                                 AND i.crn_codigo = d.crn_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[plan_tratamiento_control_referencia_normativa]; desactive la fila y cree una nueva.', 1;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            INSERT INTO sgspi.aud_plan_tratamiento_control_referencia_normativa (
                plt_codigo,
                crn_codigo,
                acp_esta_activo,
                per_codigo,
+               acp_operacion,
                acp_usuario_bd,
                acp_fecha_cambio
            )
@@ -8792,6 +10443,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
                   d.crn_codigo,
                   d.ptc_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d

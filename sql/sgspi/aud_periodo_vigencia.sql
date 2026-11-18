@@ -1,4 +1,4 @@
--- 1. Tabla de auditoría (acrónimo [apv]): guarda la versión anterior y quién ejecutó el cambio
+-- 1. Tabla de auditoría (acrónimo [apv]): guarda las altas ('I') y la versión anterior ('U') con quién ejecutó la operación
 CREATE TABLE sgspi.aud_periodo_vigencia (
     apv_codigo          INT                IDENTITY (1, 1) NOT NULL,
     pev_codigo          SMALLINT           NOT NULL,
@@ -8,11 +8,13 @@ CREATE TABLE sgspi.aud_periodo_vigencia (
     apv_estado_vigencia NVARCHAR (20)      NOT NULL,
     apv_esta_activo     BIT                NOT NULL,
     per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    apv_operacion       CHAR (1)           CONSTRAINT DF_apv_operacion DEFAULT 'U' NOT NULL,
     apv_usuario_bd      SYSNAME            CONSTRAINT DF_apv_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apv_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_apv_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_apv_aud_periodo_vigencia PRIMARY KEY CLUSTERED (apv_codigo),
     CONSTRAINT FK_apv_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
-    CONSTRAINT FK_apv_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
+    CONSTRAINT FK_apv_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_apv_operacion CHECK (apv_operacion IN ('I', 'U'))
 );
 
 CREATE NONCLUSTERED INDEX IX_apv_pev_codigo
@@ -34,10 +36,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_apv_inmutabilidad
 
 
 GO
--- 3. Trigger en [sgspi].[periodo_vigencia]: bloquea DELETE físico y archiva la versión anterior (deleted)
+-- 3. Trigger en [sgspi].[periodo_vigencia]: bloquea DELETE físico y archiva altas ('I') y versión anterior ('U')
 CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
     ON sgspi.periodo_vigencia
-    AFTER UPDATE, DELETE
+    AFTER INSERT, UPDATE, DELETE
     AS BEGIN
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
@@ -46,7 +48,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                               FROM   inserted)
                THROW 50010, N'Operación denegada: No se permite eliminar físicamente periodos de vigencia en [sgspi].[periodo_vigencia].', 1;
            IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
+                          FROM   inserted)
                RETURN;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -54,6 +56,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                                         ORDER BY u.uid);
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_periodo_vigencia (
+                       pev_codigo,
+                       apv_anio,
+                       apv_fecha_apertura,
+                       apv_fecha_cierre,
+                       apv_estado_vigencia,
+                       apv_esta_activo,
+                       per_codigo,
+                       apv_operacion,
+                       apv_usuario_bd,
+                       apv_fecha_cambio
+                   )
+                   SELECT i.pev_codigo,
+                          i.pev_anio,
+                          i.pev_fecha_apertura,
+                          i.pev_fecha_cierre,
+                          i.pev_estado_vigencia,
+                          i.pev_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
            INSERT INTO sgspi.aud_periodo_vigencia (
                pev_codigo,
                apv_anio,
@@ -62,6 +92,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                apv_estado_vigencia,
                apv_esta_activo,
                per_codigo,
+               apv_operacion,
                apv_usuario_bd,
                apv_fecha_cambio
            )
@@ -72,6 +103,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
                   d.pev_estado_vigencia,
                   d.pev_esta_activo,
                   @per_actor,
+                  'U',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
            FROM   deleted AS d

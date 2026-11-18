@@ -67,15 +67,22 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
     THROW 51000, N''hay tablas sin <acr>_esta_activo'', 1;', 0;
 
 -- Cada tabla aud_* tiene: su código, las columnas no calculadas del origen salvo <acr>_version y <acr>_fecha_creacion, per_codigo,
--- usuario_bd y fecha_cambio. Si se agrega una columna a una tabla y no a su auditoría, esta prueba falla.
+-- <aud>_operacion ('I'/'U'), usuario_bd y fecha_cambio. Si se agrega una columna a una tabla y no a su auditoría, esta prueba falla.
 EXECUTE #espera N'AP-01 cada tabla tiene su auditoría con las mismas columnas', N'
 IF EXISTS (SELECT 1 FROM sys.tables AS t
            WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
                   AND t.name NOT LIKE N''aud[_]%''
                   AND (OBJECT_ID(N''sgspi.aud_'' + t.name) IS NULL
                        OR (SELECT COUNT(*) FROM sys.columns AS c WHERE c.object_id = OBJECT_ID(N''sgspi.aud_'' + t.name))
-                          <> 4 + (SELECT COUNT(*) FROM sys.columns AS c
-                                  WHERE c.object_id = t.object_id AND c.is_computed = 0 AND c.system_type_id <> 189 AND c.name NOT LIKE N''%[_]fecha[_]creacion'')))
+                          <> 5 + (SELECT COUNT(*) FROM sys.columns AS c
+                                  WHERE c.object_id = t.object_id AND c.is_computed = 0 AND c.system_type_id <> 189 AND c.name NOT LIKE N''%[_]fecha[_]creacion'')
+                       OR NOT EXISTS (SELECT 1 FROM sys.columns AS c
+                                      WHERE  c.object_id = OBJECT_ID(N''sgspi.aud_'' + t.name)
+                                             AND c.name LIKE N''___[_]operacion''
+                                             AND c.is_nullable = 0)
+                       OR NOT EXISTS (SELECT 1 FROM sys.check_constraints AS cc
+                                      WHERE  cc.parent_object_id = OBJECT_ID(N''sgspi.aud_'' + t.name)
+                                             AND cc.name LIKE N''CK[_]___[_]operacion'')))
     THROW 51000, N''hay tablas sin auditoría o con columnas distintas'', 1;', 0;
 
 -- Guarda de los EXCEPT de transición: toda columna de contenido de las 5 tablas con flujo debe estar en el EXCEPT previo a aud_*
@@ -149,13 +156,14 @@ UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''VIGENTE'' WHE
 
 EXECUTE #espera N'AP-15 el creador debe ser la persona de la sesión (acf)', N'INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, per_codigo_creador) VALUES (1,1,1,N''DEBILIDAD'',3,N''Suplantación'',1);', 50019;
 
--- El factor D1 cambió tres veces (a EN_VALIDACION_LIDER, a EN_REVISION_SGSPI y a VIGENTE); los UPDATE internos del trigger no cuentan
-EXECUTE #espera N'AP-01 la auditoría guarda una versión por UPDATE, con quién lo hizo', N'
+-- El factor D1 se creó (1 'I' de la persona 1) y cambió tres veces (3 'U': EN_VALIDACION_LIDER, EN_REVISION_SGSPI y VIGENTE); los UPDATE internos del trigger no cuentan
+EXECUTE #espera N'AP-01 la auditoría guarda el alta (I) y una versión (U) por UPDATE, con quién lo hizo', N'
 DECLARE @acf INT = (SELECT acf_codigo FROM sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1);
-IF (SELECT COUNT(*) FROM sgspi.aud_analisis_contexto_factor WHERE acf_codigo = @acf) <> 3
+IF (SELECT COUNT(*) FROM sgspi.aud_analisis_contexto_factor WHERE acf_codigo = @acf AND aaf_operacion = ''U'') <> 3
+   OR (SELECT COUNT(*) FROM sgspi.aud_analisis_contexto_factor WHERE acf_codigo = @acf AND aaf_operacion = ''I'' AND per_codigo = 1) <> 1
    OR NOT EXISTS (SELECT 1 FROM sgspi.aud_analisis_contexto_factor
-                  WHERE acf_codigo = @acf AND aaf_estado_registro = N''EN_REVISION_SGSPI'' AND per_codigo = 2)
-    THROW 51000, N''la auditoría no tiene las tres versiones anteriores o no registra a quien aprobó'', 1;', 0;
+                  WHERE acf_codigo = @acf AND aaf_operacion = ''U'' AND aaf_estado_registro = N''EN_REVISION_SGSPI'' AND per_codigo = 2)
+    THROW 51000, N''la auditoría no tiene el alta o las tres versiones anteriores o no registra a quien aprobó'', 1;', 0;
 
 EXECUTE #espera N'AP-05 editar VIGENTE sin cambiar estado', N'UPDATE sgspi.analisis_contexto_factor SET acf_descripcion_situacion = N''cambio'' WHERE acf_numero_factor = 1;', 50011;
 
@@ -521,6 +529,12 @@ INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_c
 VALUES (N''INV-5'', N''Actas sin ado'', 3, N''PUBLICA'', 1, 2, 2, 1);
 INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
 VALUES (1, N''RA-02'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Evento sin plan'', 1, 1, 1);', 0;
+
+EXECUTE #espera N'T1 un alta en air deja una fila I en aud_activo_informacion_responsable con la persona de la sesión', N'
+IF NOT EXISTS (SELECT 1 FROM sgspi.aud_activo_informacion_responsable
+               WHERE aci_codigo = 1 AND car_codigo = 1 AND uaa_codigo = 1
+                     AND air_tipo_responsabilidad = N''PROPIETARIO'' AND aar_operacion = ''I'' AND per_codigo = 1)
+    THROW 51000, N''el alta en air no quedó registrada con operación I y la persona de la sesión'', 1;', 0;
 
 EXECUTE #sesion_como 2; -- aprueba la persona 2
 

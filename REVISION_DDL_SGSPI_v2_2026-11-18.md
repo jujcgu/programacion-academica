@@ -18,7 +18,7 @@ Escala: **5** sin hallazgos · **4** detalles menores · **3** brechas relevante
 | 7 | Estrategia de indexación | 4 | 4 | 100 de 160 índices son de auditoría; la ruta caliente en `dbo` no se verifica. |
 | 8 | Volumetría y particionamiento | 4 | 4 | Particionar no hace falta; no hay estimación escrita ni retención de `aud_*`. |
 | 9 | Aislamiento y privilegios mínimos | 3 | **3** | El líder y el oficial pueden borrar el dictamen del auditor; el comité y el auditor mueven borradores ajenos; el alcance permite por omisión; el gestor no puede hacer su aval de Archivo. (Fase 1 aplicada.) |
-| 10 | Trazabilidad y auditoría | 1 | **3** | Las altas no se auditan: en 45 de 50 tablas no se sabe quién creó la fila; los cambios del DBA y de roles no dejan rastro. |
+| 10 | Trazabilidad y auditoría | 1 | **3** | Las altas no se auditan: en 45 de 50 tablas no se sabe quién creó la fila; los cambios del DBA y de roles no dejan rastro. (Fase 3 aplicada.) |
 | 11 | Protección de datos sensibles | 2 | **3** | La cuenta compartida lee planes, auditoría y los logins reales de todo el personal; no hay cifrado en reposo. |
 | 12 | Convenciones y claridad semántica | 3 | 4 | La especificación cita CHECK que ya no existen (RN-INT-06) y sigue hablando de "Row-Level Security". |
 | 13 | Concurrencia y bloqueos | 2 | 4 | El consecutivo `RA-nn` se calcula sobre texto y se atasca en `RA-100`. |
@@ -201,6 +201,8 @@ Queda una inconsistencia de la especificación que no se tocó: el diagrama ACI 
    La edición de lo que ya existe la sigue gobernando la máquina de estados. Prueba: alta en una vigencia `CERRADA` → 50022.
 
 ### Fase 3 — Trazabilidad (dimensión 10)
+
+**Estado:** aplicada el 2026-11-18 en el DDL, las pruebas, la especificación y `sql/sgspi/auditoria_servidor.sql`, sin ejecutar contra SQL Server. Los pasos describen lo que quedó.
 
 9. **T1 Registrar las altas [L, mecánico]**:
    - En las 50 `aud_*`, una columna `<aud>_operacion CHAR(1) CONSTRAINT DF_<aud>_operacion DEFAULT 'U' NOT NULL CONSTRAINT CK_<aud>_operacion CHECK (<aud>_operacion IN ('I', 'U'))`, donde `'I'` es la fila creada con sus valores nuevos y `'U'` la versión anterior, como hoy.
