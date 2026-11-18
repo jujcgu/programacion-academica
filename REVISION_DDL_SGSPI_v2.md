@@ -119,7 +119,7 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 
 ### Fase 1 — Firmas y reglas de negocio (dimensiones 2 y 10). Bloqueante.
 
-**Estado:** pasos 1–4 aplicados al DDL, a las pruebas y a la especificación (errores nuevos 50019 y 50020, AP-23). El paso 5 espera la decisión D4.
+**Estado:** fase completa: pasos 1–4 (errores nuevos 50019 y 50020, AP-23) y paso 5 tras la decisión D4.
 
 1. **Sellar al creador [S]** — en TR_acf, TR_rpi, TR_aci y TR_eia:
    - Resolver `@per_actor` una sola vez al inicio (`… WHERE u.us = ORIGINAL_LOGIN() ORDER BY u.uid`), exigirlo en toda escritura (hoy solo en aprobaciones) y reutilizarlo en las firmas.
@@ -142,6 +142,8 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
    `CONSTRAINT FK_eia_activo_proceso FOREIGN KEY (aci_codigo_primario, pri_codigo) REFERENCES sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo)`, y cambiar `IX_eia_aci_codigo_primario` a `(aci_codigo_primario, pri_codigo)`. Los fixtures deben crear la fila en `aip` antes del evento.
 
 ### Fase 2 — Trazabilidad (dimensión 10) [M]
+
+**Estado:** aplicada con otra técnica, según D1: en lugar de tablas temporales, una tabla `aud_<tabla>` por cada tabla del esquema, siguiendo `sql/sgspi/aud_periodo_vigencia.sql` (sección 5.9 del DDL). La descripción de abajo queda como alternativa descartada.
 
 6. **Historial nativo** en `acf, rpi, aci, ado, eia, plt, act, eac`:
    ```sql
@@ -173,6 +175,8 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 
 ### Fase 4 — Privilegios y datos sensibles (dimensiones 9 y 11)
 
+**Estado:** según D5, aplicados el paso 10 (vista de alcance solo con grupos `SGSPI_*`) y el paso 13, implementado en los triggers en vez de `SECURITY POLICY` (funciones `ufn_proceso_en_alcance` y `ufn_activo_en_alcance`, error 50021). Del paso 12 se aplicó la parte de las vulnerabilidades: la cuenta compartida va en `sgspi_rol_consulta`, que no las lee. Quedan pendientes los pasos 11 y 14.
+
 10. **Vista de alcance [S]** — en `vw_usuario_rol_alcance_sgspi`, agregar `AND g.gru_nombre LIKE N'SGSPI[_]%'`. Prueba: un usuario de un grupo ajeno al SGSPI no aparece.
 11. **GRANT del comité sobre `rpi` [S]** — borrar L3033-3034 y ajustar la prueba de L290, que hoy afirma que el comité puede hacerlo.
 12. **Cuenta compartida fuera de `sgspi_rol_base` [M]** — crear `sgspi_rol_consulta` con SELECT solo sobre catálogos y vistas sin vulnerabilidades. `eia`, `plt` y los campos de reserva y PII de `aci` se leen con la conexión del usuario, que ya existe para escribir. Requiere decidir en la app qué pantallas usan la cuenta compartida.
@@ -180,6 +184,8 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 14. **Cifrado en reposo [DBA]** — TDE o, como mínimo, backups cifrados.
 
 ### Fase 5 — Antipatrones, cardinalidad, convenciones y despliegue (dimensiones 3, 4, 12 y 14)
+
+**Estado:** aplicados el paso 18 (D3: propietario único y obligatorio para aprobar) y la parte de D2 del paso 21 (el auditor dictamina y cierra). El paso 24 no aplica (D6: no hay datos de ninguna versión). El resto queda pendiente.
 
 15. **Baja lógica coherente [S]** — filtrar `<acr>_esta_activo = 1` en la entidad principal de las vistas de reporte (acf L3195, aci L3234, eia y plt L3304, ado y aci L3556) y escribir en AP-22: `esta_activo = 0` significa registro anulado por error; `INACTIVO`/`HISTORICO` son etapas del ciclo de vida.
 16. **Guarda de los EXCEPT [S]** — una prueba que recorra `sys.columns` de las tablas con flujo (sin calculadas, estado, firmas, versión ni periodo) y falle si alguna columna no aparece en `OBJECT_DEFINITION` de su trigger.
@@ -197,16 +203,16 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 23. **Verificación posterior al despliegue [S]** — una consulta de solo lectura al final del script que liste: miembros de grupos `SGSPI_*` sin usuario de BD o con otro rol; usuarios de BD en roles de actor sin fila en `usuario_general.us`; usuarios en más de un rol de actor.
 24. **Versión del esquema [S]** — `EXECUTE sys.sp_addextendedproperty N'sgspi_version', N'2.1', N'SCHEMA', N'sgspi';`. Si la v1 está desplegada con datos, falta además un script de migración (decisión D6).
 
-### Decisiones pendientes
+### Decisiones (respondidas el 2026-11-18)
 
-| # | Pregunta | Afecta |
-|---|---|---|
-| D1 | ¿Se reintroduce el historial o se mantiene AP-01? Mantenerlo deja la dimensión 10 en 1 y debe justificarse en la especificación. | Paso 6 |
-| D2 | ¿Quién certifica `CERRADO_EFICAZ`: el auditor (especificación) o el oficial (DDL)? | Paso 21 |
-| D3 | ¿Un único propietario por activo? | Paso 18 |
-| D4 | ¿Un riesgo debe estar en un proceso al que pertenece su activo? | Paso 5 |
-| D5 | ¿El alcance por proceso se impone en la BD o solo en la app? | Pasos 12 y 13 |
-| D6 | ¿La v1 está desplegada con datos? | Paso 24 |
+| # | Pregunta | Respuesta | Aplicado |
+|---|---|---|---|
+| D1 | ¿Se reintroduce el historial? | Una tabla de auditoría por tabla, como `sql/sgspi/aud_periodo_vigencia.sql` | 50 tablas `aud_*` (sección 5.9) |
+| D2 | ¿Quién certifica `CERRADO_EFICAZ`? | El auditor dictamina y cierra | `tef`, GRANT y TR_plt |
+| D3 | ¿Un único propietario por activo? | Sí, y obligatorio para aprobar | `UX_air_propietario_activo` y TR_aci (50020) |
+| D4 | ¿El riesgo debe estar en un proceso de su activo? | Sí; los activos compartidos se asocian una vez a cada proceso | `FK_eia_activo_proceso` |
+| D5 | ¿Alcance por proceso en la BD? | Bloquear al menos las modificaciones y quitar las vulnerabilidades a la cuenta compartida | Triggers (50021) y `sgspi_rol_consulta` |
+| D6 | ¿La v1 está desplegada con datos? | No hay datos de ninguna versión | Sin migración |
 
 ### Efecto esperado
 
