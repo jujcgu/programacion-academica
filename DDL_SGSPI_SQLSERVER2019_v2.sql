@@ -81,7 +81,9 @@ AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritu
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
 tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno
 y solo lista grupos SGSPI_*. D5: líder y custodio solo escriben en el alcance de sus UAA (sección 5.9b, error
-50021) y la cuenta compartida (sgspi_rol_consulta) no lee las vulnerabilidades de los eventos.
+50021) y la cuenta compartida (sgspi_rol_consulta) no lee las vulnerabilidades de los eventos. Los roles transversales
+van en lista explícita (oficial, comité y auditor; el gestor documental solo en activos, D9): sin rol de actor no hay
+alcance. D2: el dictamen de eficacia solo lo escribe el auditor (DENY de sus columnas al líder y al oficial).
 AP-03  Identidad sin procedimiento de contexto de sesión: los triggers de acf, rpi, aci, eia, plt y sga resuelven la
 persona con ORIGINAL_LOGIN() -> [dbo].[usuario_general] (error 50017 si no la hay), firman con ella las aprobaciones
 y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor de seguimiento distinto.
@@ -91,7 +93,8 @@ TR_<acr>_integridad_y_actualizacion de la tabla; ya no existe usp_habilitar_carg
 AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
 listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
 TR_<acr>_integridad_y_actualizacion de acf, rpi, aci, eia y act (error 50011).
-[tef_rol_requerido] restringe transiciones por rol de BD según el estado de origen (NULL = cualquier rol con UPDATE; db_owner pasa siempre).
+[tef_rol_requerido] restringe transiciones por rol de BD, una fila por rol permitido (NULL = cualquier rol con UPDATE; db_owner pasa siempre).
+Las transiciones de captura de ACI y EIA nombran sus roles: el gestor, el comité y el auditor tienen UPDATE del estado para las suyas.
 AP-06  Integridad declarativa entre tablas: estrategia/naturaleza del evento, causal/nivel de reserva,
 nivel del padre en la taxonomía, componente afectado = categoría ISO 27005, serie con subseries y, D4, riesgo
 en un proceso que usa su activo primario (FK_eia_activo_proceso hacia [aip]).
@@ -278,7 +281,7 @@ CREATE TABLE sgspi.transicion_estado_flujo (
     tef_rol_requerido         SYSNAME       NULL, -- NULL = cualquier rol con UPDATE
     tef_esta_activa           BIT           CONSTRAINT DF_tef_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_tef_transicion_estado_flujo PRIMARY KEY CLUSTERED (tef_codigo),
-    CONSTRAINT UQ_tef_dominio_origen_destino UNIQUE (efc_dominio, efc_identificador_origen, efc_identificador_destino),
+    CONSTRAINT UQ_tef_dominio_origen_destino_rol UNIQUE (efc_dominio, efc_identificador_origen, efc_identificador_destino, tef_rol_requerido), -- una fila por rol permitido
     CONSTRAINT FK_tef_estado_origen FOREIGN KEY (efc_dominio, efc_identificador_origen) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador),
     CONSTRAINT FK_tef_estado_destino FOREIGN KEY (efc_dominio, efc_identificador_destino) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador),
     CONSTRAINT CK_tef_origen_distinto_destino CHECK (efc_identificador_origen <> efc_identificador_destino)
@@ -318,6 +321,8 @@ FROM   (VALUES -- ACF: Análisis de Contexto de Factores
        (N'ACT', N'PENDIENTE', N'Pendiente', 1, 1), (N'ACT', N'EN_CURSO', N'En curso', 0, 1), (N'ACT', N'COMPLETADA', N'Completada', 0, 0), (N'ACT', N'OBSERVADA', N'Observada', 0, 1)) AS v(dominio, identificador, nombre, es_inicial, permite_edicion);
 
 -- [AP-05] Transiciones válidas (se toman de los triggers originales); tef_rol_requerido NULL = cualquier rol con UPDATE
+-- Las de captura de ACI y EIA (desde BORRADOR y OBSERVADO) nombran sus roles, una fila por rol: el gestor (ACI), el comité
+-- y el auditor (EIA) tienen UPDATE del estado solo para sus propias transiciones.
 -- D2: el auditor certifica la eficacia (EN_EVALUACION_EFICACIA -> CERRADO_EFICAZ) o reabre la ejecución (-> EN_EJECUCION)
 INSERT INTO sgspi.transicion_estado_flujo (
     efc_dominio,
@@ -332,8 +337,8 @@ SELECT v.dominio,
 FROM   (VALUES -- ACF
        (N'ACF', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL), (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACF', N'OBSERVADO', N'BORRADOR', NULL), (N'ACF', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL), (N'ACF', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), -- RPI
        (N'RPI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL), (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'RPI', N'OBSERVADO', N'BORRADOR', NULL), (N'RPI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL), (N'RPI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), -- ACI
-       (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', N'sgspi_rol_gestor_documental'), (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', N'sgspi_rol_gestor_documental'), (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'OBSERVADO', N'BORRADOR', NULL), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL), (N'ACI', N'VIGENTE', N'INACTIVO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'INACTIVO', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'INACTIVO', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), -- EIA
-       (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL), (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'sgspi_rol_comite_direccion'), (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', N'sgspi_rol_comite_direccion'), (N'EIA', N'OBSERVADO', N'BORRADOR', NULL), (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL), (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', N'sgspi_rol_lider_propietario'), (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EJECUCION', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'sgspi_rol_auditor_control'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', N'sgspi_rol_auditor_control'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), -- ACT
+       (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_custodio_operador'), (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', N'sgspi_rol_gestor_documental'), (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', N'sgspi_rol_gestor_documental'), (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_custodio_operador'), (N'ACI', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACI', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_custodio_operador'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'INACTIVO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'INACTIVO', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'INACTIVO', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), -- EIA
+       (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'sgspi_rol_comite_direccion'), (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', N'sgspi_rol_comite_direccion'), (N'EIA', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'EIA', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', N'sgspi_rol_lider_propietario'), (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EJECUCION', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'sgspi_rol_auditor_control'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', N'sgspi_rol_auditor_control'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), -- ACT
        (N'ACT', N'PENDIENTE', N'EN_CURSO', NULL), (N'ACT', N'PENDIENTE', N'OBSERVADA', NULL), (N'ACT', N'EN_CURSO', N'COMPLETADA', N'sgspi_rol_lider_propietario'), (N'ACT', N'EN_CURSO', N'OBSERVADA', N'sgspi_rol_lider_propietario'), (N'ACT', N'OBSERVADA', N'PENDIENTE', NULL), (N'ACT', N'OBSERVADA', N'EN_CURSO', NULL), (N'ACT', N'COMPLETADA', N'OBSERVADA', N'sgspi_rol_oficial_seguridad_privacidad')) AS v(dominio, origen, destino, rol_requerido);
 
 
@@ -826,7 +831,8 @@ CREATE NONCLUSTERED INDEX IX_air_uaa_codigo
 
 -- D3: un solo propietario activo por activo; los demás responsables son custodios (TR_aci lo exige para aprobar)
 CREATE UNIQUE NONCLUSTERED INDEX UX_air_propietario_activo
-    ON sgspi.activo_informacion_responsable(aci_codigo) WHERE air_tipo_responsabilidad = N'PROPIETARIO' AND air_esta_activo = 1;
+    ON sgspi.activo_informacion_responsable(aci_codigo) WHERE air_tipo_responsabilidad = N'PROPIETARIO'
+                                                              AND air_esta_activo = 1;
 
 -- 4.5 [sif] y [msi] Ficha Técnica de Sistemas de Información y sus Módulos (Los 17 Sistemas USCO)
 CREATE TABLE sgspi.sistema_informacion_ficha (
@@ -2074,8 +2080,8 @@ CREATE TABLE sgspi.aud_serie_documental_catalogo (
     aso_nombre_serie NVARCHAR (150)     NOT NULL,
     aso_esta_activa  BIT                NOT NULL,
     per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
-    aso_usuario_bd      SYSNAME            CONSTRAINT DF_aso_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
-    aso_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_aso_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
+    aso_usuario_bd   SYSNAME            CONSTRAINT DF_aso_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
+    aso_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aso_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
     CONSTRAINT PK_aso_aud_serie_documental_catalogo PRIMARY KEY CLUSTERED (aso_codigo),
     CONSTRAINT FK_aso_serie_documental_catalogo FOREIGN KEY (sdo_codigo) REFERENCES sgspi.serie_documental_catalogo (sdo_codigo),
     CONSTRAINT FK_aso_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo)
@@ -2781,7 +2787,8 @@ GO
 5.9b ALCANCE POR PROCESO [AP-02] D5: la vista y las funciones con que los triggers limitan la escritura
 Los roles líder y custodio solo escriben en los procesos de las UAA donde la persona tiene un grupo SGSPI_*
 (vía proceso_institucional_uaa) y en los activos de esas UAA o asociados a esos procesos (error 50021). El oficial,
-el comité, el auditor, el gestor documental y db_owner escriben en todo lo que sus GRANT permiten.
+el comité, el auditor y db_owner son transversales; el gestor documental lo es solo en los activos (D9: en actividades
+y seguimientos tiene el alcance del custodio, que aproxima [Asignado]). Sin uno de esos roles no hay alcance transversal.
 ==================================================================================================*/
 -- 6.0 Vista de Integración de Seguridad y Alcance por Proceso/UAA
 -- CONCAT con literales Unicode (N'')
@@ -2830,23 +2837,25 @@ IF @@TRANCOUNT = 0
 
 GO
 -- Una fila si la sesión puede escribir en el proceso. Con @pri_codigo NULL solo hay fila si la sesión es transversal.
+-- Los roles transversales van en lista explícita: un rol nuevo o un usuario sin rol de actor no lo es por omisión.
 CREATE OR ALTER FUNCTION sgspi.ufn_proceso_en_alcance
 (@pri_codigo INT)
-RETURNS TABLE
+RETURNS TABLE 
 AS
-RETURN
+RETURN 
     SELECT 1 AS permitido
     WHERE  ISNULL(IS_MEMBER(N'db_owner'), 0) = 1
            OR ISNULL(IS_MEMBER(N'sgspi_rol_oficial_seguridad_privacidad'), 0) = 1
-           OR (ISNULL(IS_MEMBER(N'sgspi_rol_lider_propietario'), 0) = 0
-               AND ISNULL(IS_MEMBER(N'sgspi_rol_custodio_operador'), 0) = 0)
+           OR ISNULL(IS_MEMBER(N'sgspi_rol_comite_direccion'), 0) = 1
+           OR ISNULL(IS_MEMBER(N'sgspi_rol_auditor_control'), 0) = 1
            OR EXISTS (SELECT 1
                       FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
                       WHERE  v.per_codigo = (SELECT   TOP (1) u.up
                                              FROM     dbo.usuario_general AS u
                                              WHERE    u.us = ORIGINAL_LOGIN()
                                              ORDER BY u.uid)
-                             AND v.pri_codigo = @pri_codigo);
+                             AND v.pri_codigo = @pri_codigo)
+
 
 
 GO
@@ -2855,16 +2864,17 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- Una fila si la sesión puede escribir en el activo: es transversal, el activo es de una de sus UAA o está asociado
--- (aip activa) a uno de sus procesos. Con @aci_codigo NULL solo cuenta la UAA.
+-- Una fila si la sesión puede escribir en el activo: es transversal (en activos también el gestor documental), el activo
+-- es de una de sus UAA o está asociado (aip activa) a uno de sus procesos. Con @aci_codigo NULL solo cuenta la UAA.
 CREATE OR ALTER FUNCTION sgspi.ufn_activo_en_alcance
 (@aci_codigo INT, @uaa_codigo INT)
-RETURNS TABLE
+RETURNS TABLE 
 AS
-RETURN
+RETURN 
     SELECT 1 AS permitido
     WHERE  EXISTS (SELECT 1
                    FROM   sgspi.ufn_proceso_en_alcance(NULL))
+           OR ISNULL(IS_MEMBER(N'sgspi_rol_gestor_documental'), 0) = 1 -- D9: avala y completa todos los activos documentales
            OR EXISTS (SELECT 1
                       FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
                       WHERE  v.per_codigo = (SELECT   TOP (1) u.up
@@ -2876,7 +2886,8 @@ RETURN
                                              FROM   sgspi.activo_informacion_proceso_institucional AS aip
                                              WHERE  aip.aci_codigo = @aci_codigo
                                                     AND aip.pri_codigo = v.pri_codigo
-                                                    AND aip.aip_esta_activo = 1)));
+                                                    AND aip.aip_esta_activo = 1)))
+
 
 
 GO
@@ -2945,8 +2956,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                               UNION
                               SELECT pri_codigo
                               FROM   deleted) AS x
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[analisis_contexto_factor].', 1;
            IF EXISTS (SELECT 1
@@ -3376,8 +3386,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                               SELECT aci_codigo,
                                      uaa_codigo
                               FROM   deleted) AS x
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(x.aci_codigo, x.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(x.aci_codigo, x.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion].', 1;
            IF EXISTS (SELECT 1
@@ -3751,8 +3760,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental].', 1;
            IF EXISTS (SELECT 1
@@ -3891,8 +3899,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               UNION
                               SELECT pri_codigo
                               FROM   deleted) AS x
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[evento_incertidumbre_activo].', 1;
            IF EXISTS (SELECT 1
@@ -4203,8 +4210,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                              INNER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = x.eia_codigo
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento].', 1;
            -- [AP-15] Dictamen de eficacia nuevo o cambiado (EXCEPT trata NULL = NULL): lo firma la persona de la sesión
@@ -4442,8 +4448,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                              INNER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[actividad_tratamiento].', 1;
            IF EXISTS (SELECT 1
@@ -4748,8 +4753,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                              INNER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
            -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
@@ -4846,8 +4850,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                              INNER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
            -- Si hay varias filas de la misma actividad en el lote, prevalece la de mayor sga_codigo
@@ -4971,10 +4974,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS ap
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo) AS aa
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS ap
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo) AS aa
                       WHERE  ap.permitido IS NULL
                              OR aa.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo o el proceso no son de las UAA del usuario en [sgspi].[activo_informacion_proceso_institucional].', 1;
@@ -5020,8 +5021,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_sede].', 1;
        END
@@ -5066,8 +5066,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_responsable].', 1;
        END
@@ -5112,8 +5111,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_soporte_registro].', 1;
        END
@@ -5158,8 +5156,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_medio_conservacion].', 1;
        END
@@ -5204,8 +5201,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_idioma].', 1;
        END
@@ -5250,8 +5246,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY
-                             sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_formato_archivo].', 1;
        END
@@ -5334,8 +5329,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_bloquear_padre_no_editable
                              INNER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY
-                             sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
        END
@@ -5787,7 +5781,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.pri_codigo = d.pri_codigo AND i.uaa_codigo = d.uaa_codigo))
+                                         WHERE  i.pri_codigo = d.pri_codigo
+                                                AND i.uaa_codigo = d.uaa_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[proceso_institucional_uaa]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6044,7 +6039,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpc_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.rpi_codigo = d.rpi_codigo AND i.rpc_numero_pregunta = d.rpc_numero_pregunta))
+                                         WHERE  i.rpi_codigo = d.rpi_codigo
+                                                AND i.rpc_numero_pregunta = d.rpc_numero_pregunta))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[requisito_parte_interesada_cuestionario]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6117,7 +6113,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.rpi_codigo = d.rpi_codigo AND i.pri_codigo = d.pri_codigo))
+                                         WHERE  i.rpi_codigo = d.rpi_codigo
+                                                AND i.pri_codigo = d.pri_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[requisito_parte_interesada_proceso_institucional]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6370,7 +6367,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.aci_codigo = d.aci_codigo AND i.pri_codigo = d.pri_codigo))
+                                         WHERE  i.aci_codigo = d.aci_codigo
+                                                AND i.pri_codigo = d.pri_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_informacion_proceso_institucional]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6443,7 +6441,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.aci_codigo = d.aci_codigo AND i.sus_codigo = d.sus_codigo))
+                                         WHERE  i.aci_codigo = d.aci_codigo
+                                                AND i.sus_codigo = d.sus_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_informacion_sede]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -6516,7 +6515,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.aci_codigo = d.aci_codigo AND i.car_codigo = d.car_codigo AND i.uaa_codigo = d.uaa_codigo AND i.air_tipo_responsabilidad = d.air_tipo_responsabilidad))
+                                         WHERE  i.aci_codigo = d.aci_codigo
+                                                AND i.car_codigo = d.car_codigo
+                                                AND i.uaa_codigo = d.uaa_codigo
+                                                AND i.air_tipo_responsabilidad = d.air_tipo_responsabilidad))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_informacion_responsable]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7419,7 +7421,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo AND i.src_codigo = d.src_codigo))
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.src_codigo = d.src_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_soporte_registro]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7492,7 +7495,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo AND i.mcc_codigo = d.mcc_codigo))
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.mcc_codigo = d.mcc_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_medio_conservacion]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7565,7 +7569,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo AND i.idi_codigo = d.idi_codigo))
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.idi_codigo = d.idi_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_idioma]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7638,7 +7643,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo AND i.fac_codigo = d.fac_codigo))
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.fac_codigo = d.fac_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_formato_archivo]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -7711,7 +7717,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo AND i.upc_codigo = d.upc_codigo))
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.upc_codigo = d.upc_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_unidad_productora]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8034,7 +8041,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.epr_codigo = d.epr_codigo AND i.eim_codigo = d.eim_codigo))
+                                         WHERE  i.epr_codigo = d.epr_codigo
+                                                AND i.eim_codigo = d.eim_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[matriz_valoracion_riesgo]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8503,7 +8511,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.crn_codigo = d.crn_codigo AND i.aac_codigo = d.aac_codigo))
+                                         WHERE  i.crn_codigo = d.crn_codigo
+                                                AND i.aac_codigo = d.aac_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[control_referencia_normativa_atributo]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8576,7 +8585,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
                       FROM   deleted AS d
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   inserted AS i
-                                         WHERE  i.plt_codigo = d.plt_codigo AND i.crn_codigo = d.crn_codigo))
+                                         WHERE  i.plt_codigo = d.plt_codigo
+                                                AND i.crn_codigo = d.crn_codigo))
                THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[plan_tratamiento_control_referencia_normativa]; desactive la fila y cree una nueva.', 1;
            DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
                                         FROM     dbo.usuario_general AS u
@@ -8823,6 +8833,11 @@ GRANT UPDATE
 GRANT INSERT, UPDATE
     ON sgspi.activo_informacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
 
+-- El gestor documental solo cambia el estado de [aci] para su aval de Archivo (EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI
+-- u OBSERVADO, RN-DOC-06); sin este GRANT la transición que [tef] le asigna fallaba con 229.
+GRANT UPDATE
+    ON sgspi.activo_informacion (aci_estado_registro) TO sgspi_rol_gestor_documental;
+
 GRANT INSERT, UPDATE
     ON sgspi.activo_informacion_responsable TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
 
@@ -8849,6 +8864,11 @@ GRANT UPDATE
 
 GRANT INSERT, UPDATE
     ON sgspi.plan_tratamiento TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
+
+-- D2: el dictamen de eficacia es solo del auditor; el líder y el oficial no lo escriben ni lo borran (TR_plt solo revisa
+-- dictámenes con evaluador). Va después del GRANT de tabla: el DENY de columna prevalece sobre él.
+DENY UPDATE
+    ON sgspi.plan_tratamiento (plt_es_tratamiento_eficaz, plt_dictamen_eficacia, per_codigo_evaluador, plt_fecha_evaluacion_eficacia) TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
 
 GRANT INSERT, UPDATE
     ON sgspi.actividad_tratamiento TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
@@ -9556,66 +9576,87 @@ COMMIT TRANSACTION; -- [AP-19]
 GO
 /*==================================================================================================
 7. VERIFICACIÓN POSTERIOR AL DESPLIEGUE (SOLO LECTURA)
-Lista desalineaciones entre [dbo].[usuario_grupo]/[dbo].[usuario_general] y los roles de BD del SGSPI:
-(a) miembros de grupos SGSPI_* sin usuario de BD o sin el rol equivalente; (b) usuarios de BD en un rol
-de actor sin fila en [dbo].[usuario_general].[us]; (c) usuarios de BD en más de un rol de actor.
+Lista desalineaciones entre [dbo].[usuario_grupo]/[dbo].[usuario_general] y los roles de BD del SGSPI. Compara el
+login del usuario de BD (SUSER_SNAME de su sid), que es lo que los triggers buscan con ORIGINAL_LOGIN():
+(a) miembros de grupos SGSPI_* sin usuario de BD o sin el rol equivalente; (b) usuarios de BD en un rol de actor cuyo
+login no está en [dbo].[usuario_general].[us]; (c) usuarios de BD en más de un rol de actor; (d) usuarios de un rol de
+actor que también son miembros directos de db_owner, db_datawriter, db_ddladmin o db_securityadmin, que anulan los
+GRANT; (e) logins de un rol de actor con varias personas en [dbo].[usuario_general] (TOP (1) elegiría una de ellas).
 ==================================================================================================*/
-WITH cte_mapa_roles
-AS   (SELECT v.gru_nombre,
-             v.rol_bd
-      FROM   (VALUES (N'SGSPI_CUSTODIO_OPERADOR', N'sgspi_rol_custodio_operador'),
-                     (N'SGSPI_LIDER_PROPIETARIO', N'sgspi_rol_lider_propietario'),
-                     (N'SGSPI_GESTOR_DOCUMENTAL', N'sgspi_rol_gestor_documental'),
-                     (N'SGSPI_ADMIN_OPDP', N'sgspi_rol_oficial_seguridad_privacidad'),
-                     (N'SGSPI_COMITE_DIRECCION', N'sgspi_rol_comite_direccion'),
-                     (N'SGSPI_AUDITOR_CONTROL', N'sgspi_rol_auditor_control')) AS v(gru_nombre, rol_bd)),
-     cte_membresia_bd
-AS   (SELECT m.name AS usuario_bd,
-             r.name AS rol_bd
-      FROM   sys.database_role_members AS rm
-             INNER JOIN
-             sys.database_principals AS r
-             ON r.principal_id = rm.role_principal_id
-             INNER JOIN
-             sys.database_principals AS m
-             ON m.principal_id = rm.member_principal_id
-      WHERE  r.name IN (SELECT rol_bd
-                        FROM   cte_mapa_roles))
-SELECT DISTINCT N'Grupo SGSPI_* sin usuario de BD o sin su rol equivalente' AS hallazgo,
-                u.us AS usuario,
-                g.gru_nombre AS detalle
-FROM   dbo.usuario_grupo AS ug
-       INNER JOIN
-       dbo.grupo AS g
-       ON g.gru_codigo = ug.usg_grupo
-       INNER JOIN
-       dbo.usuario_general AS u
-       ON u.uid = ug.usg_usuario
-       LEFT OUTER JOIN
-       cte_mapa_roles AS mr
-       ON mr.gru_nombre = g.gru_nombre
-WHERE  ug.usg_estado = 1
-       AND g.gru_estado = 1
-       AND g.gru_nombre LIKE N'SGSPI[_]%'
-       AND NOT EXISTS (SELECT 1
-                       FROM   cte_membresia_bd AS mb
-                       WHERE  mb.usuario_bd = u.us
-                              AND mb.rol_bd = mr.rol_bd)
+WITH     cte_mapa_roles
+AS       (SELECT v.gru_nombre,
+                 v.rol_bd
+          FROM   (VALUES (N'SGSPI_CUSTODIO_OPERADOR', N'sgspi_rol_custodio_operador'), (N'SGSPI_LIDER_PROPIETARIO', N'sgspi_rol_lider_propietario'), (N'SGSPI_GESTOR_DOCUMENTAL', N'sgspi_rol_gestor_documental'), (N'SGSPI_ADMIN_OPDP', N'sgspi_rol_oficial_seguridad_privacidad'), (N'SGSPI_COMITE_DIRECCION', N'sgspi_rol_comite_direccion'), (N'SGSPI_AUDITOR_CONTROL', N'sgspi_rol_auditor_control')) AS v(gru_nombre, rol_bd)),
+         cte_membresia_bd
+AS       (SELECT m.principal_id AS usuario_id,
+                 m.name AS usuario_bd,
+                 SUSER_SNAME(m.sid) AS login_bd,
+                 r.name AS rol_bd
+          FROM   sys.database_role_members AS rm
+                 INNER JOIN
+                 sys.database_principals AS r
+                 ON r.principal_id = rm.role_principal_id
+                 INNER JOIN
+                 sys.database_principals AS m
+                 ON m.principal_id = rm.member_principal_id
+          WHERE  r.name IN (SELECT rol_bd
+                            FROM   cte_mapa_roles))
+SELECT   DISTINCT N'Grupo SGSPI_* sin usuario de BD o sin su rol equivalente' AS hallazgo,
+                  u.us AS usuario,
+                  g.gru_nombre AS detalle
+FROM     dbo.usuario_grupo AS ug
+         INNER JOIN
+         dbo.grupo AS g
+         ON g.gru_codigo = ug.usg_grupo
+         INNER JOIN
+         dbo.usuario_general AS u
+         ON u.uid = ug.usg_usuario
+         LEFT OUTER JOIN
+         cte_mapa_roles AS mr
+         ON mr.gru_nombre = g.gru_nombre
+WHERE    ug.usg_estado = 1
+         AND g.gru_estado = 1
+         AND g.gru_nombre LIKE N'SGSPI[_]%'
+         AND NOT EXISTS (SELECT 1
+                         FROM   cte_membresia_bd AS mb
+                         WHERE  mb.login_bd = u.us
+                                AND mb.rol_bd = mr.rol_bd)
 UNION ALL
-SELECT DISTINCT N'Usuario de BD en rol de actor sin fila en dbo.usuario_general.us' AS hallazgo,
-                mb.usuario_bd AS usuario,
-                mb.rol_bd AS detalle
-FROM   cte_membresia_bd AS mb
-WHERE  NOT EXISTS (SELECT 1
-                   FROM   dbo.usuario_general AS u
-                   WHERE  u.us = mb.usuario_bd)
+SELECT   DISTINCT N'Usuario de BD en rol de actor cuyo login no está en dbo.usuario_general.us' AS hallazgo,
+                  mb.usuario_bd AS usuario,
+                  mb.rol_bd AS detalle
+FROM     cte_membresia_bd AS mb
+WHERE    NOT EXISTS (SELECT 1
+                     FROM   dbo.usuario_general AS u
+                     WHERE  u.us = mb.login_bd)
 UNION ALL
 SELECT   N'Usuario de BD en más de un rol de actor' AS hallazgo,
          mb.usuario_bd AS usuario,
          STRING_AGG(mb.rol_bd, N', ') WITHIN GROUP (ORDER BY mb.rol_bd) AS detalle
 FROM     cte_membresia_bd AS mb
 GROUP BY mb.usuario_bd
-HAVING   COUNT(*) > 1;
+HAVING   COUNT(*) > 1
+UNION ALL
+SELECT   DISTINCT N'Usuario de rol de actor en un rol fijo que anula los GRANT' AS hallazgo,
+                  mb.usuario_bd AS usuario,
+                  f.name AS detalle
+FROM     cte_membresia_bd AS mb
+         INNER JOIN
+         sys.database_role_members AS frm
+         ON frm.member_principal_id = mb.usuario_id
+         INNER JOIN
+         sys.database_principals AS f
+         ON f.principal_id = frm.role_principal_id
+WHERE    f.name IN (N'db_owner', N'db_datawriter', N'db_ddladmin', N'db_securityadmin')
+UNION ALL
+SELECT   N'Login de rol de actor con varias personas en dbo.usuario_general' AS hallazgo,
+         u.us AS usuario,
+         STRING_AGG(CONVERT (NVARCHAR (20), u.up), N', ') WITHIN GROUP (ORDER BY u.up) AS detalle
+FROM     dbo.usuario_general AS u
+WHERE    u.us IN (SELECT mb.login_bd
+                  FROM   cte_membresia_bd AS mb)
+GROUP BY u.us
+HAVING   COUNT(DISTINCT u.up) > 1;
 
 
 GO

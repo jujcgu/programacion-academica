@@ -455,7 +455,7 @@ Cada regla cita el mecanismo real del esquema `sgspi`: constraint `CK_*`, llave 
 ### 6.5 Integridad transversal, flujo de estados y auditoría
 - **RN-INT-01 (Identidad de Sesión Obligatoria, AP-03):** Toda operación de escritura resuelve la persona directamente desde `ORIGINAL_LOGIN()` en `dbo.usuario_general` (`us = ORIGINAL_LOGIN()`, `up = per_codigo`); si el login no tiene persona asociada, los triggers lanzan el error 50017. No existe procedimiento de contexto de sesión.
 - **RN-INT-02 (Estado Inicial Obligatorio y Carga Inicial):** Un registro nuevo solo puede crearse en el estado con `efc_es_inicial = 1` de su dominio (`BORRADOR` en ACF, RPI, ACI y EIA; `PENDIENTE` en ACT); en otro caso el trigger lanza el error 50014 (AP-04). `UX_efc_estado_inicial` garantiza un único estado inicial por dominio. La migración de inventarios existentes (194 activos, D1..D124, etc.) la hace un administrador (`dbo`) deshabilitando temporalmente el trigger `TR_<acr>_integridad_y_actualizacion` de la tabla; ningún rol de la sección 11.1 puede hacerlo.
-- **RN-INT-03 (Transiciones Solo Según `transicion_estado_flujo`):** Un cambio de estado solo es válido si existe la pareja origen/destino en `sgspi.transicion_estado_flujo` (`UQ_tef_dominio_origen_destino`) y el usuario pertenece a `tef_rol_requerido` (o es `db_owner`); un UPDATE que deje el mismo estado cuando `efc_permite_edicion = 0` también se rechaza. Ambos casos lanzan el error 50011 en los triggers de acf, rpi, aci, eia y act. Además, no se pueden modificar `plan_tratamiento`, `actividad_tratamiento`, `activo_documental` ni las 11 tablas puente cuando su registro padre tiene `efc_permite_edicion = 0` (leído con `WITH (UPDLOCK)`, error 50011).
+- **RN-INT-03 (Transiciones Solo Según `transicion_estado_flujo`):** Un cambio de estado solo es válido si existe la pareja origen/destino en `sgspi.transicion_estado_flujo` (`UQ_tef_dominio_origen_destino_rol`: una fila por rol permitido) y el usuario pertenece a alguno de sus `tef_rol_requerido` (o es `db_owner`; `NULL` admite cualquier rol con UPDATE); un UPDATE que deje el mismo estado cuando `efc_permite_edicion = 0` también se rechaza. Ambos casos lanzan el error 50011 en los triggers de acf, rpi, aci, eia y act. Además, no se pueden modificar `plan_tratamiento`, `actividad_tratamiento`, `activo_documental` ni las 11 tablas puente cuando su registro padre tiene `efc_permite_edicion = 0` (leído con `WITH (UPDLOCK)`, error 50011).
 - **RN-INT-04 (Prohibición de Borrado Físico):** Todas las tablas lanzan el error 50010 ante DELETE (sus triggers de integridad o de auditoría); la baja es lógica. Las 50 tablas de negocio tienen `<acr>_esta_activo` / `<acr>_esta_activa` (`BIT NOT NULL DEFAULT 1`; 1 = activo, 0 = registro anulado por error), mientras que `INACTIVO` e `HISTORICO` son etapas del ciclo de vida. `DENY DELETE ON SCHEMA::sgspi` alcanza a todos los roles, no hay `ON DELETE CASCADE` y las vistas de reporte filtran `<acr>_esta_activo = 1` tanto en la entidad principal como en las tablas puente (sección 11.1).
 - **RN-INT-05 (Segregación de Funciones):** El aprobador no puede ser el creador: `CK_acf_sod_aprobador`, `CK_rpi_sod_aprobador`, `CK_aci_sod_aprobador`; en eventos, los firmantes (`eia_per_codigo_validador_lider`, `eia_per_codigo_revisor_sgspi`, `eia_per_codigo_aprobador_comite`) deben ser distintos de `eia_per_codigo_creador` (`CK_eia_sod_firmas`). Los triggers de acf, rpi, aci y eia resuelven la persona de la sesión con `ORIGINAL_LOGIN()` en `dbo.usuario_general` (error 50017 si no la hay), rechazan un registro nuevo cuyo creador sea otra persona (error 50019) y escriben con ella las firmas; sin esa verificación, declarar a otra persona como creadora anularía los CHECK anteriores.
 - **RN-INT-06 (Aprobador Obligatorio en Estados Aprobados):** `CK_acf_aprobador_requerido` y `CK_rpi_aprobador_requerido` exigen aprobador en `'VIGENTE'` e `'HISTORICO'`; `CK_aci_aprobador_requerido` lo exige en `'VIGENTE'`, `'INACTIVO'` e `'HISTORICO'`.
@@ -533,7 +533,7 @@ Todos los casos de uso que modifican datos se ejecutan con el login SQL real de 
 
 ## 10. Máquina de Estados para el Registro Principal
 
-Los estados y transiciones son datos (`sgspi.estado_flujo_catalogo`, `sgspi.transicion_estado_flujo`); los triggers los consultan y rechazan con el error 50011 cualquier cambio no declarado o sin `tef_rol_requerido`. `efc_permite_edicion = 0` (p. ej. `VIGENTE`, `HISTORICO`, `COMPLETADA`, `CERRADO_EFICAZ`) indica que el registro no se puede modificar en ese estado. Un diagrama por familia de dominio:
+Los estados y transiciones son datos (`sgspi.estado_flujo_catalogo`, `sgspi.transicion_estado_flujo`); los triggers los consultan y rechazan con el error 50011 cualquier cambio no declarado o sin `tef_rol_requerido`. En `ACI` y `EIA` las transiciones de captura (desde `BORRADOR` y `OBSERVADO`) nombran sus roles, una fila por rol (custodio, líder y oficial en `ACI`; líder y oficial en `EIA`), porque el gestor documental, el comité y el auditor tienen UPDATE del estado solo para sus propias transiciones. `efc_permite_edicion = 0` (p. ej. `VIGENTE`, `HISTORICO`, `COMPLETADA`, `CERRADO_EFICAZ`) indica que el registro no se puede modificar en ese estado. Un diagrama por familia de dominio:
 
 **Dominios `ACF` y `RPI`** (contexto DOFA y partes interesadas):
 
@@ -590,27 +590,27 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> BORRADOR : 1. Crear evento (CUSTODIO / LIDER)
 
-    BORRADOR --> EN_VALIDACION_LIDER : 2. Enviar a validacion (CUSTODIO)
+    BORRADOR --> EN_VALIDACION_LIDER : 2. Enviar a validacion (LIDER / ADMIN_OPDP)
     EN_VALIDACION_LIDER --> EN_REVISION_SGSPI : 3. Avalar Riesgo MR-06 (LIDER_PROPIETARIO)
     EN_VALIDACION_LIDER --> BORRADOR : 3b. Devolver a borrador
 
     EN_VALIDACION_LIDER --> OBSERVADO : 4a. OBSERVAR - Devolver con ajustes (LIDER_PROPIETARIO)
     EN_REVISION_SGSPI --> OBSERVADO : 4c. OBSERVAR - Rechazar tecnicamente (ADMIN_OPDP)
-    OBSERVADO --> EN_VALIDACION_LIDER : 5. Subsanar observaciones (CUSTODIO / LIDER)
-    OBSERVADO --> BORRADOR : 5b. Reabrir como borrador
+    OBSERVADO --> EN_VALIDACION_LIDER : 5. Subsanar observaciones (LIDER / ADMIN_OPDP)
+    OBSERVADO --> BORRADOR : 5b. Reabrir como borrador (LIDER / ADMIN_OPDP)
 
     EN_REVISION_SGSPI --> EN_ACEPTACION_COMITE : 7a. Escalar si es Alto/Extremo (ADMIN_OPDP)
     EN_ACEPTACION_COMITE --> OBSERVADO : 7b. OBSERVAR - Exigir mas controles (COMITE_DIRECCION)
     EN_ACEPTACION_COMITE --> APROBADO_PLANIFICADO : 8a. APROBAR Aceptar riesgo (COMITE_DIRECCION)
     EN_REVISION_SGSPI --> APROBADO_PLANIFICADO : 8b. APROBAR Plan estandar (ADMIN_OPDP)
 
-    APROBADO_PLANIFICADO --> EN_EJECUCION : 9. Iniciar cronograma (CUSTODIO / LIDER)
+    APROBADO_PLANIFICADO --> EN_EJECUCION : 9. Iniciar cronograma (LIDER_PROPIETARIO)
     APROBADO_PLANIFICADO --> OBSERVADO : 9b. OBSERVAR
     EN_EJECUCION --> OBSERVADO : 10. OBSERVAR
 
     EN_EJECUCION --> EN_EVALUACION_EFICACIA : 11. Completar 100% actividades y reportar KPI (LIDER_PROPIETARIO)
-    EN_EVALUACION_EFICACIA --> EN_EJECUCION : 12a. Tratamiento ineficaz (ADMIN_OPDP / AUDITOR)
-    EN_EVALUACION_EFICACIA --> CERRADO_EFICAZ : 12b. APROBAR Certificar eficacia (ADMIN_OPDP / AUDITOR)
+    EN_EVALUACION_EFICACIA --> EN_EJECUCION : 12a. Tratamiento ineficaz (AUDITOR, D2)
+    EN_EVALUACION_EFICACIA --> CERRADO_EFICAZ : 12b. APROBAR Certificar eficacia (AUDITOR, D2)
     EN_EVALUACION_EFICACIA --> OBSERVADO : 12c. OBSERVAR
 
     CERRADO_EFICAZ --> HISTORICO : 13. Cierre de vigencia anual (ADMIN_OPDP)
@@ -662,16 +662,16 @@ stateDiagram-v2
 
 ### 11.1 Seguridad en base de datos
 
-La aplicación escribe con el login SQL real de cada persona y lee con una cuenta compartida de consulta (`conexion/cls_config.php`). Por eso el motor aplica la matriz anterior **al escribir**: por tabla y columna (GRANT/DENY), por transición (`tef_rol_requerido`) y por alcance (D5): los roles líder y custodio solo escriben en los procesos de las UAA donde la persona tiene un grupo `SGSPI_*` y en los activos de esas UAA o asociados a esos procesos (`sgspi.ufn_proceso_en_alcance`, `sgspi.ufn_activo_en_alcance`, error 50021); `[Asignado]` se aproxima con ese mismo alcance. La lectura con la cuenta compartida sigue filtrada por la aplicación, pero esa cuenta (`sgspi_rol_consulta`) no puede leer amenazas, controles existentes ni vulnerabilidades de los eventos, ni su copia en la auditoría. La lista exacta de GRANT/DENY está en la sección 5.10.10 del DDL.
+La aplicación escribe con el login SQL real de cada persona y lee con una cuenta compartida de consulta (`conexion/cls_config.php`). Por eso el motor aplica la matriz anterior **al escribir**: por tabla y columna (GRANT/DENY), por transición (`tef_rol_requerido`) y por alcance (D5): los roles líder y custodio solo escriben en los procesos de las UAA donde la persona tiene un grupo `SGSPI_*` y en los activos de esas UAA o asociados a esos procesos (`sgspi.ufn_proceso_en_alcance`, `sgspi.ufn_activo_en_alcance`, error 50021); `[Asignado]` se aproxima con ese mismo alcance. El gestor documental tiene ese alcance en actividades y seguimientos y es transversal en los activos (D9); el oficial, el comité y el auditor son transversales. La lista de roles transversales es explícita: un usuario sin rol de actor no tiene alcance aunque escriba por otra vía (p. ej., `db_datawriter`). La lectura con la cuenta compartida sigue filtrada por la aplicación, pero esa cuenta (`sgspi_rol_consulta`) no puede leer amenazas, controles existentes ni vulnerabilidades de los eventos, ni su copia en la auditoría. La lista exacta de GRANT/DENY está en la sección 5.10.10 del DDL.
 
 | Rol de base de datos | Grupo en `dbo.grupo` | Escribe en |
 | :--- | :--- | :--- |
 | `sgspi_rol_base` | `sgspi_rol_consulta` y los seis roles siguientes (anidados) | Nada: `SELECT` sobre el esquema |
 | `sgspi_rol_consulta` | Cuenta compartida de consulta de la aplicación | Nada; tampoco lee `eia_fuente_generadora`, `eia_controles_existentes` ni `eia_condicion_vulnerabilidad` (D5) |
 | `sgspi_rol_custodio_operador` | `SGSPI_CUSTODIO_OPERADOR` | acf, aci y sus tablas asociadas, sif/msi, ado y sus tablas puente, act; solo INSERT en eia y sga |
-| `sgspi_rol_lider_propietario` | `SGSPI_LIDER_PROPIETARIO` | Lo del custodio, más UPDATE en eia y rpi, y plt con sus controles (ptc) |
-| `sgspi_rol_gestor_documental` | `SGSPI_GESTOR_DOCUMENTAL` | Catálogos documentales y CCD/TRD, adu, ado y sus tablas puente, act; solo INSERT en sga |
-| `sgspi_rol_oficial_seguridad_privacidad` | `SGSPI_ADMIN_OPDP` | Vigencias y catálogos del SGSPI, partes interesadas, activos, eventos, planes y SoA; solo UPDATE en acf, ado y act |
+| `sgspi_rol_lider_propietario` | `SGSPI_LIDER_PROPIETARIO` | Lo del custodio, más UPDATE en eia y rpi, y plt con sus controles (ptc), salvo las columnas del dictamen de eficacia (D2) |
+| `sgspi_rol_gestor_documental` | `SGSPI_GESTOR_DOCUMENTAL` | Catálogos documentales y CCD/TRD, adu, ado y sus tablas puente, act; solo INSERT en sga; en aci solo el estado, para su aval de Archivo (`EN_REVISION_ARCHIVO` → `EN_REVISION_SGSPI` u `OBSERVADO`) |
+| `sgspi_rol_oficial_seguridad_privacidad` | `SGSPI_ADMIN_OPDP` | Vigencias y catálogos del SGSPI, partes interesadas, activos, eventos, planes (salvo las columnas del dictamen de eficacia, D2) y SoA; solo UPDATE en acf, ado y act |
 | `sgspi_rol_comite_direccion` | `SGSPI_COMITE_DIRECCION` | Solo UPDATE en eia (su transición y su firma) |
 | `sgspi_rol_auditor_control` | `SGSPI_AUDITOR_CONTROL` | Las cuatro columnas del dictamen de eficacia de plt (solo él lo registra), el estado de eia para cerrar o reabrir la evaluación de eficacia (D2) y `eac_observaciones_auditoria` |
 
@@ -725,10 +725,10 @@ sqlcmd -S <servidor> -d academia3000 -I -b -i DDL_SGSPI_SQLSERVER2019_v2.sql
 | ID | Cambio |
 | :-: | :--- |
 | AP-01 | Auditoría por tabla (`sgspi.aud_<tabla>`, sección 5.9) con la versión anterior de cada fila modificada, quién la cambió (`ORIGINAL_LOGIN()`, error 50017) y cuándo; inmutable (`50016`) y sin borrado físico (`50010`). |
-| AP-02 | Privilegios mínimos: `sgspi_rol_base`, `sgspi_rol_consulta` (sin lectura de vulnerabilidades, D5) y seis roles de actor con alcance de escritura por UAA/proceso para líder y custodio (`50021`). |
+| AP-02 | Privilegios mínimos: `sgspi_rol_base`, `sgspi_rol_consulta` (sin lectura de vulnerabilidades, D5) y seis roles de actor con alcance de escritura por UAA/proceso para líder, custodio y, en actividades, gestor (`50021`); roles transversales por lista explícita (oficial, comité, auditor; gestor solo en activos) y dictamen de eficacia solo del auditor (D2). |
 | AP-03 | Identidad por `ORIGINAL_LOGIN()` en `dbo.usuario_general` sin procedimiento de contexto de sesión; firma automática de aprobaciones y bloqueo de suplantación del creador/evaluador/autor (`50019`). |
 | AP-04 | Todo registro nace en el estado inicial; `requisito_parte_interesada` y `activo_informacion` ya no nacen `VIGENTE` (`50014`). |
-| AP-05 | Máquina de estados dirigida por datos (`estado_flujo_catalogo`, `transicion_estado_flujo` con `tef_rol_requerido`). |
+| AP-05 | Máquina de estados dirigida por datos (`estado_flujo_catalogo`, `transicion_estado_flujo` con `tef_rol_requerido`, una fila por rol permitido). |
 | AP-06 | Integridad declarativa entre tablas: estrategia vs. naturaleza del evento, causal vs. nivel de reserva, nivel del padre en la taxonomía, componente afectado de nivel 1, subserie derivada de `subserie_documental_catalogo` y `FK_eia_activo_proceso` (D4). |
 | AP-07 | Los atributos ISO/IEC 27002:2022 se normalizan en `atributo_control_catalogo` y `control_referencia_normativa_atributo`. |
 | AP-08 | Las enumeraciones libres pasan a catálogo o `CHECK` (`formato_archivo_catalogo`, `tac_codigo_componente`, `sif_modalidad_desarrollo`). |

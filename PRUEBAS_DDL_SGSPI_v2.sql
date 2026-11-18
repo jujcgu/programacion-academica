@@ -344,6 +344,10 @@ CREATE USER sgspi_prueba_auditor WITHOUT LOGIN;
 
 CREATE USER sgspi_prueba_comite WITHOUT LOGIN;
 
+CREATE USER sgspi_prueba_gestor WITHOUT LOGIN;
+
+CREATE USER sgspi_prueba_sin_rol WITHOUT LOGIN;
+
 ALTER ROLE sgspi_rol_consulta ADD MEMBER sgspi_prueba_consulta;
 
 ALTER ROLE sgspi_rol_custodio_operador ADD MEMBER sgspi_prueba_custodio;
@@ -353,6 +357,10 @@ ALTER ROLE sgspi_rol_oficial_seguridad_privacidad ADD MEMBER sgspi_prueba_oficia
 ALTER ROLE sgspi_rol_auditor_control ADD MEMBER sgspi_prueba_auditor;
 
 ALTER ROLE sgspi_rol_comite_direccion ADD MEMBER sgspi_prueba_comite;
+
+ALTER ROLE sgspi_rol_gestor_documental ADD MEMBER sgspi_prueba_gestor;
+
+ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_prueba_sin_rol; -- lee como todos, pero sin rol de actor
 
 
 GO
@@ -403,7 +411,9 @@ IF (SELECT YEAR(plt_fecha_evaluacion_eficacia) FROM sgspi.plan_tratamiento WHERE
 
 EXECUTE #espera N'AP-15 el auditor no firma el dictamen como otra persona', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_dictamen_eficacia = N''Eficaz (corregido)'', per_codigo_evaluador = 2 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 50019;
 
-EXECUTE #espera N'D2 solo el auditor registra el dictamen de eficacia', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.plan_tratamiento SET plt_dictamen_eficacia = N''Eficaz según el oficial'', per_codigo_evaluador = 1 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 50011;
+EXECUTE #espera N'D2 solo el auditor registra el dictamen de eficacia (DENY de columna al oficial)', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.plan_tratamiento SET plt_dictamen_eficacia = N''Eficaz según el oficial'', per_codigo_evaluador = 1 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 230;
+
+EXECUTE #espera N'D2 el oficial no borra el dictamen de eficacia', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = NULL, plt_dictamen_eficacia = NULL, per_codigo_evaluador = NULL, plt_fecha_evaluacion_eficacia = NULL WHERE 1 = 0;', 230;
 
 EXECUTE #espera N'D5 la cuenta compartida no lee las vulnerabilidades', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT eia_condicion_vulnerabilidad INTO #p2 FROM sgspi.evento_incertidumbre_activo;', 230;
 
@@ -440,6 +450,19 @@ EXECUTE #espera N'AP-02 solo los estados de captura quedan sin rol requerido', N
 
 EXECUTE #espera N'AP-02 la aceptación del comité exige el rol del comité', N'IF EXISTS (SELECT 1 FROM sgspi.transicion_estado_flujo WHERE efc_identificador_origen = N''EN_ACEPTACION_COMITE'' AND tef_rol_requerido <> N''sgspi_rol_comite_direccion'') THROW 51000, N''comité sin rol'', 1;', 0;
 
+EXECUTE #espera N'P2 en ACI y EIA ninguna transición queda sin rol', N'IF EXISTS (SELECT 1 FROM sgspi.transicion_estado_flujo WHERE efc_dominio IN (N''ACI'', N''EIA'') AND tef_rol_requerido IS NULL) THROW 51000, N''transición de captura sin rol en ACI o EIA'', 1;', 0;
+
+EXECUTE #espera N'P2 el comité no envía a validación un evento en borrador', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_VALIDACION_LIDER'' WHERE eia_identificador_evento = N''RA-01'';', 50011;
+
+EXECUTE #espera N'P2 el gestor no envía a validación un activo en borrador', N'EXECUTE AS USER = N''sgspi_prueba_gestor''; UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_VALIDACION_LIDER'' WHERE aci_codigo_inventario = N''INV-2'';', 50011;
+
+-- 1.1b Alcance transversal por lista explícita (P3, D9)
+EXECUTE #espera N'P3 sin rol de actor no hay alcance transversal', N'EXECUTE AS USER = N''sgspi_prueba_sin_rol''; IF EXISTS (SELECT 1 FROM sgspi.ufn_activo_en_alcance(NULL, NULL)) THROW 51000, N''un usuario sin rol de actor es transversal'', 1;', 0;
+
+EXECUTE #espera N'P3 el auditor sigue siendo transversal', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; IF NOT EXISTS (SELECT 1 FROM sgspi.ufn_proceso_en_alcance(NULL)) THROW 51000, N''el auditor perdió el alcance transversal'', 1;', 0;
+
+EXECUTE #espera N'D9 el gestor es transversal en activos y no en procesos', N'EXECUTE AS USER = N''sgspi_prueba_gestor''; IF NOT EXISTS (SELECT 1 FROM sgspi.ufn_activo_en_alcance(NULL, NULL)) OR EXISTS (SELECT 1 FROM sgspi.ufn_proceso_en_alcance(NULL)) THROW 51000, N''alcance del gestor incorrecto'', 1;', 0;
+
 EXECUTE #espera N'AP-02 custodio no aprueba un activo', N'
 INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, uaa_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-R'', N''Activo por aprobar'', 3, 1, N''PUBLICA'', 1, 1, 1, 1);
 INSERT sgspi.activo_informacion_responsable (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-R''), 1, 1, N''PROPIETARIO'');
@@ -459,10 +482,11 @@ EXECUTE #espera N'AP-15 la firma de Archivo no se envía al crear el activo docu
 INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-D'', N''Actas por revisar'', 3, N''PUBLICA'', 1, 1, 1, 2);
 INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion, per_codigo_revisor_archivo) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-D''), 1, 1, 1, 1, 1, N''Archivo'', 3);', 50018;
 
-EXECUTE #espera N'AP-15 la firma de Archivo la pone la transición EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI', N'
+EXECUTE #espera N'AP-15 el gestor hace EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI y el trigger pone la firma de Archivo', N'
 INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-D''), 1, 1, 1, 1, 1, N''Archivo'');
 UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_VALIDACION_LIDER'' WHERE aci_codigo_inventario = N''INV-D'';
 UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_ARCHIVO'' WHERE aci_codigo_inventario = N''INV-D'';
+EXECUTE AS USER = N''sgspi_prueba_gestor'';
 UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI'' WHERE aci_codigo_inventario = N''INV-D'';
 IF ISNULL((SELECT ado.per_codigo_revisor_archivo FROM sgspi.activo_documental AS ado INNER JOIN sgspi.activo_informacion AS aci ON aci.aci_codigo = ado.ado_codigo WHERE aci.aci_codigo_inventario = N''INV-D''), 0) <> 2 THROW 51000, N''firma de Archivo no registrada'', 1;', 0;
 
@@ -625,6 +649,10 @@ DROP USER sgspi_prueba_oficial;
 DROP USER sgspi_prueba_auditor;
 
 DROP USER sgspi_prueba_comite;
+
+DROP USER sgspi_prueba_gestor;
+
+DROP USER sgspi_prueba_sin_rol;
 
 
 GO
