@@ -3,12 +3,12 @@
 **Organización:** Universidad Surcolombiana (USCO)  
 **Sistema Objetivo:** Sistema de Gestión de Seguridad y Privacidad de la Información (SGSPI)  
 **Motor de Base de Datos Objetivo:** Microsoft SQL Server 2019 (Compatibilidad 150, Esquema `sgspi` integrado con `dbo` de `academia3000`)  
-**Versión del modelo de datos:** 2.0 — alineada con `DDL_SGSPI_SQLSERVER2019_v2.sql` (53 tablas)  
+**Versión del modelo de datos:** 2.0 — alineada con `DDL_SGSPI_SQLSERVER2019_v2.sql` (50 tablas de negocio + 50 de auditoría `aud_*`)  
 **Estándar de Nomenclatura de Base de Datos (Convención Institucional USCO):**
 1. **Llaves Primarias y Foráneas con sufijo `_codigo`:** Cero uso de `_id`; todas las llaves primarias y foráneas terminan en `_codigo` (ej. `pev_codigo`, `pri_codigo`, `aci_codigo`, `eia_codigo`, `plt_codigo`, `uaa_codigo`, `per_codigo`, `sus_codigo`, `car_codigo`).
-2. **Prefijo Acrónimo de 3 Letras por Tabla (`<acr>_`):** Cada tabla posee un acrónimo único de 3 letras y todas sus columnas, incluidas las llaves foráneas, inician con el acrónimo de la tabla local (ej. `aci_nombre_activo`, `aci_valor_confidencialidad`, `eia_fuente_generadora`, `plt_justificacion_estrategia`).
-3. **Nombre de las Llaves Foráneas `<acr_local>_<acr_remoto>_codigo[_rol]`:** La FK simple lleva el acrónimo local y el remoto (ej. `acf_pev_codigo`) y, cuando hay que distinguir el papel o la tabla referencia varias veces a la misma tabla remota, agrega el rol (ej. `eia_aci_codigo_primario`, `eia_aci_codigo_soporte`, `acf_per_codigo_creador`).
-4. **Restricciones con Nombre Explícito:** Toda restricción tiene nombre con prefijo según su tipo: PK_ (llave primaria, ej. `PK_aci_activo_informacion`), FK_ (llave foránea, ej. `FK_acf_periodo_vigencia`), UQ_/UX_ (unicidad o índice único filtrado, ej. `UQ_acf_vigencia_naturaleza_numero`, `UX_efc_estado_inicial`), CK_ (verificación, ej. `CK_acf_valor_prioridad`) y DF_<columna> (valores por defecto).
+2. **Prefijo Acrónimo de 3 Letras por Tabla (`<acr>_`):** Cada tabla posee un acrónimo único de 3 letras y sus columnas propias inician con el acrónimo de la tabla local (ej. `aci_nombre_activo`, `aci_valor_confidencialidad`, `eia_fuente_generadora`, `plt_justificacion_estrategia`).
+3. **Nombre de las Llaves Foráneas `<acr_remoto>_codigo[_rol]`:** La FK simple conserva el acrónimo de la tabla referenciada (ej. `pev_codigo`, `pri_codigo`) y, cuando hay que distinguir el papel o la tabla referencia varias veces a la misma tabla remota, agrega el rol (ej. `aci_codigo_primario`, `aci_codigo_soporte`, `per_codigo_creador`).
+4. **Restricciones con Nombre Explícito:** Toda restricción tiene nombre con prefijo según su tipo: PK_ (llave primaria, ej. `PK_aci_activo_informacion`), FK_ (llave foránea, ej. `FK_acf_periodo_vigencia`), UQ_ / UX_ (restricción UNIQUE o índice único, ej. `UX_acf_vigencia_naturaleza_numero`, `UX_efc_estado_inicial`), CK_ (verificación, ej. `CK_acf_valor_prioridad`) y DF_<columna> (valores por defecto).
 
 **Formatos Controlados Integrados (Flujo Secuencial 1 → 5 + Flujo Paralelo `ES-GSPI-MR-04`):**
 1. `ES-GSPI-MR-01` — Matriz de Contexto de la Organización (DOFA por Proceso - Ej. Gestión de Tecnologías)
@@ -94,7 +94,7 @@ flowchart LR
 | `TIPO DE PROCESO` | `tipo_proceso_catalogo.tpr_nombre` (`tpr_codigo`) | `NVARCHAR(50)` | `ESTRATÉGICO`, `APOYO`, `EVALUACIÓN`, `MISIONAL` |
 | `PROCESO` | `proceso_institucional.pri_nombre` (`pri_codigo`) | `NVARCHAR(150)` | `SISTEMA GESTIÓN DE INFORMACION, TECNOLOGÍAS Y CONTROL DOCUMENTAL` |
 | `VARIABLE` | `factor_entorno_catalogo.fec_nombre_factor` (`fec_codigo`) | `NVARCHAR(100)` | Interno: `Gobernanza`, `Cultura organizacional` / Externo: `Aspecto Tecnológico`, `Aspecto Normativo` |
-| *(Código D1..O37)* | `analisis_contexto_factor.acf_identificador_factor` (expuesto en `vw_consolidado_dofa`) = inicial de `acf_naturaleza_factor` + `acf_numero_factor` (`SMALLINT`, único por vigencia y naturaleza: `UQ_acf_vigencia_naturaleza_numero`) | `NVARCHAR(15)` Calculada `PERSISTED` | `D1`..`D124`, `F1`..`F30`, `A1`..`A101`, `O1`..`O37` |
+| *(Código D1..O37)* | `analisis_contexto_factor.acf_identificador_factor` (expuesto en `vw_consolidado_dofa`) = inicial de `acf_naturaleza_factor` + `acf_numero_factor` (`SMALLINT`, único por vigencia y naturaleza: `UX_acf_vigencia_naturaleza_numero`) | `NVARCHAR(15)` Calculada `PERSISTED` | `D1`..`D124`, `F1`..`F30`, `A1`..`A101`, `O1`..`O37` |
 | `DEBILIDAD` / `FORTALEZA` / `AMENAZA` / `OPORTUNIDAD` | `analisis_contexto_factor.acf_naturaleza_factor` + `acf_descripcion_situacion` | `NVARCHAR(15)` (`DEBILIDAD`, `FORTALEZA`, `AMENAZA`, `OPORTUNIDAD`; `CK_acf_naturaleza_factor`) + `NVARCHAR(1000)` | `DEBILIDAD`: `"Múltiples equipos de soporte, desarrollo y redes con roles no unificados."` |
 | `PRIORIZACIÓN` | `analisis_contexto_factor.acf_valor_prioridad` (dato almacenado) + `acf_nivel_prioridad` (etiqueta calculada) | `TINYINT` (1..3, `CK_acf_valor_prioridad`) + `NVARCHAR(5)` Calculada `PERSISTED` | `Alta` = `3` → `ALTA`, `Media` = `2` → `MEDIA`, `Baja` = `1` → `BAJA` |
 | `IMPACTO SOBRE EL SGSPI` | `analisis_contexto_factor.acf_impacto_sistema_gestion` | `NVARCHAR(1000)` | `"Riesgo de brechas de coordinación y duplicidad de controles."` |
@@ -126,8 +126,8 @@ flowchart LR
 | `ID` | `activo_documental.ado_codigo` (subtipo 1:1; PK compartida con `activo_informacion.aci_codigo`, `FK_ado_activo_informacion`) + `activo_informacion.aci_codigo_inventario` | `INT` (sin `IDENTITY`; el `IDENTITY` está en `aci_codigo`) + `NVARCHAR(30)` | `1` a `194` |
 | `XX` *(Bloque 3 Desglose TRD)* | `activo_documental_unidad_productora (adu_ado_codigo, adu_upc_codigo, adu_esta_activo)` | Tabla Puente N:M (PK compuesta `PK_adu_activo_documental_unidad_productora`; `INT`, `INT`, `BIT`) | 240 filas de asignación (`XX = 1..240`) |
 | `cod1` / `seccion` .. `cod4` / `subseccion N2` | `unidad_productora_cuadro_clasificacion_documental (upc_codigo, upc_nodo_jerarquico, upc_nodo_padre, upc_nivel_jerarquico, upc_codigo_archivistico, upc_prefijo_archivistico, upc_uaa_codigo, upc_nombre_unidad)` | `INT` + `HIERARCHYID` + `HIERARCHYID` y `SMALLINT` calculadas `PERSISTED` + `NVARCHAR(50)` + `NVARCHAR(50)` calculada `PERSISTED` + `INT` + `NVARCHAR(150)` | `1=RECTORIA` $\rightarrow$ `1.1=SECRETARIA GENERAL` $\rightarrow$ `1.1.1=AREA GESTION DOCUMENTAL` / `5.1.1.2=SECRETARIA ACADEMICA` |
-| `COD5` / `SERIE` | `serie_documental_catalogo (sdo_codigo, sdo_numero_ccd, sdo_nombre_serie, sdo_tiene_subseries)`; asignada al activo en `activo_documental.ado_sdo_codigo` | `SMALLINT` + `SMALLINT` + `NVARCHAR(150)` + `BIT` | `1=ACCIONES CONSTITUCIONALES`, `3=ACTAS`, `4=ACUERDOS`, ..., `39=RESOLUCIONES` (39 series) |
-| `COD6` / `SUBSERIE` | `subserie_documental_catalogo (sbd_codigo, sbd_sdo_codigo, sbd_numero_ccd, sbd_nombre_subserie)`; asignada en `activo_documental.ado_sbd_codigo` (FK compuesta `FK_ado_subserie_documental` con `ado_sdo_codigo`) | `INT` + `SMALLINT` + `SMALLINT` + `NVARCHAR(200)`; `ado_sbd_codigo` `INT NULL` | `1=ACTAS DE COMITÉ DE CONCILIACIÓN Y DEFENSA JUDICIAL`, `NULL` en series sin subserie (`RESOLUCIONES`, `NÓMINAS`); si la serie tiene `sdo_tiene_subseries = 1` la subserie es obligatoria (trigger `TR_ado_auditoria_y_actualizacion`, error 50015) |
+| `COD5` / `SERIE` | `serie_documental_catalogo (sdo_codigo, sdo_numero_ccd, sdo_nombre_serie)`; asignada al activo en `activo_documental.sdo_codigo` | `SMALLINT` + `SMALLINT` + `NVARCHAR(150)` | `1=ACCIONES CONSTITUCIONALES`, `3=ACTAS`, `4=ACUERDOS`, ..., `39=RESOLUCIONES` (39 series) |
+| `COD6` / `SUBSERIE` | `subserie_documental_catalogo (sbd_codigo, sdo_codigo, sbd_numero_ccd, sbd_nombre_subserie)`; asignada en `activo_documental.sbd_codigo` (FK compuesta `FK_ado_subserie_documental` con `sdo_codigo`) | `INT` + `SMALLINT` + `SMALLINT` + `NVARCHAR(200)`; `sbd_codigo` `INT NULL` | `1=ACTAS DE COMITÉ DE CONCILIACIÓN Y DEFENSA JUDICIAL`, `NULL` en series sin subserie (`RESOLUCIONES`, `NÓMINAS`); si la serie tiene subseries activas en `subserie_documental_catalogo`, la subserie es obligatoria (`TR_ado_integridad_y_actualizacion`, error 50015) |
 | `Serie documental` / `Subserie documental` | Calculado en `vw_desglose_ccd_trd_mr04` (`adu_codigo_serie_trd_calculado`, `adu_codigo_subserie_trd_calculado`) y en `vw_inventario_activo_documental_mr04` (`ado_codigos_serie_documental_trd`, `ado_codigos_subserie_documental_trd`, agregados con `STRING_AGG`) | Calculado en Tiempo de Ejecución | `<upc_prefijo_archivistico>.<sdo_numero_ccd>.<sbd_numero_ccd>` (ej. `1.1.1.21.20`, o multivaluado en filas transversales) |
 | `NOMBRE` / `Descripción` | `activo_informacion.aci_nombre_activo` + `aci_descripcion_detallada` (supertipo; la vista `vw_inventario_activo_documental_mr04` los expone como `ado_nombre_activo` y `ado_descripcion`) | `NVARCHAR(255)` + `NVARCHAR(1000)` | `HISTORIAS LABORALES`: `"Acto administrativo de nombramiento, Posesión, Certificados..."` |
 | `Proceso` *(Multivaluado en Excel)* | `activo_informacion_proceso_institucional (aip_aci_codigo, aip_pri_codigo)` (se toma del supertipo: `aip_aci_codigo` = `ado_codigo`) | Tabla Puente N:M (PK compuesta) | Desnormalizado en Excel con comas; normalizado en 3NF hacia `sgspi.proceso_institucional` (la vista lo expone como `ado_procesos_asociados`) |
@@ -185,86 +185,83 @@ flowchart LR
 
 > Las tablas `dbo.sede`, `dbo.uaa_cargo` y `dbo.uaa_personal` no son referenciadas por el DDL v2 (ni por llaves foráneas ni por vistas), por lo que no forman parte de las dependencias del SGSPI. El script de despliegue verifica, antes de crear objetos, que existan las tablas y columnas de `[dbo]` listadas arriba.
 
-### 3.2 Mapa de las 53 Tablas Propias del Esquema `[sgspi]` y sus Acrónimos
+### 3.2 Mapa de las 50 Tablas de Negocio del Esquema `[sgspi]` y sus Acrónimos
 
-> Las tablas `sgspi.activo_documental`, `sgspi.evento_incertidumbre_activo` y `sgspi.evaluacion_aplicabilidad_control` son tablas temporales (`SYSTEM_VERSIONING`); sus tablas de historial (`sgspi.activo_documental_historial`, `sgspi.evento_incertidumbre_activo_historial` y `sgspi.evaluacion_aplicabilidad_control_historial`) las administra el motor y no se cuentan entre las 53 tablas propias.
+> Cada una de las 50 tablas de negocio tiene su tabla de auditoría `sgspi.aud_<tabla>` (sección 5.9 del DDL, acrónimos en su cabecera; 100 tablas en total), donde los triggers archivan la versión anterior de cada fila modificada con la persona (`ORIGINAL_LOGIN()`) y la fecha del cambio (RN-INT-17).
 
 #### Dominio 1: Transversal, gobernanza SGC y máquina de estados
 | # | Acrónimo | Tabla en `[sgspi]` | Llave Primaria | Columnas Representativas |
 | :-: | :---: | :--- | :--- | :--- |
 | 1 | **`pev`** | `sgspi.periodo_vigencia` | `pev_codigo` | `pev_anio`, `pev_fecha_apertura`, `pev_fecha_cierre`, `pev_estado_vigencia`... |
 | 2 | **`efc`** | `sgspi.estado_flujo_catalogo` | `efc_codigo` | `efc_dominio`, `efc_identificador`, `efc_es_inicial`, `efc_permite_edicion`... |
-| 3 | **`tef`** | `sgspi.transicion_estado_flujo` | `tef_codigo` | `tef_efc_dominio`, `tef_efc_identificador_origen`, `tef_efc_identificador_destino`, `tef_accion_bitacora` |
-| 4 | **`dfc`** | `sgspi.dominio_formato_catalogo` | `dfc_codigo` | `dfc_identificador`, `dfc_nombre`, `dfc_descripcion`, `dfc_esta_activo` |
-| 5 | **`fdv`** | `sgspi.formato_documental_version` | `fdv_codigo` | `fdv_pev_codigo`, `fdv_dfc_codigo`, `fdv_codigo_formato`, `fdv_numero_version`... |
-| 6 | **`tpr`** | `sgspi.tipo_proceso_catalogo` | `tpr_codigo` | `tpr_identificador`, `tpr_nombre`, `tpr_descripcion` |
-| 7 | **`pri`** | `sgspi.proceso_institucional` | `pri_codigo` | `pri_identificador`, `pri_nombre`, `pri_tpr_codigo`, `pri_uaa_codigo_lider`, `pri_car_codigo_lider` |
-| 8 | **`piu`** | `sgspi.proceso_institucional_uaa` | `(piu_pri_codigo, piu_uaa_codigo)` | `piu_pri_codigo`, `piu_uaa_codigo` |
+| 3 | **`tef`** | `sgspi.transicion_estado_flujo` | `tef_codigo` | `efc_dominio`, `efc_identificador_origen`, `efc_identificador_destino`, `tef_rol_requerido` |
+| 4 | **`tpr`** | `sgspi.tipo_proceso_catalogo` | `tpr_codigo` | `tpr_identificador`, `tpr_nombre`, `tpr_descripcion` |
+| 5 | **`pri`** | `sgspi.proceso_institucional` | `pri_codigo` | `pri_identificador`, `pri_nombre`, `tpr_codigo`, `uaa_codigo_lider`, `car_codigo_lider` |
+| 6 | **`piu`** | `sgspi.proceso_institucional_uaa` | `(pri_codigo, uaa_codigo)` | `pri_codigo`, `uaa_codigo` |
 
 #### Dominio 2: Contexto organizacional (DOFA)
 | # | Acrónimo | Tabla en `[sgspi]` | Llave Primaria | Columnas Representativas |
 | :-: | :---: | :--- | :--- | :--- |
-| 9 | **`fec`** | `sgspi.factor_entorno_catalogo` | `fec_codigo` | `fec_nombre_factor`, `fec_ambito_entorno`, `fec_descripcion` |
-| 10 | **`acf`** | `sgspi.analisis_contexto_factor` | `acf_codigo` | `acf_naturaleza_factor`, `acf_numero_factor`, `acf_identificador_factor`, `acf_valor_prioridad`, `acf_nivel_prioridad`... |
+| 7 | **`fec`** | `sgspi.factor_entorno_catalogo` | `fec_codigo` | `fec_nombre_factor`, `fec_ambito_entorno`, `fec_descripcion` |
+| 8 | **`acf`** | `sgspi.analisis_contexto_factor` | `acf_codigo` | `acf_naturaleza_factor`, `acf_numero_factor`, `acf_identificador_factor`, `acf_valor_prioridad`, `acf_nivel_prioridad`... |
 
 #### Dominio 3: Partes interesadas
 | # | Acrónimo | Tabla en `[sgspi]` | Llave Primaria | Columnas Representativas |
 | :-: | :---: | :--- | :--- | :--- |
-| 11 | **`pai`** | `sgspi.parte_interesada` | `pai_codigo` | `pai_nombre`, `pai_origen`, `pai_descripcion_rol`, `pai_esta_activa` |
-| 12 | **`rpi`** | `sgspi.requisito_parte_interesada` | `rpi_codigo` | `rpi_necesidad_expectativa`, `rpi_valor_poder`, `rpi_nivel_poder`, `rpi_clasificacion_impacto`... |
-| 13 | **`rpc`** | `sgspi.requisito_parte_interesada_cuestionario` | `(rpc_rpi_codigo, rpc_numero_pregunta)` | `rpc_rpi_codigo`, `rpc_numero_pregunta` |
-| 14 | **`rpp`** | `sgspi.requisito_parte_interesada_proceso_institucional` | `(rpp_rpi_codigo, rpp_pri_codigo)` | `rpp_rpi_codigo`, `rpp_pri_codigo`, `rpp_fecha_registro` |
+| 9 | **`pai`** | `sgspi.parte_interesada` | `pai_codigo` | `pai_nombre`, `pai_origen`, `pai_descripcion_rol`, `pai_esta_activa` |
+| 10 | **`rpi`** | `sgspi.requisito_parte_interesada` | `rpi_codigo` | `rpi_necesidad_expectativa`, `rpi_valor_poder`, `rpi_nivel_poder`, `rpi_clasificacion_impacto`... |
+| 11 | **`rpc`** | `sgspi.requisito_parte_interesada_cuestionario` | `(rpi_codigo, rpc_numero_pregunta)` | `rpi_codigo`, `rpc_numero_pregunta` |
+| 12 | **`rpp`** | `sgspi.requisito_parte_interesada_proceso_institucional` | `(rpi_codigo, pri_codigo)` | `rpi_codigo`, `pri_codigo`, `rpp_fecha_registro` |
 
 #### Dominio 4: Inventario y clasificación de activos de información
 | # | Acrónimo | Tabla en `[sgspi]` | Llave Primaria | Columnas Representativas |
 | :-: | :---: | :--- | :--- | :--- |
-| 15 | **`tac`** | `sgspi.tipo_activo_catalogo` | `tac_codigo` | `tac_tac_codigo_padre`, `tac_nivel_taxonomia`, `tac_nivel_taxonomia_padre`, `tac_nombre` |
-| 16 | **`cet`** | `sgspi.causal_excepcion_transparencia` | `cet_codigo` | `cet_nivel_reserva_aplicable`, `cet_numeral_causal`, `cet_descripcion_causal`, `cet_norma_referencia` |
-| 17 | **`aci`** | `sgspi.activo_informacion` | `aci_codigo` | `aci_codigo_inventario`, `aci_nombre_activo`, `aci_valor_confidencialidad`, `aci_puntaje_criticidad`, `aci_clasificacion_transparencia`... |
-| 18 | **`aip`** | `sgspi.activo_informacion_proceso_institucional` | `(aip_aci_codigo, aip_pri_codigo)` | `aip_aci_codigo`, `aip_pri_codigo` |
-| 19 | **`ais`** | `sgspi.activo_informacion_sede` | `(ais_aci_codigo, ais_sus_codigo)` | `ais_aci_codigo`, `ais_sus_codigo` |
-| 20 | **`air`** | `sgspi.activo_informacion_responsable` | `(air_aci_codigo, air_car_codigo, air_uaa_codigo, air_tipo_responsabilidad)` | `air_car_codigo`, `air_uaa_codigo`, `air_tipo_responsabilidad`, `air_esta_activo` |
-| 21 | **`sif`** | `sgspi.sistema_informacion_ficha` | `sif_codigo` | `sif_aci_codigo`, `sif_nombre_sistema`, `sif_modalidad_desarrollo`, `sif_fabricante_proveedor` |
-| 22 | **`msi`** | `sgspi.modulo_sistema_informacion` | `msi_codigo` | `msi_sif_codigo`, `msi_nombre_modulo`, `msi_usuarios_objetivo` |
+| 13 | **`tac`** | `sgspi.tipo_activo_catalogo` | `tac_codigo` | `tac_codigo_padre`, `tac_nivel_taxonomia`, `tac_nivel_taxonomia_padre`, `tac_nombre` |
+| 14 | **`cet`** | `sgspi.causal_excepcion_transparencia` | `cet_codigo` | `cet_nivel_reserva_aplicable`, `cet_numeral_causal`, `cet_descripcion_causal`, `cet_norma_referencia` |
+| 15 | **`aci`** | `sgspi.activo_informacion` | `aci_codigo` | `aci_codigo_inventario`, `aci_nombre_activo`, `aci_valor_confidencialidad`, `aci_puntaje_criticidad`, `aci_clasificacion_transparencia`... |
+| 16 | **`aip`** | `sgspi.activo_informacion_proceso_institucional` | `(aci_codigo, pri_codigo)` | `aci_codigo`, `pri_codigo` |
+| 17 | **`ais`** | `sgspi.activo_informacion_sede` | `(aci_codigo, sus_codigo)` | `aci_codigo`, `sus_codigo` |
+| 18 | **`air`** | `sgspi.activo_informacion_responsable` | `(aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad)` | `car_codigo`, `uaa_codigo`, `air_tipo_responsabilidad`, `air_esta_activo` |
+| 19 | **`sif`** | `sgspi.sistema_informacion_ficha` | `sif_codigo` | `aci_codigo`, `sif_nombre_sistema`, `sif_modalidad_desarrollo`, `sif_fabricante_proveedor` |
+| 20 | **`msi`** | `sgspi.modulo_sistema_informacion` | `msi_codigo` | `sif_codigo`, `msi_nombre_modulo`, `msi_usuarios_objetivo` |
 
 #### Dominio 4B: Activos de información documental y archivística (subtipo de `aci`)
 | # | Acrónimo | Tabla en `[sgspi]` | Llave Primaria | Columnas Representativas |
 | :-: | :---: | :--- | :--- | :--- |
-| 23 | **`sdo`** | `sgspi.serie_documental_catalogo` | `sdo_codigo` | `sdo_numero_ccd` (`COD5`), `sdo_nombre_serie`, `sdo_tiene_subseries`, `sdo_esta_activa` |
-| 24 | **`sbd`** | `sgspi.subserie_documental_catalogo` | `sbd_codigo` | `sbd_sdo_codigo`, `sbd_numero_ccd` (`COD6`), `sbd_nombre_subserie`, `sbd_esta_activa` |
-| 25 | **`upc`** | `sgspi.unidad_productora_cuadro_clasificacion_documental` | `upc_codigo` | `upc_nodo_jerarquico`, `upc_nodo_padre`, `upc_nivel_jerarquico`, `upc_prefijo_archivistico`, `upc_uaa_codigo`, `upc_nombre_unidad` |
-| 26 | **`pdc`** | `sgspi.periodicidad_catalogo` | `pdc_codigo` | `pdc_nombre`, `pdc_orden`, `pdc_esta_activa` |
-| 27 | **`epc`** | `sgspi.estado_publicacion_catalogo` | `epc_codigo` | `epc_nombre`, `epc_descripcion`, `epc_esta_activo` |
-| 28 | **`src`** | `sgspi.soporte_registro_catalogo` | `src_codigo` | `src_nombre`, `src_esta_activo` |
-| 29 | **`mcc`** | `sgspi.medio_conservacion_catalogo` | `mcc_codigo` | `mcc_nombre`, `mcc_esta_activo` |
-| 30 | **`idi`** | `sgspi.idioma_catalogo` | `idi_codigo` | `idi_codigo_iso`, `idi_nombre`, `idi_esta_activo` |
-| 31 | **`fac`** | `sgspi.formato_archivo_catalogo` | `fac_codigo` | `fac_nombre`, `fac_esta_activo` |
-| 32 | **`ado`** | `sgspi.activo_documental` | `ado_codigo` (PK compartida con `aci`: `ado_codigo` = `aci_codigo`) | `ado_pev_codigo`, `ado_sdo_codigo`, `ado_sbd_codigo`, `ado_pdc_codigo`, `ado_epc_codigo`, `ado_fecha_ingreso_tabla_retencion`, `ado_lugar_consulta_ubicacion` |
-| 33 | **`ads`** | `sgspi.activo_documental_soporte_registro` | `(ads_ado_codigo, ads_src_codigo)` | `ads_ado_codigo`, `ads_src_codigo` |
-| 34 | **`adm`** | `sgspi.activo_documental_medio_conservacion` | `(adm_ado_codigo, adm_mcc_codigo)` | `adm_ado_codigo`, `adm_mcc_codigo` |
-| 35 | **`adi`** | `sgspi.activo_documental_idioma` | `(adi_ado_codigo, adi_idi_codigo)` | `adi_ado_codigo`, `adi_idi_codigo` |
-| 36 | **`adf`** | `sgspi.activo_documental_formato_archivo` | `(adf_ado_codigo, adf_fac_codigo)` | `adf_ado_codigo`, `adf_fac_codigo` |
-| 37 | **`adu`** | `sgspi.activo_documental_unidad_productora` | `(adu_ado_codigo, adu_upc_codigo)` | `adu_ado_codigo`, `adu_upc_codigo`, `adu_esta_activo` |
+| 21 | **`sdo`** | `sgspi.serie_documental_catalogo` | `sdo_codigo` | `sdo_numero_ccd` (`COD5`), `sdo_nombre_serie`, `sdo_esta_activa` |
+| 22 | **`sbd`** | `sgspi.subserie_documental_catalogo` | `sbd_codigo` | `sdo_codigo`, `sbd_numero_ccd` (`COD6`), `sbd_nombre_subserie`, `sbd_esta_activa` |
+| 23 | **`upc`** | `sgspi.unidad_productora_cuadro_clasificacion_documental` | `upc_codigo` | `upc_nodo_jerarquico`, `upc_nodo_padre`, `upc_nivel_jerarquico`, `upc_prefijo_archivistico`, `uaa_codigo`, `upc_nombre_unidad` |
+| 24 | **`pdc`** | `sgspi.periodicidad_catalogo` | `pdc_codigo` | `pdc_nombre`, `pdc_orden`, `pdc_esta_activa` |
+| 25 | **`epc`** | `sgspi.estado_publicacion_catalogo` | `epc_codigo` | `epc_nombre`, `epc_descripcion`, `epc_esta_activo` |
+| 26 | **`src`** | `sgspi.soporte_registro_catalogo` | `src_codigo` | `src_nombre`, `src_esta_activo` |
+| 27 | **`mcc`** | `sgspi.medio_conservacion_catalogo` | `mcc_codigo` | `mcc_nombre`, `mcc_esta_activo` |
+| 28 | **`idi`** | `sgspi.idioma_catalogo` | `idi_codigo` | `idi_codigo_iso`, `idi_nombre`, `idi_esta_activo` |
+| 29 | **`fac`** | `sgspi.formato_archivo_catalogo` | `fac_codigo` | `fac_nombre`, `fac_esta_activo` |
+| 30 | **`ado`** | `sgspi.activo_documental` | `ado_codigo` (PK compartida con `aci`: `ado_codigo` = `aci_codigo`) | `pev_codigo`, `sdo_codigo`, `sbd_codigo`, `pdc_codigo`, `epc_codigo`, `ado_fecha_ingreso_tabla_retencion`, `ado_lugar_consulta_ubicacion` |
+| 31 | **`ads`** | `sgspi.activo_documental_soporte_registro` | `(ado_codigo, src_codigo)` | `ado_codigo`, `src_codigo` |
+| 32 | **`adm`** | `sgspi.activo_documental_medio_conservacion` | `(ado_codigo, mcc_codigo)` | `ado_codigo`, `mcc_codigo` |
+| 33 | **`adi`** | `sgspi.activo_documental_idioma` | `(ado_codigo, idi_codigo)` | `ado_codigo`, `idi_codigo` |
+| 34 | **`adf`** | `sgspi.activo_documental_formato_archivo` | `(ado_codigo, fac_codigo)` | `ado_codigo`, `fac_codigo` |
+| 35 | **`adu`** | `sgspi.activo_documental_unidad_productora` | `(ado_codigo, upc_codigo)` | `ado_codigo`, `upc_codigo`, `adu_esta_activo` |
 
-#### Dominio 5: Riesgos y oportunidades, plan de tratamiento, controles, SoA y bitácora
+#### Dominio 5: Riesgos y oportunidades, plan de tratamiento, controles y SoA
 | # | Acrónimo | Tabla en `[sgspi]` | Llave Primaria | Columnas Representativas |
 | :-: | :---: | :--- | :--- | :--- |
-| 38 | **`epr`** | `sgspi.escala_probabilidad` | `epr_codigo` | `epr_codigo_letra`, `epr_nombre_nivel`, `epr_descripcion_criterio`, `epr_frecuencia_referencia` |
-| 39 | **`eim`** | `sgspi.escala_impacto` | `eim_codigo` | `eim_nombre_impacto_negativo`, `eim_nombre_impacto_positivo`, `eim_descripcion_organizacional` |
-| 40 | **`zrc`** | `sgspi.zona_riesgo_catalogo` | `zrc_codigo` | `zrc_nombre_nivel`, `zrc_orden` |
-| 41 | **`mvr`** | `sgspi.matriz_valoracion_riesgo` | `(mvr_epr_codigo, mvr_eim_codigo)` | `mvr_codigo_posicion`, `mvr_zrc_codigo`, `mvr_directriz_tratamiento_riesgo`, `mvr_requiere_aprobacion_comite` |
-| 42 | **`eia`** | `sgspi.evento_incertidumbre_activo` | `eia_codigo` | `eia_identificador_evento`, `eia_naturaleza_evento`, `eia_aci_codigo_primario`, `eia_aci_codigo_soporte`, `eia_fuente_generadora`... |
-| 43 | **`etc`** | `sgspi.estrategia_tratamiento_catalogo` | `etc_codigo` | `etc_nombre_estrategia`, `etc_naturaleza_aplicable`, `etc_descripcion`, `etc_esta_activa` |
-| 44 | **`plt`** | `sgspi.plan_tratamiento` | `plt_codigo` | `plt_eia_codigo`, `plt_etc_codigo`, `plt_fecha_inicio`, `plt_fecha_fin`, `plt_meta_indicador_kpi`, `plt_porcentaje_cumplimiento_kpi`... |
-| 45 | **`act`** | `sgspi.actividad_tratamiento` | `act_codigo` | `act_plt_codigo`, `act_numero_orden`, `act_descripcion_actividad`, `act_porcentaje_avance`, `act_estado_actividad` |
-| 46 | **`sga`** | `sgspi.seguimiento_actividad` | `sga_codigo` | `sga_act_codigo`, `sga_per_codigo`, `sga_descripcion_avance`, `sga_hash_sha256_evidencia`... |
-| 47 | **`enc`** | `sgspi.estandar_normativo_catalogo` | `enc_codigo` | `enc_identificador`, `enc_familia_norma`, `enc_nombre`, `enc_anio_edicion` |
-| 48 | **`crn`** | `sgspi.control_referencia_normativa` | `crn_codigo` | `crn_enc_codigo`, `crn_identificador_control`, `crn_nombre_control`, `crn_rol_privacidad_pii` |
-| 49 | **`aac`** | `sgspi.atributo_control_catalogo` | `aac_codigo` | `aac_tipo_atributo`, `aac_valor`, `aac_esta_activo` |
-| 50 | **`cra`** | `sgspi.control_referencia_normativa_atributo` | `(cra_crn_codigo, cra_aac_codigo)` | `cra_crn_codigo`, `cra_aac_codigo` |
-| 51 | **`ptc`** | `sgspi.plan_tratamiento_control_referencia_normativa` | `(ptc_plt_codigo, ptc_crn_codigo)` | `ptc_plt_codigo`, `ptc_crn_codigo` |
-| 52 | **`eac`** | `sgspi.evaluacion_aplicabilidad_control` | `eac_codigo` | `eac_pev_codigo`, `eac_crn_codigo`, `eac_es_aplicable`, `eac_estado_implementacion`... |
-| 53 | **`bas`** | `sgspi.bitacora_auditoria_sistema` | `bas_codigo` | `bas_entidad_afectada`, `bas_accion_ejecutada`, `bas_hash_evento_anterior`, `bas_hash_evento_sha256`... |
+| 36 | **`epr`** | `sgspi.escala_probabilidad` | `epr_codigo` | `epr_codigo_letra`, `epr_nombre_nivel`, `epr_descripcion_criterio`, `epr_frecuencia_referencia` |
+| 37 | **`eim`** | `sgspi.escala_impacto` | `eim_codigo` | `eim_nombre_impacto_negativo`, `eim_nombre_impacto_positivo`, `eim_descripcion_organizacional` |
+| 38 | **`zrc`** | `sgspi.zona_riesgo_catalogo` | `zrc_codigo` | `zrc_nombre_nivel`, `zrc_orden` |
+| 39 | **`mvr`** | `sgspi.matriz_valoracion_riesgo` | `(epr_codigo, eim_codigo)` | `mvr_codigo_posicion`, `zrc_codigo`, `mvr_directriz_tratamiento_riesgo`, `mvr_requiere_aprobacion_comite` |
+| 40 | **`eia`** | `sgspi.evento_incertidumbre_activo` | `eia_codigo` | `eia_identificador_evento`, `eia_naturaleza_evento`, `aci_codigo_primario`, `aci_codigo_soporte`, `eia_fuente_generadora`... |
+| 41 | **`etc`** | `sgspi.estrategia_tratamiento_catalogo` | `etc_codigo` | `etc_nombre_estrategia`, `etc_naturaleza_aplicable`, `etc_descripcion`, `etc_esta_activa` |
+| 42 | **`plt`** | `sgspi.plan_tratamiento` | `plt_codigo` | `eia_codigo`, `etc_codigo`, `plt_fecha_inicio`, `plt_fecha_fin`, `plt_meta_indicador_kpi`, `plt_porcentaje_cumplimiento_kpi`... |
+| 43 | **`act`** | `sgspi.actividad_tratamiento` | `act_codigo` | `plt_codigo`, `act_numero_orden`, `act_descripcion_actividad`, `act_porcentaje_avance`, `act_estado_actividad` |
+| 44 | **`sga`** | `sgspi.seguimiento_actividad` | `sga_codigo` | `act_codigo`, `per_codigo`, `sga_descripcion_avance`, `sga_hash_sha256_evidencia`... |
+| 45 | **`enc`** | `sgspi.estandar_normativo_catalogo` | `enc_codigo` | `enc_identificador`, `enc_familia_norma`, `enc_nombre`, `enc_anio_edicion` |
+| 46 | **`crn`** | `sgspi.control_referencia_normativa` | `crn_codigo` | `enc_codigo`, `crn_identificador_control`, `crn_nombre_control`, `crn_rol_privacidad_pii` |
+| 47 | **`aac`** | `sgspi.atributo_control_catalogo` | `aac_codigo` | `aac_tipo_atributo`, `aac_valor`, `aac_esta_activo` |
+| 48 | **`cra`** | `sgspi.control_referencia_normativa_atributo` | `(crn_codigo, aac_codigo)` | `crn_codigo`, `aac_codigo` |
+| 49 | **`ptc`** | `sgspi.plan_tratamiento_control_referencia_normativa` | `(plt_codigo, crn_codigo)` | `plt_codigo`, `crn_codigo` |
+| 50 | **`eac`** | `sgspi.evaluacion_aplicabilidad_control` | `eac_codigo` | `pev_codigo`, `crn_codigo`, `eac_es_aplicable`, `eac_estado_implementacion`... |
 
 ---
 
@@ -278,13 +275,10 @@ El modelo se presenta en tres diagramas por dominio; cada relación corresponde 
 
 ```mermaid
 erDiagram
-    ESTADO_FLUJO_CATALOGO ||--o{ TRANSICION_ESTADO_FLUJO : "tef_efc_dominio, tef_efc_identificador_origen"
-    ESTADO_FLUJO_CATALOGO ||--o{ TRANSICION_ESTADO_FLUJO : "tef_efc_dominio, tef_efc_identificador_destino"
+    ESTADO_FLUJO_CATALOGO ||--o{ TRANSICION_ESTADO_FLUJO : "efc_dominio, efc_identificador_origen"
+    ESTADO_FLUJO_CATALOGO ||--o{ TRANSICION_ESTADO_FLUJO : "efc_dominio, efc_identificador_destino"
 
-    PERIODO_VIGENCIA ||--o{ FORMATO_DOCUMENTAL_VERSION : "fdv_pev_codigo"
-    DOMINIO_FORMATO_CATALOGO ||--o{ FORMATO_DOCUMENTAL_VERSION : "fdv_dfc_codigo"
-
-    TIPO_PROCESO_CATALOGO ||--o{ PROCESO_INSTITUCIONAL : "pri_tpr_codigo"
+    TIPO_PROCESO_CATALOGO ||--o{ PROCESO_INSTITUCIONAL : "tpr_codigo"
     DBO_CARGO ||--o{ PROCESO_INSTITUCIONAL : "pri_car_codigo_lider"
     DBO_UAA ||--o{ PROCESO_INSTITUCIONAL : "pri_uaa_codigo_lider"
     PROCESO_INSTITUCIONAL ||--o{ PROCESO_INSTITUCIONAL_UAA : "piu_pri_codigo"
@@ -388,13 +382,9 @@ erDiagram
     PLAN_TRATAMIENTO ||--o{ PLAN_TRATAMIENTO_CONTROL_REFERENCIA_NORMATIVA : "ptc_plt_codigo"
     CONTROL_REFERENCIA_NORMATIVA ||--o{ PLAN_TRATAMIENTO_CONTROL_REFERENCIA_NORMATIVA : "ptc_crn_codigo"
 
-    PERIODO_VIGENCIA ||--o{ EVALUACION_APLICABILIDAD_CONTROL : "eac_pev_codigo"
-    CONTROL_REFERENCIA_NORMATIVA ||--o{ EVALUACION_APLICABILIDAD_CONTROL : "eac_crn_codigo"
-    DBO_CARGO ||--o{ EVALUACION_APLICABILIDAD_CONTROL : "eac_car_codigo"
-
-    DBO_PERSONA ||--o{ BITACORA_AUDITORIA_SISTEMA : "bas_per_codigo"
-    DBO_GRUPO ||--o{ BITACORA_AUDITORIA_SISTEMA : "bas_gru_codigo"
-    DBO_USUARIO_GRUPO ||--o{ BITACORA_AUDITORIA_SISTEMA : "bas_usg_codigo"
+    PERIODO_VIGENCIA ||--o{ EVALUACION_APLICABILIDAD_CONTROL : "pev_codigo"
+    CONTROL_REFERENCIA_NORMATIVA ||--o{ EVALUACION_APLICABILIDAD_CONTROL : "crn_codigo"
+    DBO_CARGO ||--o{ EVALUACION_APLICABILIDAD_CONTROL : "car_codigo"
 ```
 
 ---
@@ -403,7 +393,7 @@ erDiagram
 
 | # | Documento | Campo Calculado con Acrónimo | Implementación Nativa en SQL Server 2019 |
 | :-: | :--- | :--- | :--- |
-| **1** | **Doc 2** (`Consolidado DOFA`) | `acf_identificador_factor` (`D1..D124`, `F1..F30`, `A1..A101`, `O1..O37`) y `acf_nivel_prioridad` (`ALTA`, `MEDIA`, `BAJA`) | **Columnas calculadas `PERSISTED`** en `sgspi.analisis_contexto_factor`: `acf_identificador_factor` = `CONCAT(LEFT(acf_naturaleza_factor, 1), acf_numero_factor)` (el número `acf_numero_factor` es dato, único por vigencia y naturaleza según `UQ_acf_vigencia_naturaleza_numero`, por lo que el identificador es inmutable) y `acf_nivel_prioridad` a partir de `acf_valor_prioridad` (`1..3`). La vista **`sgspi.vw_consolidado_dofa`** solo proyecta ambas columnas. |
+| **1** | **Doc 2** (`Consolidado DOFA`) | `acf_identificador_factor` (`D1..D124`, `F1..F30`, `A1..A101`, `O1..O37`) y `acf_nivel_prioridad` (`ALTA`, `MEDIA`, `BAJA`) | **Columnas calculadas `PERSISTED`** en `sgspi.analisis_contexto_factor`: `acf_identificador_factor` = `CONCAT(LEFT(acf_naturaleza_factor, 1), acf_numero_factor)` (el número `acf_numero_factor` es dato, único por vigencia y naturaleza según `UX_acf_vigencia_naturaleza_numero`, por lo que el identificador es inmutable) y `acf_nivel_prioridad` a partir de `acf_valor_prioridad` (`1..3`). La vista **`sgspi.vw_consolidado_dofa`** solo proyecta ambas columnas. |
 | **2** | **Doc 3** (`ES-GSPI-MR-03`) | `rpi_nivel_poder`, `rpi_nivel_interes`, `rpi_clasificacion_impacto` (`CUIDADO`, `ATENCION`, `MITIGANTE`, `SIN_PROBLEMA`), `rpi_nivel_cumplimiento`, `rpi_valor_prioridad_accion` y `rpi_prioridad_accion` | **Columnas calculadas `PERSISTED`** en `sgspi.requisito_parte_interesada` mediante expresiones `CASE` sobre `rpi_valor_poder`, `rpi_valor_interes` y `rpi_valor_cumplimiento` (`1..3`); `rpi_valor_prioridad_accion` = `4 - rpi_valor_cumplimiento`. |
 | **3** | **Doc 4A** (`ES-GSPI-MR-04`) | `upc_nodo_padre`, `upc_nivel_jerarquico` y `upc_prefijo_archivistico` | **Columnas calculadas `PERSISTED`** en `sgspi.unidad_productora_cuadro_clasificacion_documental` sobre `upc_nodo_jerarquico` (`HIERARCHYID`): `GetAncestor(1)` (nulo para la raíz), `GetLevel()` y, si `upc_codigo_archivistico` está vacío, el prefijo derivado de la ruta del nodo (`/` y `.` reemplazados por `.` y `-`). |
 | **4** | **Doc 4A** (`ES-GSPI-MR-04`) | `adu_codigo_serie_trd_calculado` y `adu_codigo_subserie_trd_calculado` (`Serie documental` y `Subserie documental`) | Vista **`sgspi.vw_desglose_ccd_trd_mr04`**, que resuelve la jerarquía de la unidad productora con `HIERARCHYID` (`upc_ruta_prefijos_ccd`, `upc_cod_seccion_raiz`) y concatena con `CONCAT_WS(N'.', upc_prefijo_archivistico, sdo_numero_ccd[, sbd_numero_ccd])` (`COD5` y `COD6`). |
@@ -416,8 +406,7 @@ erDiagram
 | **11** | **Doc 5** (`ES-GSPI-MR-06`) | `plt_porcentaje_cumplimiento_kpi` | **Columna calculada no persistida** en `sgspi.plan_tratamiento`: `ROUND(plt_valor_alcanzado_kpi / plt_meta_indicador_kpi * 100, 2)` como `DECIMAL(9,2)`, nula si no hay valor alcanzado o la meta no es mayor que cero. |
 | **12** | **Doc 5** (`ES-GSPI-MR-06`) | `eia_detalle_del_riesgo`, `eia_resultado_actual`, `plt_resultado_esperado`, `crn_controles_iso27001` y `crn_controles_iso27701` | Vista **`sgspi.vw_matriz_tratamiento_riesgos`**: une `matriz_valoracion_riesgo` con **`zona_riesgo_catalogo`** para tomar el nivel (inherente y meta) y agrega los controles con **`STRING_AGG(...) WITHIN GROUP (ORDER BY crn_codigo)`**, filtrando por `enc_familia_norma` (`ISO27001` e `ISO27701`) en lugar de comparar nombres de estándar. |
 | **13** | **Doc 5** (`ES-GSPI-MR-06`) | `tipo_control`, `propiedades_seguridad`, `conceptos_ciberseguridad`, `capacidades_operacionales` y `dominios_seguridad` | Vista **`sgspi.vw_controles_atributos_iso27002`**: agrega con `STRING_AGG(...) WITHIN GROUP (ORDER BY aac_valor)` los atributos ISO/IEC 27002:2022 de cada control desde `control_referencia_normativa_atributo` y `atributo_control_catalogo`, separándolos por `aac_tipo_atributo`. |
-| **14** | **Transversal** | `acf_efc_dominio`, `rpi_efc_dominio`, `aci_efc_dominio`, `eia_efc_dominio` y `act_efc_dominio` | **Columnas calculadas `PERSISTED`** con el literal del dominio de flujo (`ACF`, `RPI`, `ACI`, `EIA`, `ACT`), que completan la llave foránea compuesta (`<acr>_efc_dominio`, columna de estado) hacia `estado_flujo_catalogo`. |
-| **15** | **Transversal** | `bas_hash_evento_sha256` encadenado con `bas_hash_evento_anterior` | **No es columna calculada**: ambas columnas son `CHAR(64)` almacenadas. El trigger `INSTEAD OF INSERT` **`sgspi.TR_bas_cadena_hash`** (serializado con un candado de aplicación) toma el último hash de la cadena y calcula el nuevo con la función **`sgspi.ufn_hash_evento_bitacora`** (`SHA2_256`), de modo que alterar una fila no recalcula su hash; la cadena se verifica con `sgspi.usp_verificar_cadena_bitacora`. |
+| **14** | **Transversal** | `efc_dominio` en `acf`, `rpi`, `aci`, `eia` y `act` | **Columnas calculadas `PERSISTED`** con el literal del dominio de flujo (`ACF`, `RPI`, `ACI`, `EIA`, `ACT`), que completan la llave foránea compuesta (`efc_dominio`, columna de estado) hacia `estado_flujo_catalogo`. |
 
 ---
 
@@ -428,7 +417,7 @@ Cada regla cita el mecanismo real del esquema `sgspi`: constraint `CK_*`, llave 
 ### 6.1 Contexto y Matriz DOFA (Documentos 1 y 2)
 - **RN-DOFA-01 y 02 (Coherencia Ámbito vs. Naturaleza):** El ámbito vive en el catálogo `sgspi.factor_entorno_catalogo` (`fec_ambito_entorno`, con `CK_fec_ambito_entorno`: `'INTERNO'` o `'EXTERNO'`) y se enlaza desde `sgspi.analisis_contexto_factor` mediante `FK_acf_factor_entorno`. `CK_acf_naturaleza_factor` limita `acf_naturaleza_factor` a `'DEBILIDAD'`, `'FORTALEZA'`, `'AMENAZA'` u `'OPORTUNIDAD'`. Que un factor `'INTERNO'` solo admita `'DEBILIDAD'`/`'FORTALEZA'` y uno `'EXTERNO'` solo `'AMENAZA'`/`'OPORTUNIDAD'` es una regla entre dos tablas que el DDL no valida (validación en capa de aplicación).
 - **RN-DOFA-03 (Obligatoriedad de Acción Propuesta en Prioridad Alta):** El constraint `CK_acf_prioridad_alta_campos` impide que un factor con `acf_valor_prioridad = 3` (`acf_nivel_prioridad = 'ALTA'`, columna calculada) salga de `'BORRADOR'` si `acf_impacto_sistema_gestion` o `acf_accion_propuesta` están vacíos. La prioridad se limita a 1..3 con `CK_acf_valor_prioridad`.
-- **RN-DOFA-04 (Identificador Inmutable D/F/A/O):** `acf_identificador_factor` es una columna calculada persistida (inicial de `acf_naturaleza_factor` + `acf_numero_factor`, p. ej. `D1`..`D124`). `CK_acf_numero_factor_positivo` exige `acf_numero_factor >= 1` y el índice único `UQ_acf_vigencia_naturaleza_numero` impide repetirlo dentro de una vigencia (`acf_pev_codigo`).
+- **RN-DOFA-04 (Identificador Inmutable D/F/A/O):** `acf_identificador_factor` es una columna calculada persistida (inicial de `acf_naturaleza_factor` + `acf_numero_factor`, p. ej. `D1`..`D124`). `CK_acf_numero_factor_positivo` exige `acf_numero_factor >= 1` y el índice único `UX_acf_vigencia_naturaleza_numero` impide repetirlo dentro de una vigencia (`pev_codigo`).
 
 ### 6.2 Partes Interesadas (`ES-GSPI-MR-03` - Documento 3)
 - **RN-PI-01 (Cobertura de Procesos):** Si `rpi_clasificacion_impacto` es `'CUIDADO'`, se exige al menos un registro asociado en `sgspi.requisito_parte_interesada_proceso_institucional` y el campo `rpi_mecanismo_seguimiento` diligenciado (validación en capa de aplicación).
@@ -436,7 +425,7 @@ Cada regla cita el mecanismo real del esquema `sgspi`: constraint `CK_*`, llave 
 
 ### 6.3A Activos de la Información Documental y TRD (`ES-GSPI-MR-04` - Flujo Paralelo)
 `sgspi.activo_documental` es subtipo 1:1 de `sgspi.activo_informacion`: comparte la llave (`ado_codigo` = `aci_codigo`, `FK_ado_activo_informacion`). Por ello el estado del registro, la clasificación de transparencia, los datos personales y la valoración C, I, D del activo documental residen en `aci_*`.
-- **RN-DOC-01 (Integridad Jerárquica TRD / CCD - Ley 594 de 2000):** Toda subserie (`sbd_codigo`) pertenece a una serie (`sbd_sdo_codigo`, `FK_sbd_serie_documental`). `FK_ado_subserie_documental` (`ado_sdo_codigo`, `ado_sbd_codigo`) es compuesta y garantiza que la subserie elegida pertenezca a la serie elegida. Si la serie tiene `sdo_tiene_subseries = 1`, el trigger `TR_ado_auditoria_y_actualizacion` rechaza `ado_sbd_codigo` nulo con el error 50015. Cuando la serie tiene `sdo_tiene_subseries = 0` (ej. `CIRCULARES`, `CONVENIOS`, `HISTORIAS LABORALES`, `NÓMINAS`, `PLANES`, `PROYECTOS`, `RESOLUCIONES`), `ado_sbd_codigo` debe ir `NULL` (validación en capa de aplicación). El código archivístico se calcula en `vw_desglose_ccd_trd_mr04` como `<upc_prefijo_archivistico>.<sdo_numero_ccd>` (`adu_codigo_serie_trd_calculado`) y `<upc_prefijo_archivistico>.<sdo_numero_ccd>.<sbd_numero_ccd>` (`adu_codigo_subserie_trd_calculado`).
+- **RN-DOC-01 (Integridad Jerárquica TRD / CCD - Ley 594 de 2000):** Toda subserie (`sbd_codigo`) pertenece a una serie (`sdo_codigo`, `FK_sbd_serie_documental`). `FK_ado_subserie_documental` (`sdo_codigo`, `sbd_codigo`) es compuesta y garantiza que la subserie elegida pertenezca a la serie elegida. Si la serie tiene al menos una subserie activa en `subserie_documental_catalogo`, el trigger `TR_ado_integridad_y_actualizacion` rechaza `sbd_codigo` nulo con el error 50015. Cuando la serie no tiene subseries (ej. `CIRCULARES`, `CONVENIOS`, `HISTORIAS LABORALES`, `NÓMINAS`, `PLANES`, `PROYECTOS`, `RESOLUCIONES`), `sbd_codigo` va `NULL`. El código archivístico se calcula en `vw_desglose_ccd_trd_mr04` como `<upc_prefijo_archivistico>.<sdo_numero_ccd>` (`adu_codigo_serie_trd_calculado`) y `<upc_prefijo_archivistico>.<sdo_numero_ccd>.<sbd_numero_ccd>` (`adu_codigo_subserie_trd_calculado`).
 - **RN-DOC-02 (Coherencia de Datos Personales - Ley 1581 de 2012):** El constraint `CK_aci_coherencia_pii` exige que, fuera de `'BORRADOR'`, si `aci_contiene_datos_personales = 1` estén diligenciados `aci_contiene_datos_menores`, `aci_categoria_dato_personal`, `aci_finalidad_recoleccion_pii` (no vacía) y `aci_existe_autorizacion_pii`; y si es `0`, todos esos campos deben ser `NULL`. `CK_aci_categoria_pii` limita la categoría a `'PUBLICOS'`, `'SEMIPRIVADOS'`, `'PRIVADOS'` o `'SENSIBLES'`. Como los datos de menores solo se registran cuando hay datos personales, `aci_contiene_datos_menores = 1` implica `aci_contiene_datos_personales = 1`.
 - **RN-DOC-03 (Coherencia del Índice de Información Clasificada y Reservada - Ley 1712 de 2014 y Decreto 103 de 2015):** `CK_aci_transparencia` limita `aci_clasificacion_transparencia` a `'NO_CLASIFICADA'`, `'PUBLICA'`, `'CLASIFICADA'` o `'RESERVADA'`. El constraint `CK_aci_coherencia_indice_reserva` exige, fuera de `'BORRADOR'`: para `'CLASIFICADA'`/`'RESERVADA'`, `aci_cet_codigo`, `aci_alcance_excepcion` (`CK_aci_alcance_excepcion`: `'TOTAL'` o `'PARCIAL'`) y `aci_fecha_clasificacion_reserva`, además de `aci_es_reserva_indefinida = 1` sin `aci_anios_plazo_reserva`, o `aci_es_reserva_indefinida = 0` con plazo (`CK_aci_anios_plazo_reserva`: 1..100 años; `aci_fecha_vencimiento_reserva` se calcula). Para `'NO_CLASIFICADA'`/`'PUBLICA'`, todos los campos de reserva (incluidos `aci_fundamento_constitucional_legal` y `aci_fundamento_juridico_excepcion`) deben ser `NULL`. Que los fundamentos constitucional/legal y jurídico sean obligatorios en reserva es validación en capa de aplicación. La causal debe corresponder al nivel de reserva (ver RN-INT-08). Para `'RESERVADA'`, `CK_aci_reserva_plazo_legal` impide la reserva indefinida y los plazos de más de 15 años (Ley 1712 de 2014, art. 22), también en `'BORRADOR'`.
 - **RN-DOC-04 (Restricción de Publicación Externa de Expedientes con Reserva Total y Datos Sensibles/Privados):** No se debe marcar el estado de publicación externo (`ado_epc_codigo` = `'Publicada (Externo - Internet)'` en `sgspi.estado_publicacion_catalogo`) cuando `aci_clasificacion_transparencia = 'RESERVADA'`, `aci_alcance_excepcion = 'TOTAL'`, `aci_valor_confidencialidad = 3` y `aci_categoria_dato_personal` es `'SENSIBLES'` o `'PRIVADOS'` (ej. Historias Clínicas, Historias Laborales, Procesos Disciplinarios) (validación en capa de aplicación). En el DDL, `CK_aci_reserva_confidencialidad` (ver RN-ACT-02) y `CK_aci_pii_privados_no_publico_bajo` (RN-ACT-03) cubren las combinaciones de clasificación y confidencialidad.
@@ -464,10 +453,10 @@ Cada regla cita el mecanismo real del esquema `sgspi`: constraint `CK_*`, llave 
 - **RN-SOA-02 (Coherencia de Aplicabilidad):** `CK_eac_coherencia_aplicabilidad` exige que un control aplicable (`eac_es_aplicable = 1`) tenga `eac_estado_implementacion` y `eac_frecuencia_revision`, y que uno no aplicable los deje nulos y registre `eac_justificacion_aplicabilidad`. `UQ_eac_vigencia_control` permite una sola evaluación por control y vigencia.
 
 ### 6.5 Integridad transversal, flujo de estados y auditoría
-- **RN-INT-01 (Contexto de Auditoría Obligatorio):** Toda operación INSERT/UPDATE sobre acf, rpi, aci, ado, eia, plt, act, eac y el seguimiento (sga) exige que la conexión haya ejecutado `sgspi.usp_establecer_contexto_auditoria`; sin contexto, los triggers `TR_*_auditoria_y_actualizacion` lanzan el error 50012. El procedimiento valida que `per_codigo` exista en `dbo.persona` (error 50013) y fija la identidad de sesión de solo lectura (no puede reasignarse en la misma sesión). No existe respaldo con el creador, revisor o evaluador del registro (AP-03). La función `sgspi.ufn_contexto_auditoria` es la única fuente de lectura del contexto.
+- **RN-INT-01 (Identidad de Sesión Obligatoria, AP-03):** Toda operación de escritura resuelve la persona directamente desde `ORIGINAL_LOGIN()` en `dbo.usuario_general` (`us = ORIGINAL_LOGIN()`, `up = per_codigo`); si el login no tiene persona asociada, los triggers lanzan el error 50017. No existe procedimiento de contexto de sesión.
 - **RN-INT-02 (Estado Inicial Obligatorio y Carga Inicial):** Un registro nuevo solo puede crearse en el estado con `efc_es_inicial = 1` de su dominio (`BORRADOR` en ACF, RPI, ACI y EIA; `PENDIENTE` en ACT); en otro caso el trigger lanza el error 50014 (AP-04). `UX_efc_estado_inicial` garantiza un único estado inicial por dominio. La migración de inventarios existentes (194 activos, D1..D124, etc.) la hace un administrador (`dbo`) deshabilitando temporalmente el trigger `TR_<acr>_integridad_y_actualizacion` de la tabla; ningún rol de la sección 11.1 puede hacerlo.
-- **RN-INT-03 (Transiciones Solo Según `transicion_estado_flujo`):** Un cambio de estado solo es válido si existe la pareja origen/destino en `sgspi.transicion_estado_flujo` (`UQ_tef_dominio_origen_destino`); un UPDATE que deje el mismo estado cuando `efc_permite_edicion = 0` también se rechaza. Ambos casos lanzan el error 50011 en los triggers de acf, rpi, aci, eia y act. Además, no se pueden modificar `plan_tratamiento` ni `actividad_tratamiento` de un evento en `CERRADO_EFICAZ` o `HISTORICO`, ni un `activo_documental` cuyo `activo_informacion` esté `HISTORICO` (error 50011). La acción registrada en la bitácora (`CREAR`, `ACTUALIZAR`, `TRANSICION_ESTADO`, `APROBAR`, `OBSERVAR`) se toma de `tef_accion_bitacora`.
-- **RN-INT-04 (Prohibición de Borrado Físico):** Todas las tablas lanzan el error 50010 ante DELETE (sus triggers de integridad o de auditoría); la baja es lógica. Las 50 tablas de negocio tienen `<acr>_esta_activo` / `<acr>_esta_activa` (`BIT NOT NULL DEFAULT 1`; 1 = activo, 0 = inactivo), además de los estados de flujo (`INACTIVO`, `HISTORICO`). `DENY DELETE ON SCHEMA::sgspi` alcanza a todos los roles, no hay `ON DELETE CASCADE` y las vistas omiten las asociaciones inactivas de las tablas puente (sección 11.1).
+- **RN-INT-03 (Transiciones Solo Según `transicion_estado_flujo`):** Un cambio de estado solo es válido si existe la pareja origen/destino en `sgspi.transicion_estado_flujo` (`UQ_tef_dominio_origen_destino`) y el usuario pertenece a `tef_rol_requerido` (o es `db_owner`); un UPDATE que deje el mismo estado cuando `efc_permite_edicion = 0` también se rechaza. Ambos casos lanzan el error 50011 en los triggers de acf, rpi, aci, eia y act. Además, no se pueden modificar `plan_tratamiento`, `actividad_tratamiento`, `activo_documental` ni las 11 tablas puente cuando su registro padre tiene `efc_permite_edicion = 0` (leído con `WITH (UPDLOCK)`, error 50011).
+- **RN-INT-04 (Prohibición de Borrado Físico):** Todas las tablas lanzan el error 50010 ante DELETE (sus triggers de integridad o de auditoría); la baja es lógica. Las 50 tablas de negocio tienen `<acr>_esta_activo` / `<acr>_esta_activa` (`BIT NOT NULL DEFAULT 1`; 1 = activo, 0 = registro anulado por error), mientras que `INACTIVO` e `HISTORICO` son etapas del ciclo de vida. `DENY DELETE ON SCHEMA::sgspi` alcanza a todos los roles, no hay `ON DELETE CASCADE` y las vistas de reporte filtran `<acr>_esta_activo = 1` tanto en la entidad principal como en las tablas puente (sección 11.1).
 - **RN-INT-05 (Segregación de Funciones):** El aprobador no puede ser el creador: `CK_acf_sod_aprobador`, `CK_rpi_sod_aprobador`, `CK_aci_sod_aprobador`; en eventos, los firmantes (`eia_per_codigo_validador_lider`, `eia_per_codigo_revisor_sgspi`, `eia_per_codigo_aprobador_comite`) deben ser distintos de `eia_per_codigo_creador` (`CK_eia_sod_firmas`). Los triggers de acf, rpi, aci y eia resuelven la persona de la sesión con `ORIGINAL_LOGIN()` en `dbo.usuario_general` (error 50017 si no la hay), rechazan un registro nuevo cuyo creador sea otra persona (error 50019) y escriben con ella las firmas; sin esa verificación, declarar a otra persona como creadora anularía los CHECK anteriores.
 - **RN-INT-06 (Aprobador Obligatorio en Estados Aprobados):** `CK_acf_aprobador_requerido` y `CK_rpi_aprobador_requerido` exigen aprobador en `'VIGENTE'` e `'HISTORICO'`; `CK_aci_aprobador_requerido` lo exige en `'VIGENTE'`, `'INACTIVO'` e `'HISTORICO'`.
 - **RN-INT-07 (Coherencia Estrategia/Naturaleza):** `plan_tratamiento` replica la naturaleza del evento: `FK_plt_evento_incertidumbre` (`plt_eia_codigo`, `plt_naturaleza_evento`) apunta a `UQ_eia_codigo_naturaleza` y `FK_plt_estrategia_tratamiento` (`plt_etc_codigo`, `plt_naturaleza_evento`) a `UQ_etc_codigo_naturaleza`. Así una estrategia de `'RIESGO'` no puede aplicarse a una `'OPORTUNIDAD'` (`CK_plt_naturaleza_evento`, `CK_etc_naturaleza_aplicable`). `UQ_plt_evento` limita a un plan por evento.
@@ -477,7 +466,7 @@ Cada regla cita el mecanismo real del esquema `sgspi`: constraint `CK_*`, llave 
 - **RN-INT-11 (Componente Afectado de Nivel 1):** `FK_eia_tipo_activo_componente` (`eia_tac_codigo_componente`, `eia_tac_nivel_componente`) hacia `UQ_tac_codigo_nivel`, con `eia_tac_nivel_componente` calculada en `1`, obliga a que el componente afectado sea una categoría ISO 27005 de nivel 1.
 - **RN-INT-12 (Una Edición Activa por Familia Normativa):** `UX_enc_familia_activa` permite una sola fila con `enc_esta_activo = 1` por `enc_familia_norma` (p. ej. una edición vigente de `ISO27001`, otra de `ISO27701`); las vistas filtran por familia.
 - **RN-INT-13 (Seguimiento Append-Only y Avance Sincronizado):** `TR_sga_inmutabilidad` bloquea DELETE y todo UPDATE que no sea `sga_esta_activo` sobre `sgspi.seguimiento_actividad` (error 50016): una corrección es un nuevo seguimiento. `TR_sga_sincronizar_avance` copia el `sga_porcentaje_reportado` del último seguimiento a `act_porcentaje_avance` (`CK_sga_porcentaje_reportado`, `CK_act_porcentaje_avance`: 0..100), lo que a su vez dispara la auditoría de act. Antes, exige que `sga_per_codigo` sea la persona de la sesión (error 50019).
-- **RN-INT-14 (Actividad Completada al 100%):** `CK_act_completada_al_100`: `act_estado_actividad = 'COMPLETADA'` solo con `act_porcentaje_avance = 100`. `UQ_act_plan_orden` y `CK_act_numero_orden_positivo` ordenan las actividades dentro del plan.
+- **RN-INT-14 (Actividad con Responsable y Completada al 100%):** `CK_act_responsable` exige `car_codigo` y `uaa_codigo` no nulos en cuanto la actividad sale de `'PENDIENTE'`. `CK_act_completada_al_100`: `act_estado_actividad = 'COMPLETADA'` solo con `act_porcentaje_avance = 100`. `UQ_act_plan_orden` y `CK_act_numero_orden_positivo` ordenan las actividades dentro del plan.
 - **RN-INT-15 (Coherencia de Eficacia):** `CK_plt_coherencia_eficacia`: `plt_es_tratamiento_eficaz`, `plt_dictamen_eficacia` (no vacío), `plt_per_codigo_evaluador` y `plt_fecha_evaluacion_eficacia` se diligencian todos juntos o ninguno. Cuando el dictamen es nuevo o cambia, `TR_plt_integridad_y_actualizacion` exige que el evaluador sea la persona de la sesión (error 50019) y reemplaza la fecha enviada por la hora del servidor.
 - **RN-INT-16 (Evidencia Completa con Hash Hexadecimal):** `CK_sga_evidencia_completa`: `sga_nombre_archivo_evidencia`, `sga_uri_almacenamiento_evidencia` y `sga_hash_sha256_evidencia` van los tres informados o los tres nulos. `CK_sga_hash_formato` exige 64 caracteres hexadecimales.
 - **RN-INT-17 (Auditoría por Tabla, AP-01 — reemplaza la bitácora con cadena de hash):** cada tabla `<tabla>` tiene `sgspi.aud_<tabla>` (sección 5.9 del DDL; acrónimos en su cabecera) con la versión anterior de cada fila modificada, quién hizo el cambio (`per_codigo`, de `ORIGINAL_LOGIN()` en `dbo.usuario_general`; error 50017 si no hay persona) y cuándo (`<aud>_fecha_cambio`, `<aud>_usuario_bd`). La llena el trigger de la tabla: `TR_<acr>_auditoria` o, en acf, rpi, aci, ado, eia, plt, act, eac y sga, el trigger de integridad existente, para no registrar dos veces su propio UPDATE. Los INSERT no se registran (la versión vigente es la fila de origen). Las tablas `aud_*` son inmutables (`TR_<aud>_inmutabilidad`, error 50016) y `sgspi_rol_base` solo las lee (ISO/IEC 27001 A.8.15, 7.5.3).
@@ -495,7 +484,7 @@ El rol de cada persona se resuelve en `sgspi.vw_usuario_rol_alcance_sgspi` (`gru
 | **`SGSPI_GESTOR_DOCUMENTAL`** | Gestor Documental / Administrador de TRD y CCD | Profesional de Gestión Documental, Coordinador de Archivo Central / Secretaría General | Administra el Cuadro de Clasificación Documental (`sgspi.serie_documental_catalogo`, `sgspi.subserie_documental_catalogo`, `sgspi.unidad_productora_cuadro_clasificacion_documental`, `sgspi.activo_documental_unidad_productora`), verifica la correspondencia archivística de `ES-GSPI-MR-04` con las TRD aprobadas (`ado_per_codigo_revisor_archivo`) y avala fechas de ingreso a tabla de retención/archivo. |
 | **`SGSPI_ADMIN_OPDP`** | Administrador Funcional SGSPI y Oficial de Protección de Datos | Profesional Especializado Líder del SGSPI, Oficial de Protección de Datos Personales, Asesor Jurídico de Privacidad | Administra vigencias (`sgspi.periodo_vigencia`) y catálogos, gestiona Partes Interesadas (`sgspi.parte_interesada`, `sgspi.requisito_parte_interesada`) y SoA (`sgspi.evaluacion_aplicabilidad_control`), aprueba el Índice de Información Clasificada y Reservada y el tratamiento PII en `ES-GSPI-MR-04` y `ES-GSPI-MR-05`, y realiza la revisión metodológica. |
 | **`SGSPI_COMITE_DIRECCION`** | Comité Institucional de Seguridad y Privacidad / Alta Dirección | Rector, Vicerrectores, Comité Administrativo, Comité Institucional de Seguridad y Privacidad | Aprueba políticas, Tablas de Retención Documental (TRD), Índice de Información Clasificada y Reservada, planes anuales de tratamiento (`sgspi.plan_tratamiento`) y aceptación de riesgos Altos/Extremos. |
-| **`SGSPI_AUDITOR_CONTROL`** | Auditor Interno / Aseguramiento de Calidad / Ente Externo | Jefe y Auditores de Control Interno, Coordinador y Auditores SGC, Auditores externos (ICONTEC / MinTIC / Archivo General de la Nación / Contraloría) | Consulta transversal de solo lectura, verifica trazabilidad en `sgspi.bitacora_auditoria_sistema`, audita `ES-GSPI-MR-04`, `ES-GSPI-MR-05` y el SoA (`sgspi.evaluacion_aplicabilidad_control`), y certifica la eficacia final de los planes de tratamiento. |
+| **`SGSPI_AUDITOR_CONTROL`** | Auditor Interno / Aseguramiento de Calidad / Ente Externo | Jefe y Auditores de Control Interno, Coordinador y Auditores SGC, Auditores externos (ICONTEC / MinTIC / Archivo General de la Nación / Contraloría) | Consulta transversal de solo lectura, verifica trazabilidad en las tablas de auditoría `sgspi.aud_<tabla>`, audita `ES-GSPI-MR-04`, `ES-GSPI-MR-05` y el SoA (`sgspi.evaluacion_aplicabilidad_control`), y certifica la eficacia final de los planes de tratamiento. |
 
 ---
 
@@ -521,7 +510,7 @@ $$\text{PENDIENTE} \longrightarrow \text{EN\_CURSO} \longrightarrow \text{COMPLE
   `COMPLETADA` exige `act_porcentaje_avance = 100` (`CK_act_completada_al_100`) y solo puede reabrirse hacia `OBSERVADA`.
 
 - **Estados de Excepción y Control:**
-  - **`OBSERVADO`** (dominios `ACF`, `RPI`, `ACI`, `EIA`; en `ACT` se llama **`OBSERVADA`**): se alcanza con la acción `OBSERVAR` desde los estados de validación y revisión (en `EIA` también desde `APROBADO_PLANIFICADO`, `EN_EJECUCION` y `EN_EVALUACION_EFICACIA`) cuando el registro es devuelto por `SGSPI_LIDER_PROPIETARIO`, `SGSPI_GESTOR_DOCUMENTAL`, `SGSPI_ADMIN_OPDP` o `SGSPI_COMITE_DIRECCION`. El motivo se pasa en el contexto de sesión (parámetro `@motivo_observacion` de `sgspi.usp_establecer_contexto_auditoria`) y el trigger lo graba en `bas_motivo_observacion` (`sgspi.bitacora_auditoria_sistema`). El DDL no impide dejar el motivo vacío; su obligatoriedad es validación en capa de aplicación.
+  - **`OBSERVADO`** (dominios `ACF`, `RPI`, `ACI`, `EIA`; en `ACT` se llama **`OBSERVADA`**): se alcanza desde los estados de validación y revisión (en `EIA` también desde `APROBADO_PLANIFICADO`, `EN_EJECUCION` y `EN_EVALUACION_EFICACIA`) cuando el registro es devuelto por `SGSPI_LIDER_PROPIETARIO`, `SGSPI_GESTOR_DOCUMENTAL`, `SGSPI_ADMIN_OPDP` o `SGSPI_COMITE_DIRECCION`.
   - **`EN_ACEPTACION_COMITE`** (solo `EIA`): estado requerido cuando un riesgo en zona `Alta (A)` o `Extrema (E)` solicita ser asumido, compartido o mantiene un nivel residual Alto/Extremo.
   - **`INACTIVO`** (solo `ACI`): baja lógica reversible de un activo vigente.
 
@@ -529,7 +518,7 @@ $$\text{PENDIENTE} \longrightarrow \text{EN\_CURSO} \longrightarrow \text{COMPLE
 
 ## 9. Casos de Uso Principales por Rol (CRUD, Aprobaciones y Reportería)
 
-Todos los casos de uso que modifican datos se ejecutan tras `sgspi.usp_establecer_contexto_auditoria` (sección 11.1); el borrado es siempre lógico mediante estado.
+Todos los casos de uso que modifican datos se ejecutan con el login SQL real de cada persona (`ORIGINAL_LOGIN()`, sección 11.1); el borrado es siempre lógico.
 
 | Rol (`dbo.grupo`) | Operaciones CRUD | Flujos de Aprobación / Validación | Reportería y Consultas |
 | :--- | :--- | :--- | :--- |
@@ -538,13 +527,13 @@ Todos los casos de uso que modifican datos se ejecutan tras `sgspi.usp_establece
 | **`SGSPI_GESTOR_DOCUMENTAL`** | • CRUD del catálogo de Series (`sgspi.serie_documental_catalogo`), Subseries (`sgspi.subserie_documental_catalogo`), Unidades Productoras CCD (`sgspi.unidad_productora_cuadro_clasificacion_documental`) y asignaciones (`sgspi.activo_documental_unidad_productora`).<br>• Actualizar `ado_fecha_ingreso_tabla_retencion` y `ado_fecha_ingreso_archivo` en `sgspi.activo_documental`. | • **Avalar correspondencia archivística TRD/CCD** (`EN_REVISION_ARCHIVO` $\rightarrow$ `EN_REVISION_SGSPI` u `OBSERVADO`), dejando `ado_per_codigo_revisor_archivo`. | • Vista `vw_desglose_ccd_trd_mr04` (240 filas `cod1..cod6`) y `vw_inventario_activo_documental_mr04` (194 filas consolidadas). |
 | **`SGSPI_ADMIN_OPDP`** | • CRUD de `sgspi.periodo_vigencia` y catálogos maestros.<br>• CRUD completo de `sgspi.requisito_parte_interesada` y `sgspi.evaluacion_aplicabilidad_control`.<br>• Vincular controles en `sgspi.plan_tratamiento_control_referencia_normativa`. | • **Aprobar en 2.ª instancia (Revisión Metodológica y de Privacidad/Reserva)** (`EN_REVISION_SGSPI` $\rightarrow$ `VIGENTE` en contexto, partes interesadas y activos, o `APROBADO_PLANIFICADO` en riesgos); el aprobador queda en `acf_per_codigo_aprobador`, `rpi_per_codigo_aprobador` o `aci_per_codigo_aprobador` y debe ser distinto del creador.<br>• Escalar riesgos `Altos/Extremos` a `EN_ACEPTACION_COMITE`.<br>• Reabrir un registro `VIGENTE` hacia `EN_REVISION_SGSPI`. | • Exportación oficial de los formatos `ES-GSPI-MR-01`, `03`, `04`, `05` y `06`.<br>• Reporte oficial del **Índice de Información Clasificada y Reservada** (Ley 1712 / Decreto 103) y Registro de Bases de Datos Personales (RNBD / Ley 1581). |
 | **`SGSPI_COMITE_DIRECCION`** | • Registrar actas, resoluciones y decisiones estratégicas del Comité. | • **Aprobar en instancia ejecutiva** riesgos escalados (`EN_ACEPTACION_COMITE` $\rightarrow$ `APROBADO_PLANIFICADO`, firma en `eia_per_codigo_aprobador_comite`) o devolverlos (`OBSERVADO`), y cierre de planeación anual. | • Cuadro de Mando Ejecutivo: Mapa de calor 5x5 global, activos críticos, índice de reserva y presupuesto. |
-| **`SGSPI_AUDITOR_CONTROL`** | • **Sin permisos de creación/edición/borrado sobre datos operativos.**<br>• Registrar `eac_observaciones_auditoria` en el SoA y `plt_dictamen_eficacia` en planes de tratamiento. | • **Certificar o rechazar la eficacia final** (`EN_EVALUACION_EFICACIA` $\rightarrow$ `CERRADO_EFICAZ` o reabrir a `EN_EJECUCION`). | • Acceso completo a `sgspi.bitacora_auditoria_sistema`, historial de versiones (tablas temporales), evidencias con hash SHA-256 (`sga_hash_sha256_evidencia`) y brechas del SoA. |
+| **`SGSPI_AUDITOR_CONTROL`** | • **Sin permisos de creación/edición/borrado sobre datos operativos.**<br>• Registrar `eac_observaciones_auditoria` en el SoA y `plt_dictamen_eficacia` en planes de tratamiento. | • **Certificar o rechazar la eficacia final** (`EN_EVALUACION_EFICACIA` $\rightarrow$ `CERRADO_EFICAZ` o reabrir a `EN_EJECUCION`). | • Acceso completo al historial de versiones en las 50 tablas `sgspi.aud_<tabla>`, evidencias con hash SHA-256 (`sga_hash_sha256_evidencia`) y brechas del SoA. |
 
 ---
 
 ## 10. Máquina de Estados para el Registro Principal
 
-Los estados y transiciones son datos (`sgspi.estado_flujo_catalogo`, `sgspi.transicion_estado_flujo`); los triggers los consultan y rechazan con el error 50011 cualquier cambio no declarado. `efc_permite_edicion = 0` (p. ej. `VIGENTE`, `HISTORICO`, `COMPLETADA`, `CERRADO_EFICAZ`) indica que el registro no se puede modificar en ese estado. La acción de bitácora (`APROBAR`, `OBSERVAR`, `TRANSICION_ESTADO`) sale de `tef_accion_bitacora`. Un diagrama por familia de dominio:
+Los estados y transiciones son datos (`sgspi.estado_flujo_catalogo`, `sgspi.transicion_estado_flujo`); los triggers los consultan y rechazan con el error 50011 cualquier cambio no declarado o sin `tef_rol_requerido`. `efc_permite_edicion = 0` (p. ej. `VIGENTE`, `HISTORICO`, `COMPLETADA`, `CERRADO_EFICAZ`) indica que el registro no se puede modificar en ese estado. Un diagrama por familia de dominio:
 
 **Dominios `ACF` y `RPI`** (contexto DOFA y partes interesadas):
 
@@ -653,7 +642,7 @@ stateDiagram-v2
 
 | Tabla / Vista en Esquema `sgspi` | `CUSTODIO_OPERADOR` | `LIDER_PROPIETARIO` | `GESTOR_DOCUMENTAL` | `ADMIN_OPDP` | `COMITE_DIRECCION` | `AUDITOR_CONTROL` |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **0. `periodo_vigencia` y catálogos SGSPI** (`tipo_proceso_catalogo`, `proceso_institucional`, `proceso_institucional_uaa`, `factor_entorno_catalogo`, `dominio_formato_catalogo`, `formato_documental_version`) | `R [Todo]` | `R [Todo]` | `R [Todo]` | **`C, R, U, D, A [Todo]`** | `R [Todo]` | `R, E [Todo]` |
+| **0. `periodo_vigencia` y catálogos SGSPI** (`tipo_proceso_catalogo`, `proceso_institucional`, `proceso_institucional_uaa`, `factor_entorno_catalogo`) | `R [Todo]` | `R [Todo]` | `R [Todo]` | **`C, R, U, D, A [Todo]`** | `R [Todo]` | `R, E [Todo]` |
 | **0.1 Máquina de estados: `estado_flujo_catalogo` y `transicion_estado_flujo`** (solo cambia por script de migración) | `R [Todo]` | `R [Todo]` | `R [Todo]` | `R [Todo]` | `R [Todo]` | `R, E [Todo]` |
 | **1. `analisis_contexto_factor`** | `C, R, U [Proceso/UAA]` | **`C, R, U, D, V, E [Proceso/UAA]`** | `R [Proceso/UAA]` | **`R, V, A, E [Todo]`** | `R, E [Todo]` | `R, E [Todo]` |
 | **2. `vw_consolidado_dofa`** | `R [Proceso/UAA]` | `R, E [Proceso/UAA]` | `R [Todo]` | **`R, V, A, E [Todo]`** | **`R, A, E [Todo]`** | `R, E [Todo]` |
@@ -669,7 +658,7 @@ stateDiagram-v2
 | **5.3 `actividad_tratamiento` y `seguimiento_actividad` (este último solo `C, R`: append-only)** | **`C, R, U [Asignado]`** | **`C, R, U, V, E [Proceso/UAA]`** | `C, R, U [Asignado]` | **`R, V, A, E [Todo]`** | `R, E [Todo]` | **`R, V, A (Eficacia), E [Todo]`** |
 | **5.4 `evaluacion_aplicabilidad_control` (SoA) y catálogos `estandar_normativo_catalogo`, `control_referencia_normativa`, `atributo_control_catalogo`, `control_referencia_normativa_atributo`** | `R [Asignado]` | `R [Proceso/UAA]` | `R [Todo]` | **`C, R, U, V, A, E [Todo]`** | **`R, A, E [Todo]`** | **`R, V, E [Todo]`** |
 | **5.5 Vistas de reportería (`vw_inventario_activo_documental_mr04`, `vw_desglose_ccd_trd_mr04`, `vw_resumen_activos_criticidad`, `vw_matriz_tratamiento_riesgos`, `vw_controles_atributos_iso27002`)** | `R [Asignado]` | `R, E [Proceso/UAA]` | `R, E [Todo]` | **`R, E [Todo]`** | `R, E [Todo]` | `R, E [Todo]` |
-| **6. `bitacora_auditoria_sistema`** | *Sin acceso* | *Sin acceso* | *Sin acceso* | `R, E [Todo]` | `R [Todo]` | **`R, E [Todo]`** |
+| **6. Tablas de auditoría (`aud_<tabla>`)** | `R [Todo]` | `R [Todo]` | `R [Todo]` | `R, E [Todo]` | `R [Todo]` | **`R, E [Todo]`** |
 
 ### 11.1 Seguridad en base de datos
 
@@ -683,7 +672,7 @@ La aplicación escribe con el login SQL real de cada persona y lee con una cuent
 | `sgspi_rol_lider_propietario` | `SGSPI_LIDER_PROPIETARIO` | Lo del custodio, más UPDATE en eia y rpi, y plt con sus controles (ptc) |
 | `sgspi_rol_gestor_documental` | `SGSPI_GESTOR_DOCUMENTAL` | Catálogos documentales y CCD/TRD, adu, ado y sus tablas puente, act; solo INSERT en sga |
 | `sgspi_rol_oficial_seguridad_privacidad` | `SGSPI_ADMIN_OPDP` | Vigencias y catálogos del SGSPI, partes interesadas, activos, eventos, planes y SoA; solo UPDATE en acf, ado y act |
-| `sgspi_rol_comite_direccion` | `SGSPI_COMITE_DIRECCION` | Solo UPDATE en rpi y eia (su transición y su firma) |
+| `sgspi_rol_comite_direccion` | `SGSPI_COMITE_DIRECCION` | Solo UPDATE en eia (su transición y su firma) |
 | `sgspi_rol_auditor_control` | `SGSPI_AUDITOR_CONTROL` | Las cuatro columnas del dictamen de eficacia de plt (solo él lo registra), el estado de eia para cerrar o reabrir la evaluación de eficacia (D2) y `eac_observaciones_auditoria` |
 
 Reglas comunes, definidas sobre `sgspi_rol_base` y heredadas por todos:
@@ -709,8 +698,8 @@ El script ejecutable completo está en [DDL_SGSPI_SQLSERVER2019_v2.sql](DDL_SGSP
 | :--- | :-: | :--- |
 | Tablas | 100 | 50 de negocio y 50 de auditoría (`aud_<tabla>`, una por tabla de negocio; RN-INT-17) |
 | Vistas | 7 | `vw_usuario_rol_alcance_sgspi`, `vw_consolidado_dofa`, `vw_resumen_activos_criticidad`, `vw_matriz_tratamiento_riesgos`, `vw_desglose_ccd_trd_mr04`, `vw_inventario_activo_documental_mr04`, `vw_controles_atributos_iso27002` |
-| Triggers | 12 | Auditoría y flujo (`TR_acf_auditoria_y_actualizacion`, `TR_rpi_…`, `TR_aci_…`, `TR_ado_…`, `TR_eia_…`, `TR_plt_…`, `TR_act_…`, `TR_eac_…`), bitácora (`TR_bas_cadena_hash`, `TR_bas_inmutabilidad_bitacora`) y seguimiento (`TR_sga_inmutabilidad`, `TR_sga_sincronizar_avance`) |
-| Procedimientos | 3 | `usp_establecer_contexto_auditoria`, `usp_habilitar_carga_inicial`, `usp_verificar_cadena_bitacora` |
+| Triggers | 111 | Integridad, flujo y auditoría (`TR_acf_integridad_y_actualizacion`, `TR_rpi_…`, `TR_aci_…`, `TR_ado_…`, `TR_eia_…`, `TR_plt_…`, `TR_act_…`, `TR_eac_…`), seguimiento (`TR_sga_inmutabilidad`, `TR_sga_sincronizar_avance`), 11 bloqueos de padre en tablas puente (`TR_<acr>_bloquear_padre_no_editable`), 41 de auditoría (`TR_<acr>_auditoria`) y 50 de inmutabilidad (`TR_<aud>_inmutabilidad`) |
+| Procedimientos | 0 | Sin procedimientos almacenados (la identidad se toma de `ORIGINAL_LOGIN()`, AP-03; la carga inicial deshabilita temporalmente el trigger como `dbo`, AP-04) |
 | Funciones | 2 | `ufn_proceso_en_alcance`, `ufn_activo_en_alcance` (alcance de escritura, D5) |
 | Roles de BD | 8 | `sgspi_rol_base`, `sgspi_rol_consulta` y seis roles de actor (sección 11.1) |
 
@@ -724,43 +713,38 @@ sqlcmd -S <servidor> -d academia3000 -I -b -i DDL_SGSPI_SQLSERVER2019_v2.sql
 ```
 
 ### 12.2 Contrato con la capa de aplicación
-Toda conexión que modifique datos debe fijar primero el contexto de auditoría; sin él, los triggers rechazan la operación con el error `50012`. La identidad queda en solo lectura para el resto de la sesión, y el pool de conexiones la limpia al reutilizar la conexión.
-```sql
-EXEC sgspi.usp_establecer_contexto_auditoria
-     @per_codigo         = 1234,           -- obligatorio; debe existir en dbo.persona (error 50013)
-     @gru_codigo         = 7,              -- rol RBAC con que actúa
-     @usg_codigo         = 55,
-     @direccion_ip       = '10.10.1.25',
-     @motivo_observacion = N'Falta evidencia del control A.8.24';  -- obligatorio al OBSERVAR
-```
-- Los registros nuevos se crean en el estado inicial de su flujo (`BORRADOR` o `PENDIENTE`); el error `50014` indica lo contrario. Para cargar inventarios históricos ya aprobados, un administrador ejecuta `sgspi.usp_habilitar_carga_inicial` en esa sesión.
-- La aplicación escribe con el login SQL real de cada persona, miembro de un rol de actor, y lee con la cuenta compartida de consulta, miembro de `sgspi_rol_base` (ver sección 11.1).
+- **Identidad y permisos:** la aplicación escribe con el login SQL real de cada persona (miembro de un único rol de actor y registrado en `dbo.usuario_general.us`, error `50017` si falta) y lee con la cuenta compartida de consulta (`sgspi_rol_consulta`, que no lee las vulnerabilidades de `eia`; ver sección 11.1). El creador, el evaluador de eficacia y el autor de un seguimiento deben coincidir con la persona de la sesión (`50019`).
+- **Estado inicial y carga histórica:** los registros nuevos nacen en el estado inicial de su flujo (`BORRADOR` o `PENDIENTE`, error `50014`). Para cargar inventarios históricos ya aprobados, un administrador (`dbo`) deshabilita temporalmente el trigger `TR_<acr>_integridad_y_actualizacion` de la tabla.
+- **Concurrencia optimista y reintentos (`AP-24`):** las 8 tablas con flujo o actualización (`acf`, `rpi`, `aci`, `ado`, `eia`, `plt`, `act`, `eac`) tienen `<acr>_version ROWVERSION NOT NULL`. La aplicación actualiza con `WHERE <acr>_codigo = @id AND <acr>_version = @v` (si `@@ROWCOUNT = 0`, otro usuario modificó el registro) y vuelve a leer la versión tras guardar, porque el `UPDATE` interno del trigger la incrementa. La aplicación debe reintentar ante deadlock (`1205`) y, al calcular consecutivos (`acf_numero_factor`, `RA-nn`/`OA-nn`, `act_numero_orden`) con `WITH (UPDLOCK, HOLDLOCK)`, ante colisión de clave única (`2601`/`2627`).
 
 ### 12.3 Verificación
-- **Pruebas de comportamiento:** [PRUEBAS_DDL_SGSPI_v2.sql](PRUEBAS_DDL_SGSPI_v2.sql) ejecuta 71 casos (flujo de estados, segregación de funciones, integridad entre tablas, vistas, y roles y permisos). Inserta datos de prueba, así que debe correrse en una base desechable recién desplegada, nunca en producción.
-- **Integridad de la bitácora:** `EXEC sgspi.usp_verificar_cadena_bitacora;` devuelve los eventos cuyo enlace o hash no coincide con el recálculo (un resultado vacío indica una cadena íntegra). Para detectar también el borrado de los últimos eventos, conviene guardar periódicamente el último `bas_hash_evento_sha256` fuera de la base.
+- **Pruebas de comportamiento:** [PRUEBAS_DDL_SGSPI_v2.sql](PRUEBAS_DDL_SGSPI_v2.sql) ejecuta la batería de pruebas sobre flujo de estados, segregación de funciones, integridad entre tablas, concurrencia optimista, vistas, auditoría `aud_*` y roles/permisos. Inserta datos de prueba, así que debe correrse en una base desechable recién desplegada, nunca en producción.
+- **Verificación posterior al despliegue:** el último lote del DDL ejecuta una consulta de solo lectura que lista cualquier desalineación entre `dbo.usuario_grupo`/`dbo.usuario_general` y la membresía en los roles de actor de base de datos.
 
 ### 12.4 Cambios del modelo v2 respecto de la versión anterior
 | ID | Cambio |
 | :-: | :--- |
-| AP-01 | La bitácora tiene una cadena de hash SHA-256 almacenada (`bas_hash_evento_anterior` + `bas_hash_evento_sha256`), calculada por `TR_bas_cadena_hash`; antes el hash era una columna calculada que se recalculaba sola al alterar la fila. |
-| AP-02 | Roles de base de datos con `DENY UPDATE, DELETE, ALTER` sobre la bitácora (`ALTER` es lo que habilita `TRUNCATE` y `DISABLE TRIGGER`). |
-| AP-03 | El contexto de auditoría es obligatorio en toda operación y su identidad es de solo lectura; ya no se atribuyen acciones al creador, revisor o evaluador cuando falta. |
-| AP-04 | Todo registro nace en el estado inicial; `requisito_parte_interesada` y `activo_informacion` ya no nacen `VIGENTE`. |
-| AP-05 | Los estados y transiciones son datos (`estado_flujo_catalogo`, `transicion_estado_flujo`) en lugar de listas en `CHECK` y triggers copiados. |
-| AP-06 | Integridad declarativa entre tablas: estrategia vs. naturaleza del evento, causal vs. nivel de reserva, nivel del padre en la taxonomía, componente afectado de nivel 1, subserie obligatoria. |
+| AP-01 | Auditoría por tabla (`sgspi.aud_<tabla>`, sección 5.9) con la versión anterior de cada fila modificada, quién la cambió (`ORIGINAL_LOGIN()`, error 50017) y cuándo; inmutable (`50016`) y sin borrado físico (`50010`). |
+| AP-02 | Privilegios mínimos: `sgspi_rol_base`, `sgspi_rol_consulta` (sin lectura de vulnerabilidades, D5) y seis roles de actor con alcance de escritura por UAA/proceso para líder y custodio (`50021`). |
+| AP-03 | Identidad por `ORIGINAL_LOGIN()` en `dbo.usuario_general` sin procedimiento de contexto de sesión; firma automática de aprobaciones y bloqueo de suplantación del creador/evaluador/autor (`50019`). |
+| AP-04 | Todo registro nace en el estado inicial; `requisito_parte_interesada` y `activo_informacion` ya no nacen `VIGENTE` (`50014`). |
+| AP-05 | Máquina de estados dirigida por datos (`estado_flujo_catalogo`, `transicion_estado_flujo` con `tef_rol_requerido`). |
+| AP-06 | Integridad declarativa entre tablas: estrategia vs. naturaleza del evento, causal vs. nivel de reserva, nivel del padre en la taxonomía, componente afectado de nivel 1, subserie derivada de `subserie_documental_catalogo` y `FK_eia_activo_proceso` (D4). |
 | AP-07 | Los atributos ISO/IEC 27002:2022 se normalizan en `atributo_control_catalogo` y `control_referencia_normativa_atributo`. |
-| AP-08 | Las enumeraciones libres pasan a catálogo o `CHECK` (`formato_archivo_catalogo`, `eia_tac_codigo_componente`, `sif_modalidad_desarrollo`). |
+| AP-08 | Las enumeraciones libres pasan a catálogo o `CHECK` (`formato_archivo_catalogo`, `tac_codigo_componente`, `sif_modalidad_desarrollo`). |
 | AP-09 | Sin dependencias transitivas: `zona_riesgo_catalogo`, `mvr_codigo_posicion` calculada, letra de probabilidad coherente, avance sincronizado desde el seguimiento, UAA líder única. |
 | AP-10 | `activo_documental` comparte PK con `activo_informacion` (`ado_codigo = aci_codigo`). |
-| AP-11 | Las tablas temporales no tienen columna de fecha de actualización (la aporta `SYSTEM_TIME`). |
-| AP-12 | Las marcas de auditoría usan `DATETIMEOFFSET(0)`; bitácora y `SYSTEM_TIME` en UTC. |
-| AP-13 | Valores normalizados (`PUBLICA`, `NO_CLASIFICADA`) y vistas filtradas por `enc_familia_norma` en lugar del texto de la edición. |
+| AP-11 | `*_fecha_actualizacion` mantenida por trigger en `acf`, `rpi`, `aci`, `ado`, `eia`, `plt`, `act` y `eac`. |
+| AP-12 | Las marcas de fecha usan `DATETIMEOFFSET(0)`. |
+| AP-13 | Valores normalizados (`PUBLICA`, `NO_CLASIFICADA`) y vistas filtradas por `enc_familia_norma`. |
 | AP-14 | Claves naturales con `UNIQUE` en procesos, causales, módulos y actividades. |
-| AP-15 | Segregación de funciones y aprobador obligatorio en estados aprobados. |
-| AP-16 | Coherencia de la evaluación de eficacia, KPI sin desborde, evidencia con formato y seguimiento solo de inserción. |
+| AP-15 | Segregación de funciones garantizada por `CHECK` y sellado del creador en sesión (`50019`). |
+| AP-16 | Coherencia de eficacia del plan, KPI sin desborde, evidencia con formato, seguimiento append-only y requisitos de transición en `eia` y `aci` (`50020`, D2 y D3). |
 | AP-17 | Todos los `DEFAULT` con nombre `DF_<columna>`. |
-| AP-18 | Índices redundantes eliminados e índice para la FK compuesta serie/subserie. |
-| AP-19 | Verificación previa de despliegue (ver 12.1). |
+| AP-18 | Índices redundantes eliminados e índices compuestos para soporte de FK. |
+| AP-19 | Verificación previa de despliegue y ejecución en transacción única (ver 12.1). |
 | AP-20 | `GROUPING()` en lugar de `ISNULL` para rotular subtotales. |
-| AP-21 | Contexto de auditoría y hash centralizados en funciones reutilizadas por todos los triggers. |
+| AP-21 | Retirado (funciones de contexto de auditoría y de hash eliminadas con AP-01 y AP-03). |
+| AP-22 | Borrado lógico transversal (`<acr>_esta_activo = 0` para registros anulados por error) filtrado en vistas de reporte y asociaciones. |
+| AP-23 | Plazo legal de la reserva (`CK_aci_reserva_plazo_legal`: información `RESERVADA` no indefinida y hasta 15 años, Ley 1712 de 2014 art. 22). |
+| AP-24 | Concurrencia: `<acr>_version ROWVERSION`, lectura del padre con `WITH (UPDLOCK)` en triggers hijos/puente y patrón de consecutivos con `WITH (UPDLOCK, HOLDLOCK)`. |

@@ -66,7 +66,7 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
                                         AND dc.definition = N''((1))''))
     THROW 51000, N''hay tablas sin <acr>_esta_activo'', 1;', 0;
 
--- Cada tabla aud_* tiene: su código, las columnas no calculadas del origen salvo <acr>_fecha_creacion, per_codigo,
+-- Cada tabla aud_* tiene: su código, las columnas no calculadas del origen salvo <acr>_version y <acr>_fecha_creacion, per_codigo,
 -- usuario_bd y fecha_cambio. Si se agrega una columna a una tabla y no a su auditoría, esta prueba falla.
 EXECUTE #espera N'AP-01 cada tabla tiene su auditoría con las mismas columnas', N'
 IF EXISTS (SELECT 1 FROM sys.tables AS t
@@ -75,8 +75,33 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
                   AND (OBJECT_ID(N''sgspi.aud_'' + t.name) IS NULL
                        OR (SELECT COUNT(*) FROM sys.columns AS c WHERE c.object_id = OBJECT_ID(N''sgspi.aud_'' + t.name))
                           <> 4 + (SELECT COUNT(*) FROM sys.columns AS c
-                                  WHERE c.object_id = t.object_id AND c.is_computed = 0 AND c.name NOT LIKE N''%[_]fecha[_]creacion'')))
+                                  WHERE c.object_id = t.object_id AND c.is_computed = 0 AND c.system_type_id <> 189 AND c.name NOT LIKE N''%[_]fecha[_]creacion'')))
     THROW 51000, N''hay tablas sin auditoría o con columnas distintas'', 1;', 0;
+
+-- Guarda de los EXCEPT de transición: toda columna de contenido de las 5 tablas con flujo debe estar en el EXCEPT previo a aud_*
+EXECUTE #espera N'AP-05 toda columna de contenido de las tablas con flujo está en el EXCEPT de su trigger', N'
+IF EXISTS (SELECT 1
+           FROM   sys.tables AS t
+                  INNER JOIN sys.columns AS c ON c.object_id = t.object_id
+                  INNER JOIN sys.triggers AS tr ON tr.parent_id = t.object_id AND tr.name LIKE N''TR[_]%[_]integridad[_]y[_]actualizacion''
+           WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+                  AND t.name IN (N''analisis_contexto_factor'', N''requisito_parte_interesada'', N''activo_informacion'', N''evento_incertidumbre_activo'', N''actividad_tratamiento'')
+                  AND c.is_computed = 0
+                  AND c.system_type_id <> 189 -- ROWVERSION
+                  AND c.name NOT IN (N''acf_estado_registro'', N''rpi_estado_registro'', N''aci_estado_registro'', N''eia_estado_registro'', N''act_estado_actividad'',
+                                     N''per_codigo_aprobador'', N''per_codigo_validador_lider'', N''per_codigo_revisor_sgspi'', N''per_codigo_aprobador_comite'')
+                  AND (CHARINDEX(N''i.'' + c.name, LEFT(OBJECT_DEFINITION(tr.object_id), CHARINDEX(N''INSERT INTO sgspi.aud_'', OBJECT_DEFINITION(tr.object_id)))) = 0
+                       OR CHARINDEX(N''d.'' + c.name, LEFT(OBJECT_DEFINITION(tr.object_id), CHARINDEX(N''INSERT INTO sgspi.aud_'', OBJECT_DEFINITION(tr.object_id)))) = 0))
+    THROW 51000, N''hay columnas fuera del EXCEPT de transición'', 1;', 0;
+
+-- Estados referenciados en CHECK o triggers deben existir en estado_flujo_catalogo
+EXECUTE #espera N'AP-05 los identificadores de estado usados en CHECK o triggers existen en [efc]', N'
+IF EXISTS (SELECT v.id
+           FROM   (VALUES (N''BORRADOR''), (N''VIGENTE''), (N''EN_VALIDACION_LIDER''), (N''EN_REVISION_ARCHIVO''),
+                          (N''EN_REVISION_SGSPI''), (N''EN_ACEPTACION_COMITE''), (N''APROBADO_PLANIFICADO''),
+                          (N''CERRADO_EFICAZ''), (N''PENDIENTE''), (N''COMPLETADA'')) AS v(id)
+           WHERE  NOT EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_identificador = v.id))
+    THROW 51000, N''falta un estado requerido por el código'', 1;', 0;
 
 -- [AP-02] D5: el alcance sale de dbo.usuario_grupo (grupos SGSPI_*) y de proceso_institucional_uaa. El login de prueba
 -- queda en un grupo SGSPI en la UAA 1, que más abajo se liga al proceso 1.
@@ -184,7 +209,7 @@ EXECUTE #espera N'AP-23 activo RESERVADO con reserva indefinida', N'INSERT sgspi
 EXECUTE #espera N'AP-23 activo RESERVADO a más de 15 años', N'INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, aci_clasificacion_transparencia, cet_codigo, aci_es_reserva_indefinida, aci_anios_plazo_reserva, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador) VALUES (N''INV-8'', N''x'', 3, N''RESERVADA'', 2, 0, 16, 3, 1, 1, 1);', 547;
 
 EXECUTE #espera N'Catálogos documentales', N'
-INSERT sgspi.serie_documental_catalogo (sdo_numero_ccd, sdo_nombre_serie, sdo_tiene_subseries) VALUES (2, N''ACTAS'', 1);
+INSERT sgspi.serie_documental_catalogo (sdo_numero_ccd, sdo_nombre_serie) VALUES (2, N''ACTAS'');
 INSERT sgspi.subserie_documental_catalogo (sdo_codigo, sbd_numero_ccd, sbd_nombre_subserie) VALUES (1, 1, N''Actas de Consejo Superior'');
 INSERT sgspi.periodicidad_catalogo (pdc_nombre) VALUES (N''Mensual'');
 INSERT sgspi.estado_publicacion_catalogo (epc_nombre) VALUES (N''No publicada'');
@@ -253,7 +278,9 @@ EXECUTE #espera N'AP-22 seguimiento no se borra físicamente', N'DELETE sgspi.se
 
 EXECUTE #espera N'AP-22 seguimiento admite borrado lógico', N'UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 40; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 1 WHERE sga_porcentaje_reportado = 40;', 0;
 
-EXECUTE #espera N'AP-16 completar sin llegar a 100%', N'UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''EN_CURSO'' WHERE act_codigo = 1; UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''COMPLETADA'' WHERE act_codigo = 1;', 547;
+EXECUTE #espera N'Actividad fuera de PENDIENTE exige cargo y UAA responsables', N'UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''EN_CURSO'' WHERE act_codigo = 1;', 547;
+
+EXECUTE #espera N'AP-16 completar sin llegar a 100%', N'UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''EN_CURSO'', car_codigo = 1, uaa_codigo = 1 WHERE act_codigo = 1; UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''COMPLETADA'' WHERE act_codigo = 1;', 547;
 
 
 GO
@@ -271,6 +298,12 @@ EXECUTE #espera N'SoA aplicable', N'INSERT sgspi.evaluacion_aplicabilidad_contro
 
 EXECUTE #espera N'AP-11 el trigger mantiene eac_fecha_actualizacion', N'UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_fecha_actualizacion = ''2000-01-01T00:00:00+00:00'' WHERE eac_codigo = 1; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''obs'' WHERE eac_codigo = 1; IF (SELECT YEAR(eac_fecha_actualizacion) FROM sgspi.evaluacion_aplicabilidad_control WHERE eac_codigo = 1) = 2000 THROW 51000, N''fecha de actualización no mantenida'', 1;', 0;
 
+EXECUTE #espera N'AP-24 control optimista: un UPDATE con la versión vieja afecta 0 filas', N'
+DECLARE @v BINARY(8) = (SELECT eac_version FROM sgspi.evaluacion_aplicabilidad_control WHERE eac_codigo = 1);
+UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''cambio vigente'' WHERE eac_codigo = 1 AND eac_version = @v;
+UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''cambio obsoleto'' WHERE eac_codigo = 1 AND eac_version = @v;
+IF @@ROWCOUNT <> 0 THROW 51000, N''actualizó con versión vieja'', 1;', 0;
+
 
 GO
 -- ======================= 6. Vistas =======================
@@ -287,6 +320,15 @@ EXECUTE #espera N'Vista vw_desglose_ccd_trd_mr04', N'SELECT * INTO #v5 FROM sgsp
 EXECUTE #espera N'Vista vw_inventario_activo_documental_mr04 (formatos agregados)', N'IF (SELECT ado_formato_documental FROM sgspi.vw_inventario_activo_documental_mr04 WHERE ado_codigo = 1) NOT IN (N''PDF/Documento de texto'', N''Documento de texto/PDF'') THROW 51000, N''formato no agregado'', 1;', 0;
 
 EXECUTE #espera N'Vista vw_controles_atributos_iso27002', N'SELECT * INTO #v7 FROM sgspi.vw_controles_atributos_iso27002;', 0;
+
+EXECUTE #espera N'AP-22 las vistas de reporte filtran <acr>_esta_activo = 1 en su entidad principal', N'
+IF CHARINDEX(N''acf.acf_esta_activo = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_consolidado_dofa''))) = 0
+   OR CHARINDEX(N''ai.aci_esta_activo = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_resumen_activos_criticidad''))) = 0
+   OR CHARINDEX(N''eia.eia_esta_activo = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_matriz_tratamiento_riesgos''))) = 0
+   OR CHARINDEX(N''pt.plt_esta_activo = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_matriz_tratamiento_riesgos''))) = 0
+   OR CHARINDEX(N''ado.ado_esta_activo = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_inventario_activo_documental_mr04''))) = 0
+   OR CHARINDEX(N''aci.aci_esta_activo = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_inventario_activo_documental_mr04''))) = 0
+    THROW 51000, N''hay vistas de reporte sin filtro esta_activo = 1'', 1;', 0;
 
 
 GO
@@ -385,15 +427,13 @@ EXECUTE #espera N'AP-02 auditor registra observaciones en el SoA', N'EXECUTE AS 
 
 EXECUTE #espera N'AP-02 auditor no cambia el estado de implementación del SoA', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_estado_implementacion = N''CUMPLE'' WHERE 1 = 0;', 230;
 
-EXECUTE #espera N'AP-02 comité puede cambiar el estado en eia y rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''OBSERVADO'' WHERE 1 = 0; UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''OBSERVADO'' WHERE 1 = 0;', 0;
+EXECUTE #espera N'AP-02 comité puede cambiar el estado en eia', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''OBSERVADO'' WHERE 1 = 0;', 0;
 
 EXECUTE #espera N'AP-02 comité no edita contenido de eia', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET eia_fuente_generadora = N''x'' WHERE 1 = 0;', 230;
 
 EXECUTE #espera N'AP-02 comité no escribe firma directa en eia', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.evento_incertidumbre_activo SET per_codigo_aprobador_comite = 2 WHERE 1 = 0;', 230;
 
-EXECUTE #espera N'AP-02 comité no edita contenido de rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET rpi_necesidad_expectativa = N''x'' WHERE 1 = 0;', 230;
-
-EXECUTE #espera N'AP-02 comité no escribe firma directa en rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET per_codigo_aprobador = 2 WHERE 1 = 0;', 230;
+EXECUTE #espera N'AP-02 comité no escribe en rpi', N'EXECUTE AS USER = N''sgspi_prueba_comite''; UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''OBSERVADO'' WHERE 1 = 0;', 229;
 
 -- 1.1 Rol por transición (tef_rol_requerido)
 EXECUTE #espera N'AP-02 solo los estados de captura quedan sin rol requerido', N'IF EXISTS (SELECT 1 FROM sgspi.transicion_estado_flujo WHERE tef_rol_requerido IS NULL AND efc_identificador_origen NOT IN (N''BORRADOR'', N''OBSERVADO'', N''PENDIENTE'', N''OBSERVADA'')) THROW 51000, N''transición sin rol'', 1;', 0;

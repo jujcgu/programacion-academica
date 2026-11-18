@@ -162,6 +162,8 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 
 ### Fase 3 — Concurrencia (dimensión 13)
 
+**Estado:** fase completa: pasos 7–9 aplicados al DDL, a las pruebas y a la especificación (AP-24).
+
 7. **Control optimista [S]** — `<acr>_version ROWVERSION NOT NULL` en las 8 tablas con flujo. La app actualiza con `WHERE <acr>_codigo = @id AND <acr>_version = @v` y vuelve a leer después de guardar (el `UPDATE` del trigger cambia la versión). La columna no va en los EXCEPT. Prueba: un UPDATE con la versión vieja afecta 0 filas.
 8. **Consecutivos [S]** — documentar en la cabecera un único patrón, sin objetos nuevos:
    ```sql
@@ -175,7 +177,7 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 
 ### Fase 4 — Privilegios y datos sensibles (dimensiones 9 y 11)
 
-**Estado:** según D5, aplicados el paso 10 (vista de alcance solo con grupos `SGSPI_*`) y el paso 13, implementado en los triggers en vez de `SECURITY POLICY` (funciones `ufn_proceso_en_alcance` y `ufn_activo_en_alcance`, error 50021). Del paso 12 se aplicó la parte de las vulnerabilidades: la cuenta compartida va en `sgspi_rol_consulta`, que no las lee. Quedan pendientes los pasos 11 y 14.
+**Estado:** aplicados los pasos 10, 11, 12 (vulnerabilidades fuera de `sgspi_rol_consulta`) y 13 (en triggers: `ufn_proceso_en_alcance` y `ufn_activo_en_alcance`, error 50021). El paso 14 queda en operación del DBA.
 
 10. **Vista de alcance [S]** — en `vw_usuario_rol_alcance_sgspi`, agregar `AND g.gru_nombre LIKE N'SGSPI[_]%'`. Prueba: un usuario de un grupo ajeno al SGSPI no aparece.
 11. **GRANT del comité sobre `rpi` [S]** — borrar L3033-3034 y ajustar la prueba de L290, que hoy afirma que el comité puede hacerlo.
@@ -185,7 +187,7 @@ Esfuerzo: **S** menos de 1 h · **M** medio día · **L** 1–2 días.
 
 ### Fase 5 — Antipatrones, cardinalidad, convenciones y despliegue (dimensiones 3, 4, 12 y 14)
 
-**Estado:** aplicados el paso 18 (D3: propietario único y obligatorio para aprobar) y la parte de D2 del paso 21 (el auditor dictamina y cierra). El paso 24 no aplica (D6: no hay datos de ninguna versión). El resto queda pendiente.
+**Estado:** aplicados los pasos 15–21 y 23. El paso 22 (opcional) se omite y el paso 24 no aplica (D6: no hay datos de ninguna versión).
 
 15. **Baja lógica coherente [S]** — filtrar `<acr>_esta_activo = 1` en la entidad principal de las vistas de reporte (acf L3195, aci L3234, eia y plt L3304, ado y aci L3556) y escribir en AP-22: `esta_activo = 0` significa registro anulado por error; `INACTIVO`/`HISTORICO` son etapas del ciclo de vida.
 16. **Guarda de los EXCEPT [S]** — una prueba que recorra `sys.columns` de las tablas con flujo (sin calculadas, estado, firmas, versión ni periodo) y falle si alguna columna no aparece en `OBJECT_DEFINITION` de su trigger.
