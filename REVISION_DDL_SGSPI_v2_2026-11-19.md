@@ -17,6 +17,8 @@ Escala: **5** sin hallazgos · **4** detalles menores · **3** brechas relevante
 | `PRUEBAS_DDL_SGSPI_v2.sql` sobre el parche | **185 de 188 pasan.** Las 3 fallas (L180, L315, L728) esperan 50010/50016 al borrar y reciben 547 de la FK `aud_* → origen` (dimensión 2). |
 | Tras aplicar la fase 0 en el repo | Despliega con `-b`, **188 de 188** pruebas pasan y un lote roto sin `-b` revierte todo. |
 | Tras aplicar la fase 1 | **189 de 189** (se suma T1) y la auditoría del servidor del repo registra lo probado en T3. |
+| Tras aplicar la fase 2 (A2) | **190 de 190**; el identificador del evento sale calculado (1 → `RA-01`, 100 → `RA-100`). |
+| Tras aplicar las mejoras menores | **199 de 199**; la verificación posterior ya no da el falso positivo de (g). |
 
 Origen del defecto:
 - `d0df220` ("Datos sensibles") truncó `TR_aid_inmutabilidad`.
@@ -241,6 +243,21 @@ El riesgo residual del `TRUNCATE` quedó escrito en RN-INT-17.
 
 ### Fase 2 — Antipatrones (dimensión 3)
 
+**Estado:** A1 y A2 aplicados el 2026-11-19; el ciclo F0.4 da **190 de 190**.
+- **A1** quedó cerrado con F0.4 y T1.
+- **A2**:
+  - `eia_numero_evento SMALLINT` con `CK_eia_numero_evento` (1..999), `CK_eia_naturaleza_evento` y `UQ_eia_vigencia_naturaleza_numero`;
+  - `eia_identificador_evento` pasa a calculada `PERSISTED`;
+  - `aud_evento_incertidumbre_activo` guarda `aea_numero_evento`;
+  - en `TR_eia` se cambiaron las listas del `EXCEPT` y de la auditoría;
+  - se retiraron `CK_eia_naturaleza_prefijo` y el `SUBSTRING` de AP-24;
+  - se actualizaron la cabecera (AP-09, AP-24), la especificación (RN-RSG-01, 5.1, diccionario y 12.2) y las 8 inserciones de PRUEBAS.
+- Las pruebas `RA-ABC` y `RA-001` ya no se pueden expresar. Las reemplazan tres:
+  - número 0 → 547;
+  - 100 → `RA-100`;
+  - número repetido en la vigencia → 2627.
+- **A3 no se aplicó**: es opcional y D12 recomienda no hacerlo por ahora.
+
 8. **A1 Ciclo obligatorio [S, queda hecho con F0.4 y T1].** La causa del defecto no es la copia sino editarla sin ejecutar. Con F0.4 y T1, un reemplazo masivo que rompa una de las 112 copias falla en unos 10 s. Con esto la dimensión vuelve a 4 sin reescribir nada.
 9. **A2 Consecutivo de eventos como número [M, D11].** Sería el mismo patrón de `acf`:
    - `eia_numero_evento SMALLINT NOT NULL CHECK (BETWEEN 1 AND 999)`;
@@ -258,11 +275,17 @@ El riesgo residual del `TRUNCATE` quedó escrito en RN-INT-17.
 | # | Pregunta | Recomendación |
 |---|---|---|
 | D10 | ¿Qué hace la auditoría del servidor si no puede escribir, y qué se hace con los archivos que rota? | `ON_FAILURE = FAIL_OPERATION`, coherente con 50017 ("no hay cambio sin rastro"): solo fallan las acciones auditadas. Los archivos rotados se copian a un almacenamiento fuera del alcance del DBA antes de que `MAX_ROLLOVER_FILES` los borre. **Aplicada la recomendada con la fase 1**; volver a `CONTINUE` es una línea del script. |
-| D11 | ¿Convertir `RA-nn`/`OA-nn` en número + identificador calculado (A2)? | Sí, si se toca `TR_eia` por otra razón. Si no, dejarlo: funciona y está probado. |
+| D11 | ¿Convertir `RA-nn`/`OA-nn` en número + identificador calculado (A2)? | Sí, si se toca `TR_eia` por otra razón. Si no, dejarlo: funciona y está probado. **Aplicada (sí) con la fase 2.** |
 | D12 | ¿Generar la auditoría desde metadatos (A3)? | No por ahora: A1 cubre el riesgo con esfuerzo S. Sí, si el esquema seguirá creciendo. |
 | D13 | ¿Un activo puede tener datos personales de varias categorías? | Si sí, una tabla puente activo–categoría. Si no, documentar que se registra la más restrictiva. |
 
 ## 5. Mejoras menores (dimensiones con 4), cada una S
+
+**Estado:** aplicadas el 2026-11-19 en el DDL, las pruebas y la especificación. El ciclo F0.4 da **199 de 199**: nueve pruebas nuevas, y cada rechazo sale de la restricción esperada. Diferencias con lo escrito abajo:
+- **DOFA:** la columna calculada de `acf` se llama `fec_ambito_entorno`, porque una columna de FK conserva el acrónimo de la tabla referenciada, como `efc_dominio`.
+- **Sedes:** quedó declarativa en lugar de dos `THROW 50020`. `ais` tiene la columna calculada `aci_es_transversal_sedes` (0 si la sede está activa, NULL si no) y la FK compuesta `FK_ais_activo_no_transversal` hacia `UQ_aci_codigo_transversal`. Responde 547 en los dos sentidos y no valida las sedes desactivadas.
+- **Frecuencia del SoA:** ahora sale del catálogo de periodicidad, que administra el gestor documental. Textos como "Anual y cuando se presenten cambios" se registran como `Anual`, con el matiz en la justificación. Si el oficial necesita otra frecuencia, la agrega el gestor.
+- **Sensibilidad:** se clasificaron las seis columnas del mapa de vulnerabilidades. Las columnas de `aci` sobre datos personales no se clasificaron: describen el tratamiento y no son datos personales. TDE sigue a cargo del DBA.
 
 - **DOFA (dimensión 2), probada en el motor.** En `fec`, `CONSTRAINT UQ_fec_codigo_ambito UNIQUE (fec_codigo, fec_ambito_entorno)`. En `acf`, una columna calculada y una FK compuesta que reemplaza a `FK_acf_factor_entorno`:
   ```sql
@@ -288,7 +311,20 @@ El riesgo residual del `TRUNCATE` quedó escrito en RN-INT-17.
 |---|:-:|:-:|:-:|:-:|
 | 14 Compatibilidad de despliegue | 2 | 4 (quedan la comprobación (g) y la base escrita a mano en `auditoria_servidor.sql`) | 4 (la base ya es variable; queda (g)) | 5 |
 | 10 Trazabilidad | 3 | 3 (inmutabilidad y auditoría de `adm` ya restauradas; faltan T1–T3) | 4 (5 con T3 en producción) | 5 |
-| 3 Antipatrones | 3 | 3 (el ciclo F0.4 ya existe; falta T1 para cerrar A1) | 4 (A1 cerrado) | 4 (5 con A3) |
+| 3 Antipatrones | 3 | 3 (el ciclo F0.4 ya existe; falta T1 para cerrar A1) | 4 (A1 cerrado; con la fase 2 se va también la clave "inteligente" de `eia`) | 4 (5 con A3) |
+
+Estado tras las mejoras menores, para las dimensiones que estaban en 4 (la 14 sube porque la comprobación (g) ya no da el falso positivo):
+
+| Dimensión | Antes | Ahora | Lo que falta |
+|---|:-:|:-:|---|
+| 1 Normalización | 4 | 4 | `rpc_numero_pregunta` sin entidad de cuestionario |
+| 2 Claves y restricciones | 4 | 4 | cinco reglas siguen en la app (RN-DOC-04, RN-DOC-05, RN-ACT-04, RN-PI-01, RN-RSG-02) porque necesitan datos que el modelo no tiene |
+| 4 Cardinalidad | 4 | 4 | D13 (categorías de datos personales) y la vigencia de `ado` |
+| 5 Tipos de datos | 4 | 4 | `pev_anio` sin rango |
+| 7 Indexación | 4 | 5 | — |
+| 11 Datos sensibles | 4 | 4 | TDE confirmado por el DBA (→ 5) |
+| 12 Convenciones | 4 | 4 | acrónimos de auditoría que se confunden (`adi`/`aid`) y `_esta_activo`/`_esta_activa` |
+| 14 Compatibilidad de despliegue | 4 | 5 | — |
 
 Fuera del DDL siguen los puntos de la ronda 2: `TrustServerCertificate=true` y la clave SQL real en `$_SESSION`. Además, `clases/Inicio_sesion.php` (L50) arma `where us = '{$txtUsuario}'` por concatenación con la cuenta de login, lo que permite inyección SQL.
 
