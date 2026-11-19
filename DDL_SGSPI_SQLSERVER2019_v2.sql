@@ -205,11 +205,13 @@ INSERT  INTO @dependencias (
 )
 VALUES                     (N'dbo.uaa', N'uaa_codigo'),
                            (N'dbo.uaa', N'uaa_nombre'),
+                           (N'dbo.uaa', N'uaa_estado'),
                            (N'dbo.cargo', N'car_codigo'),
                            (N'dbo.cargo', N'car_nombre'),
                            (N'dbo.persona', N'per_codigo'),
                            (N'dbo.persona', N'per_nombre'),
                            (N'dbo.persona', N'per_apellido'),
+                           (N'dbo.persona', N'per_estado'),
                            (N'dbo.espacio', N'esp_codigo'),
                            (N'dbo.sub_sede', N'sus_codigo'),
                            (N'dbo.grupo', N'gru_codigo'),
@@ -306,11 +308,14 @@ CREATE TABLE sgspi.periodo_vigencia (
     pev_fecha_creacion  DATETIMEOFFSET (0) CONSTRAINT DF_pev_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17] Zona horaria explícita
     pev_esta_activo     BIT                CONSTRAINT DF_pev_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_pev_periodo_vigencia PRIMARY KEY CLUSTERED (pev_codigo),
-    CONSTRAINT UQ_pev_anio UNIQUE (pev_anio),
+    CONSTRAINT CK_pev_anio CHECK (pev_anio BETWEEN 2000 AND 2100),
     CONSTRAINT CK_pev_estado_vigencia CHECK (pev_estado_vigencia IN (N'EN_CONFIGURACION', N'ABIERTA', N'CERRADA', N'HISTORICA')),
     CONSTRAINT CK_pev_fechas CHECK (pev_fecha_cierre IS NULL
                                     OR pev_fecha_cierre >= pev_fecha_apertura)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_pev_anio
+    ON sgspi.periodo_vigencia(pev_anio) WHERE pev_esta_activo = 1; -- [AP-22]
 
 -- 1.1b [efc] y [tef] Máquina de Estados Dirigida por Datos (Estados y Transiciones Válidas por Dominio de Flujo)
 -- [AP-05] Reemplaza los CHECK de lista de estados y las transiciones codificadas en los triggers de acf, rpi, aci, eia y act
@@ -327,9 +332,9 @@ CREATE TABLE sgspi.estado_flujo_catalogo (
     CONSTRAINT CK_efc_dominio CHECK (efc_dominio IN (N'ACF', N'RPI', N'ACI', N'EIA', N'ACT'))
 );
 
--- Un único estado inicial por dominio de flujo
+-- Un único estado inicial activo por dominio de flujo
 CREATE UNIQUE NONCLUSTERED INDEX UX_efc_estado_inicial
-    ON sgspi.estado_flujo_catalogo(efc_dominio) WHERE efc_es_inicial = 1;
+    ON sgspi.estado_flujo_catalogo(efc_dominio) WHERE efc_es_inicial = 1 AND efc_esta_activo = 1;
 
 CREATE TABLE sgspi.transicion_estado_flujo (
     tef_codigo                SMALLINT      IDENTITY (1, 1) NOT NULL,
@@ -339,11 +344,13 @@ CREATE TABLE sgspi.transicion_estado_flujo (
     tef_rol_requerido         SYSNAME       NULL, -- NULL = cualquier rol con UPDATE
     tef_esta_activa           BIT           CONSTRAINT DF_tef_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_tef_transicion_estado_flujo PRIMARY KEY CLUSTERED (tef_codigo),
-    CONSTRAINT UQ_tef_dominio_origen_destino_rol UNIQUE (efc_dominio, efc_identificador_origen, efc_identificador_destino, tef_rol_requerido), -- una fila por rol permitido
     CONSTRAINT FK_tef_estado_origen FOREIGN KEY (efc_dominio, efc_identificador_origen) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador),
     CONSTRAINT FK_tef_estado_destino FOREIGN KEY (efc_dominio, efc_identificador_destino) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador),
     CONSTRAINT CK_tef_origen_distinto_destino CHECK (efc_identificador_origen <> efc_identificador_destino)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_tef_dominio_origen_destino_rol
+    ON sgspi.transicion_estado_flujo(efc_dominio, efc_identificador_origen, efc_identificador_destino, tef_rol_requerido) WHERE tef_esta_activa = 1; -- [AP-22] una fila activa por rol permitido
 
 CREATE NONCLUSTERED INDEX IX_tef_estado_destino
     ON sgspi.transicion_estado_flujo(efc_dominio, efc_identificador_destino);
@@ -415,10 +422,14 @@ CREATE TABLE sgspi.tipo_proceso_catalogo (
     tpr_descripcion   NVARCHAR (255) NULL,
     tpr_esta_activo   BIT            CONSTRAINT DF_tpr_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_tpr_tipo_proceso_catalogo PRIMARY KEY CLUSTERED (tpr_codigo),
-    CONSTRAINT UQ_tpr_identificador UNIQUE (tpr_identificador),
-    CONSTRAINT UQ_tpr_nombre UNIQUE (tpr_nombre),
     CONSTRAINT CK_tpr_nombre_no_vacio CHECK (LEN(TRIM(tpr_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_tpr_identificador
+    ON sgspi.tipo_proceso_catalogo(tpr_identificador) WHERE tpr_esta_activo = 1; -- [AP-22]
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_tpr_nombre
+    ON sgspi.tipo_proceso_catalogo(tpr_nombre) WHERE tpr_esta_activo = 1; -- [AP-22]
 
 -- 1.4 [pri] Procesos Institucionales (Los 21 procesos del SGC / SGSPI USCO)
 CREATE TABLE sgspi.proceso_institucional (
@@ -430,13 +441,17 @@ CREATE TABLE sgspi.proceso_institucional (
     car_codigo_lider  INT            NULL, -- FK a [dbo].[cargo]([car_codigo])
     pri_esta_activo   BIT            CONSTRAINT DF_pri_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_pri_proceso_institucional PRIMARY KEY CLUSTERED (pri_codigo),
-    CONSTRAINT UQ_pri_identificador UNIQUE (pri_identificador), -- [AP-14] Clave natural con UNIQUE
-    CONSTRAINT UQ_pri_nombre UNIQUE (pri_nombre),
     CONSTRAINT FK_pri_tipo_proceso FOREIGN KEY (tpr_codigo) REFERENCES sgspi.tipo_proceso_catalogo (tpr_codigo),
     CONSTRAINT FK_pri_dbo_uaa_lider FOREIGN KEY (uaa_codigo_lider) REFERENCES dbo.uaa (uaa_codigo),
     CONSTRAINT FK_pri_dbo_cargo_lider FOREIGN KEY (car_codigo_lider) REFERENCES dbo.cargo (car_codigo),
     CONSTRAINT CK_pri_identificador_no_vacio CHECK (LEN(TRIM(pri_identificador)) > 0) -- [AP-14]
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_pri_identificador
+    ON sgspi.proceso_institucional(pri_identificador) WHERE pri_esta_activo = 1; -- [AP-14] [AP-22]
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_pri_nombre
+    ON sgspi.proceso_institucional(pri_nombre) WHERE pri_esta_activo = 1; -- [AP-22]
 
 CREATE NONCLUSTERED INDEX IX_pri_tpr_codigo
     ON sgspi.proceso_institucional(tpr_codigo);
@@ -479,10 +494,12 @@ CREATE TABLE sgspi.factor_entorno_catalogo (
     fec_descripcion    NVARCHAR (255) NULL,
     fec_esta_activo    BIT            CONSTRAINT DF_fec_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_fec_factor_entorno_catalogo PRIMARY KEY CLUSTERED (fec_codigo),
-    CONSTRAINT UQ_fec_nombre_ambito UNIQUE (fec_nombre_factor, fec_ambito_entorno),
     CONSTRAINT UQ_fec_codigo_ambito UNIQUE (fec_codigo, fec_ambito_entorno), -- [AP-06] destino de la FK compuesta FK_acf_factor_entorno_ambito
     CONSTRAINT CK_fec_ambito_entorno CHECK (fec_ambito_entorno IN (N'INTERNO', N'EXTERNO'))
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_fec_nombre_ambito
+    ON sgspi.factor_entorno_catalogo(fec_nombre_factor, fec_ambito_entorno) WHERE fec_esta_activo = 1; -- [AP-22]
 
 -- 2.2 [acf] Análisis de Factores de Contexto por Proceso (DOFA por Proceso y Consolidado)
 CREATE TABLE sgspi.analisis_contexto_factor (
@@ -528,10 +545,13 @@ CREATE TABLE sgspi.analisis_contexto_factor (
                                            OR per_codigo_aprobador <> per_codigo_creador)
 );
 
--- [AP-18] Reemplaza la UNIQUE constraint y el índice IX_acf_pev_codigo (prefijo duplicado) por un único índice único con INCLUDE
+-- [AP-18] [AP-22] Índice único filtrado por activo (permite recrear tras borrado lógico) + índice no filtrado para FK_acf_periodo_vigencia
 CREATE UNIQUE NONCLUSTERED INDEX UX_acf_vigencia_naturaleza_numero
     ON sgspi.analisis_contexto_factor(pev_codigo, acf_naturaleza_factor, acf_numero_factor)
-    INCLUDE(acf_identificador_factor, pri_codigo, fec_codigo);
+    INCLUDE(acf_identificador_factor, pri_codigo, fec_codigo) WHERE acf_esta_activo = 1;
+
+CREATE NONCLUSTERED INDEX IX_acf_pev_codigo
+    ON sgspi.analisis_contexto_factor(pev_codigo);
 
 CREATE NONCLUSTERED INDEX IX_acf_pri_codigo
     ON sgspi.analisis_contexto_factor(pri_codigo);
@@ -563,9 +583,11 @@ CREATE TABLE sgspi.parte_interesada (
     pai_descripcion_rol NVARCHAR (255) NULL,
     pai_esta_activa     BIT            CONSTRAINT DF_pai_esta_activa DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_pai_parte_interesada PRIMARY KEY CLUSTERED (pai_codigo),
-    CONSTRAINT UQ_pai_nombre UNIQUE (pai_nombre),
     CONSTRAINT CK_pai_origen CHECK (pai_origen IN (N'INTERNA', N'EXTERNA'))
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_pai_nombre
+    ON sgspi.parte_interesada(pai_nombre) WHERE pai_esta_activa = 1; -- [AP-22]
 
 -- 3.2 [rpi] Necesidades, Expectativas y Requisitos por Parte Interesada
 CREATE TABLE sgspi.requisito_parte_interesada (
@@ -665,7 +687,6 @@ CREATE TABLE sgspi.tipo_activo_catalogo (
     CONSTRAINT PK_tac_tipo_activo_catalogo PRIMARY KEY CLUSTERED (tac_codigo),
     CONSTRAINT UQ_tac_codigo_nivel UNIQUE (tac_codigo, tac_nivel_taxonomia), -- [AP-06] Destino de FK compuestas (FK_tac_padre y eia)
     CONSTRAINT FK_tac_padre FOREIGN KEY (tac_codigo_padre, tac_nivel_taxonomia_padre) REFERENCES sgspi.tipo_activo_catalogo (tac_codigo, tac_nivel_taxonomia), -- [AP-06] El padre está exactamente un nivel arriba
-    CONSTRAINT UQ_tac_padre_nombre UNIQUE (tac_codigo_padre, tac_nombre),
     CONSTRAINT CK_tac_nivel_coherente CHECK ((tac_nivel_taxonomia = 1
                                               AND tac_codigo_padre IS NULL)
                                              OR (tac_nivel_taxonomia IN (2, 3)
@@ -673,6 +694,9 @@ CREATE TABLE sgspi.tipo_activo_catalogo (
                                                  AND tac_codigo_padre <> tac_codigo)),
     CONSTRAINT CK_tac_nombre_no_vacio CHECK (LEN(TRIM(tac_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_tac_padre_nombre
+    ON sgspi.tipo_activo_catalogo(tac_codigo_padre, tac_nombre) WHERE tac_esta_activo = 1; -- [AP-22]
 
 -- 4.2 [cet] Catálogo de Causales de Excepción de Transparencia (Desacoplado de Ley 1712 de 2014)
 CREATE TABLE sgspi.causal_excepcion_transparencia (
@@ -683,10 +707,12 @@ CREATE TABLE sgspi.causal_excepcion_transparencia (
     cet_norma_referencia        NVARCHAR (100) CONSTRAINT DF_cet_norma_referencia DEFAULT N'Ley 1712 de 2014' NOT NULL, -- [AP-17]
     cet_esta_activa             BIT            CONSTRAINT DF_cet_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_cet_causal_excepcion_transparencia PRIMARY KEY CLUSTERED (cet_codigo),
-    CONSTRAINT UQ_cet_nivel_numeral UNIQUE (cet_nivel_reserva_aplicable, cet_numeral_causal), -- [AP-14] Clave natural de la causal
     CONSTRAINT UQ_cet_codigo_nivel UNIQUE (cet_codigo, cet_nivel_reserva_aplicable), -- [AP-06] Destino de la FK compuesta FK_aci_causal_excepcion
     CONSTRAINT CK_cet_nivel_reserva CHECK (cet_nivel_reserva_aplicable IN (N'CLASIFICADA', N'RESERVADA'))
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_cet_nivel_numeral
+    ON sgspi.causal_excepcion_transparencia(cet_nivel_reserva_aplicable, cet_numeral_causal) WHERE cet_esta_activa = 1; -- [AP-14] [AP-22]
 
 -- 4.3 [aci] Supertipo: Inventario Maestro de Activos de Información (General ES-GSPI-MR-05 y Base de Activos Documentales ES-GSPI-MR-04)
 CREATE TABLE sgspi.activo_informacion (
@@ -744,7 +770,6 @@ CREATE TABLE sgspi.activo_informacion (
     aci_esta_activo                     BIT                CONSTRAINT DF_aci_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     aci_version                         ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_aci_activo_informacion PRIMARY KEY CLUSTERED (aci_codigo),
-    CONSTRAINT UQ_aci_codigo_inventario UNIQUE (aci_codigo_inventario),
     CONSTRAINT UQ_aci_codigo_transversal UNIQUE (aci_codigo, aci_es_transversal_sedes), -- [AP-06] destino de FK_ais_activo_no_transversal
     CONSTRAINT FK_aci_tipo_activo FOREIGN KEY (tac_codigo) REFERENCES sgspi.tipo_activo_catalogo (tac_codigo),
     CONSTRAINT FK_aci_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo),
@@ -813,6 +838,9 @@ CREATE TABLE sgspi.activo_informacion (
     CONSTRAINT CK_aci_sod_aprobador CHECK (per_codigo_aprobador IS NULL
                                            OR per_codigo_aprobador <> per_codigo_creador)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_aci_codigo_inventario
+    ON sgspi.activo_informacion(aci_codigo_inventario) WHERE aci_esta_activo = 1; -- [AP-22]
 
 CREATE NONCLUSTERED INDEX IX_aci_tac_codigo
     ON sgspi.activo_informacion(tac_codigo)
@@ -897,14 +925,16 @@ CREATE TABLE sgspi.sistema_informacion_ficha (
     sif_descripcion_general  NVARCHAR (1000) NOT NULL,
     sif_esta_activo          BIT             CONSTRAINT DF_sif_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_sif_sistema_informacion_ficha PRIMARY KEY CLUSTERED (sif_codigo),
-    CONSTRAINT UQ_sif_nombre_sistema UNIQUE (sif_nombre_sistema),
     CONSTRAINT FK_sif_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo),
     CONSTRAINT CK_sif_modalidad_desarrollo CHECK (sif_modalidad_desarrollo IN (N'PROPIO', N'PROPIO_EN_DESARROLLO', N'CODIGO_ABIERTO_ADAPTADO', N'COMERCIAL_TERCERO')) -- [AP-08]
 );
 
--- Índice único filtrado (SQL Server 2019) para relación 1:0..1 sobre columna NULL sin bloquear múltiples NULL
+CREATE UNIQUE NONCLUSTERED INDEX UX_sif_nombre_sistema
+    ON sgspi.sistema_informacion_ficha(sif_nombre_sistema) WHERE sif_esta_activo = 1; -- [AP-22]
+
+-- Índice único filtrado (SQL Server 2019) para relación 1:0..1 activa sobre columna NULL sin bloquear múltiples NULL
 CREATE UNIQUE NONCLUSTERED INDEX UX_sif_aci_codigo
-    ON sgspi.sistema_informacion_ficha(aci_codigo) WHERE aci_codigo IS NOT NULL;
+    ON sgspi.sistema_informacion_ficha(aci_codigo) WHERE aci_codigo IS NOT NULL AND sif_esta_activo = 1; -- [AP-22]
 
 CREATE TABLE sgspi.modulo_sistema_informacion (
     msi_codigo            INT            IDENTITY (1, 1) NOT NULL,
@@ -913,13 +943,17 @@ CREATE TABLE sgspi.modulo_sistema_informacion (
     msi_usuarios_objetivo NVARCHAR (150) NULL,
     msi_esta_activo       BIT            CONSTRAINT DF_msi_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_msi_modulo_sistema_informacion PRIMARY KEY CLUSTERED (msi_codigo),
-    CONSTRAINT UQ_msi_sistema_nombre UNIQUE (sif_codigo, msi_nombre_modulo), -- [AP-14] Clave natural; además cubre las búsquedas por sif_codigo
     CONSTRAINT FK_msi_sistema_informacion FOREIGN KEY (sif_codigo) REFERENCES sgspi.sistema_informacion_ficha (sif_codigo)
 );
 
+CREATE UNIQUE NONCLUSTERED INDEX UX_msi_sistema_nombre
+    ON sgspi.modulo_sistema_informacion(sif_codigo, msi_nombre_modulo) WHERE msi_esta_activo = 1; -- [AP-14] [AP-22]
+
+CREATE NONCLUSTERED INDEX IX_msi_sif_codigo
+    ON sgspi.modulo_sistema_informacion(sif_codigo); -- soporte no filtrado de FK_msi_sistema_informacion
+
 
 GO
--- [AP-18] Se elimina IX_msi_sif_codigo: redundante con UQ_msi_sistema_nombre (misma columna líder)
 IF @@TRANCOUNT = 0
     SET NOEXEC ON; -- [AP-19]
 
@@ -938,10 +972,14 @@ CREATE TABLE sgspi.serie_documental_catalogo (
     sdo_nombre_serie NVARCHAR (150) NOT NULL,
     sdo_esta_activa  BIT            CONSTRAINT DF_sdo_esta_activa DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_sdo_serie_documental_catalogo PRIMARY KEY CLUSTERED (sdo_codigo),
-    CONSTRAINT UQ_sdo_numero_ccd UNIQUE (sdo_numero_ccd),
-    CONSTRAINT UQ_sdo_nombre_serie UNIQUE (sdo_nombre_serie),
     CONSTRAINT CK_sdo_numero_ccd_positivo CHECK (sdo_numero_ccd >= 1)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_sdo_numero_ccd
+    ON sgspi.serie_documental_catalogo(sdo_numero_ccd) WHERE sdo_esta_activa = 1; -- [AP-22]
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_sdo_nombre_serie
+    ON sgspi.serie_documental_catalogo(sdo_nombre_serie) WHERE sdo_esta_activa = 1; -- [AP-22]
 
 -- 4B.2 [sbd] Catálogo Maestro de Subseries Documentales del CCD/TRD (COD6 dentro de cada Serie)
 CREATE TABLE sgspi.subserie_documental_catalogo (
@@ -952,11 +990,15 @@ CREATE TABLE sgspi.subserie_documental_catalogo (
     sbd_esta_activa     BIT            CONSTRAINT DF_sbd_esta_activa DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_sbd_subserie_documental_catalogo PRIMARY KEY CLUSTERED (sbd_codigo),
     CONSTRAINT UQ_sbd_serie_subserie UNIQUE (sdo_codigo, sbd_codigo),
-    CONSTRAINT UQ_sbd_serie_numero UNIQUE (sdo_codigo, sbd_numero_ccd),
-    CONSTRAINT UQ_sbd_serie_nombre UNIQUE (sdo_codigo, sbd_nombre_subserie),
     CONSTRAINT FK_sbd_serie_documental FOREIGN KEY (sdo_codigo) REFERENCES sgspi.serie_documental_catalogo (sdo_codigo),
     CONSTRAINT CK_sbd_numero_ccd_positivo CHECK (sbd_numero_ccd >= 1)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_sbd_serie_numero
+    ON sgspi.subserie_documental_catalogo(sdo_codigo, sbd_numero_ccd) WHERE sbd_esta_activa = 1; -- [AP-22]
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_sbd_serie_nombre
+    ON sgspi.subserie_documental_catalogo(sdo_codigo, sbd_nombre_subserie) WHERE sbd_esta_activa = 1; -- [AP-22]
 
 -- 4B.3 [upc] Estructura Jerárquica de Unidades Productoras del Cuadro de Clasificación Documental (Árbol N-Niveles con HIERARCHYID)
 CREATE TABLE sgspi.unidad_productora_cuadro_clasificacion_documental (
@@ -971,7 +1013,6 @@ CREATE TABLE sgspi.unidad_productora_cuadro_clasificacion_documental (
     upc_esta_activa          BIT            CONSTRAINT DF_upc_esta_activa DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_upc_unidad_productora_cuadro_clasificacion_documental PRIMARY KEY CLUSTERED (upc_codigo),
     CONSTRAINT UQ_upc_nodo_jerarquico UNIQUE (upc_nodo_jerarquico),
-    CONSTRAINT UQ_upc_prefijo_archivistico UNIQUE (upc_prefijo_archivistico),
     CONSTRAINT FK_upc_nodo_padre FOREIGN KEY (upc_nodo_padre) REFERENCES sgspi.unidad_productora_cuadro_clasificacion_documental (upc_nodo_jerarquico),
     CONSTRAINT FK_upc_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo),
     CONSTRAINT CK_upc_codigo_archivistico_no_vacio CHECK (upc_codigo_archivistico IS NULL
@@ -979,6 +1020,9 @@ CREATE TABLE sgspi.unidad_productora_cuadro_clasificacion_documental (
     CONSTRAINT CK_upc_nivel_jerarquico_valido CHECK (upc_nodo_jerarquico.GetLevel() >= 1
                                                      AND upc_nodo_jerarquico.ToString() NOT LIKE N'%-%') -- Permite '.' para inserción de nodos intermedios en HIERARCHYID
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_upc_prefijo_archivistico
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental(upc_prefijo_archivistico) WHERE upc_esta_activa = 1; -- [AP-22]
 
 CREATE NONCLUSTERED INDEX IX_upc_busqueda_anchura
     ON sgspi.unidad_productora_cuadro_clasificacion_documental(upc_nivel_jerarquico, upc_nodo_jerarquico)
@@ -998,9 +1042,11 @@ CREATE TABLE sgspi.periodicidad_catalogo (
     pdc_orden       TINYINT       CONSTRAINT DF_pdc_orden DEFAULT 1 NOT NULL, -- [AP-17]
     pdc_esta_activa BIT           CONSTRAINT DF_pdc_esta_activa DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_pdc_periodicidad_catalogo PRIMARY KEY CLUSTERED (pdc_codigo),
-    CONSTRAINT UQ_pdc_nombre UNIQUE (pdc_nombre),
     CONSTRAINT CK_pdc_nombre_no_vacio CHECK (LEN(TRIM(pdc_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_pdc_nombre
+    ON sgspi.periodicidad_catalogo(pdc_nombre) WHERE pdc_esta_activa = 1; -- [AP-22]
 
 CREATE TABLE sgspi.estado_publicacion_catalogo (
     epc_codigo      SMALLINT       IDENTITY (1, 1) NOT NULL,
@@ -1008,27 +1054,33 @@ CREATE TABLE sgspi.estado_publicacion_catalogo (
     epc_descripcion NVARCHAR (255) NULL,
     epc_esta_activo BIT            CONSTRAINT DF_epc_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_epc_estado_publicacion_catalogo PRIMARY KEY CLUSTERED (epc_codigo),
-    CONSTRAINT UQ_epc_nombre UNIQUE (epc_nombre),
     CONSTRAINT CK_epc_nombre_no_vacio CHECK (LEN(TRIM(epc_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_epc_nombre
+    ON sgspi.estado_publicacion_catalogo(epc_nombre) WHERE epc_esta_activo = 1; -- [AP-22]
 
 CREATE TABLE sgspi.soporte_registro_catalogo (
     src_codigo      SMALLINT      IDENTITY (1, 1) NOT NULL,
     src_nombre      NVARCHAR (30) NOT NULL, -- Ej: 'Físico', 'Digital', 'Óptico'
     src_esta_activo BIT           CONSTRAINT DF_src_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_src_soporte_registro_catalogo PRIMARY KEY CLUSTERED (src_codigo),
-    CONSTRAINT UQ_src_nombre UNIQUE (src_nombre),
     CONSTRAINT CK_src_nombre_no_vacio CHECK (LEN(TRIM(src_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_src_nombre
+    ON sgspi.soporte_registro_catalogo(src_nombre) WHERE src_esta_activo = 1; -- [AP-22]
 
 CREATE TABLE sgspi.medio_conservacion_catalogo (
     mcc_codigo      SMALLINT      IDENTITY (1, 1) NOT NULL,
     mcc_nombre      NVARCHAR (30) NOT NULL, -- Ej: 'Físico', 'Electrónico', 'Microfilm', 'Nube'
     mcc_esta_activo BIT           CONSTRAINT DF_mcc_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_mcc_medio_conservacion_catalogo PRIMARY KEY CLUSTERED (mcc_codigo),
-    CONSTRAINT UQ_mcc_nombre UNIQUE (mcc_nombre),
     CONSTRAINT CK_mcc_nombre_no_vacio CHECK (LEN(TRIM(mcc_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_mcc_nombre
+    ON sgspi.medio_conservacion_catalogo(mcc_nombre) WHERE mcc_esta_activo = 1; -- [AP-22]
 
 CREATE TABLE sgspi.idioma_catalogo (
     idi_codigo      SMALLINT      IDENTITY (1, 1) NOT NULL,
@@ -1036,10 +1088,14 @@ CREATE TABLE sgspi.idioma_catalogo (
     idi_nombre      NVARCHAR (50) NOT NULL, -- Ej: 'Español', 'Inglés', 'Francés', 'Portugués'
     idi_esta_activo BIT           CONSTRAINT DF_idi_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_idi_idioma_catalogo PRIMARY KEY CLUSTERED (idi_codigo),
-    CONSTRAINT UQ_idi_codigo_iso UNIQUE (idi_codigo_iso),
-    CONSTRAINT UQ_idi_nombre UNIQUE (idi_nombre),
     CONSTRAINT CK_idi_nombre_no_vacio CHECK (LEN(TRIM(idi_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_idi_codigo_iso
+    ON sgspi.idioma_catalogo(idi_codigo_iso) WHERE idi_esta_activo = 1; -- [AP-22]
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_idi_nombre
+    ON sgspi.idioma_catalogo(idi_nombre) WHERE idi_esta_activo = 1; -- [AP-22]
 
 -- [AP-08] Catálogo de formatos de archivo (reemplaza el texto libre formato en texto libre)
 CREATE TABLE sgspi.formato_archivo_catalogo (
@@ -1047,9 +1103,11 @@ CREATE TABLE sgspi.formato_archivo_catalogo (
     fac_nombre      NVARCHAR (60) NOT NULL, -- Ej: 'Documento de texto', 'Hoja de cálculo', 'PDF', 'Imagen', 'Audio', 'Video'
     fac_esta_activo BIT           CONSTRAINT DF_fac_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_fac_formato_archivo_catalogo PRIMARY KEY CLUSTERED (fac_codigo),
-    CONSTRAINT UQ_fac_nombre UNIQUE (fac_nombre),
     CONSTRAINT CK_fac_nombre_no_vacio CHECK (LEN(TRIM(fac_nombre)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_fac_nombre
+    ON sgspi.formato_archivo_catalogo(fac_nombre) WHERE fac_esta_activo = 1; -- [AP-22]
 
 -- 4B.5 [ado] Subtipo 1:1 de Activo Documental (Especialización Archivística de [sgspi].[activo_informacion] para ES-GSPI-MR-04)
 -- [AP-10] PK compartida: ado_codigo ES el aci_codigo del supertipo (sin IDENTITY propio ni columna FK separada).
@@ -1178,12 +1236,14 @@ CREATE TABLE sgspi.escala_probabilidad (
     epr_frecuencia_referencia NVARCHAR (100) NOT NULL,
     epr_esta_activa           BIT            CONSTRAINT DF_epr_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_epr_escala_probabilidad PRIMARY KEY CLUSTERED (epr_codigo),
-    CONSTRAINT UQ_epr_codigo_letra UNIQUE (epr_codigo_letra),
     CONSTRAINT CK_epr_rango CHECK (epr_codigo BETWEEN 1 AND 5
                                    AND epr_codigo_letra IN ('A', 'B', 'C', 'D', 'E')),
     -- [AP-09] La letra es derivable del código numérico (5=A ... 1=E): se garantiza la coherencia entre ambas
     CONSTRAINT CK_epr_letra_coherente CHECK (ASCII(epr_codigo_letra) = 70 - epr_codigo)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_epr_codigo_letra
+    ON sgspi.escala_probabilidad(epr_codigo_letra) WHERE epr_esta_activa = 1; -- [AP-22]
 
 CREATE TABLE sgspi.escala_impacto (
     eim_codigo                     TINYINT         NOT NULL, -- 1=Insignificante, 2=Menor, 3=Moderado, 4=Mayor, 5=Catastrófico / Altamente beneficioso
@@ -1202,10 +1262,14 @@ CREATE TABLE sgspi.zona_riesgo_catalogo (
     zrc_nombre_nivel NVARCHAR (30) NOT NULL, -- 'Riesgo Inferior', 'Riesgo Moderado', 'Riesgo Alto', 'Riesgo Extremo'
     zrc_orden        TINYINT       NOT NULL, -- 1 (menor severidad) .. 4 (mayor severidad)
     zrc_esta_activa  BIT           CONSTRAINT DF_zrc_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
-    CONSTRAINT PK_zrc_zona_riesgo_catalogo PRIMARY KEY CLUSTERED (zrc_codigo),
-    CONSTRAINT UQ_zrc_nombre_nivel UNIQUE (zrc_nombre_nivel),
-    CONSTRAINT UQ_zrc_orden UNIQUE (zrc_orden)
+    CONSTRAINT PK_zrc_zona_riesgo_catalogo PRIMARY KEY CLUSTERED (zrc_codigo)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_zrc_nombre_nivel
+    ON sgspi.zona_riesgo_catalogo(zrc_nombre_nivel) WHERE zrc_esta_activa = 1; -- [AP-22]
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_zrc_orden
+    ON sgspi.zona_riesgo_catalogo(zrc_orden) WHERE zrc_esta_activa = 1; -- [AP-22]
 
 
 GO
@@ -1243,11 +1307,13 @@ CREATE TABLE sgspi.matriz_valoracion_riesgo (
     mvr_requiere_aprobacion_comite        BIT            CONSTRAINT DF_mvr_requiere_aprobacion_comite DEFAULT 0 NOT NULL, -- [AP-17]
     mvr_esta_activa                       BIT            CONSTRAINT DF_mvr_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_mvr_matriz_valoracion_riesgo PRIMARY KEY CLUSTERED (epr_codigo, eim_codigo),
-    CONSTRAINT UQ_mvr_codigo_posicion UNIQUE (mvr_codigo_posicion),
     CONSTRAINT FK_mvr_escala_probabilidad FOREIGN KEY (epr_codigo) REFERENCES sgspi.escala_probabilidad (epr_codigo),
     CONSTRAINT FK_mvr_escala_impacto FOREIGN KEY (eim_codigo) REFERENCES sgspi.escala_impacto (eim_codigo),
     CONSTRAINT FK_mvr_zona_riesgo FOREIGN KEY (zrc_codigo) REFERENCES sgspi.zona_riesgo_catalogo (zrc_codigo) -- [AP-09] reemplaza CK_mvr_codigo_zona
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_mvr_codigo_posicion
+    ON sgspi.matriz_valoracion_riesgo(mvr_codigo_posicion) WHERE mvr_esta_activa = 1; -- [AP-22]
 
 CREATE NONCLUSTERED INDEX IX_mvr_eim_codigo
     ON sgspi.matriz_valoracion_riesgo(eim_codigo);
@@ -1288,7 +1354,6 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
     eia_esta_activo              BIT                CONSTRAINT DF_eia_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     eia_version                  ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_eia_evento_incertidumbre_activo PRIMARY KEY CLUSTERED (eia_codigo),
-    CONSTRAINT UQ_eia_vigencia_naturaleza_numero UNIQUE (pev_codigo, eia_naturaleza_evento, eia_numero_evento), -- [AP-09] el identificador es función de (naturaleza, número)
     CONSTRAINT UQ_eia_codigo_naturaleza UNIQUE (eia_codigo, eia_naturaleza_evento), -- [AP-06] destino de la FK compuesta de plt
     CONSTRAINT FK_eia_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_eia_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo),
@@ -1314,6 +1379,12 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
                                              OR per_codigo_aprobador_comite <> per_codigo_creador)),
     CONSTRAINT CK_eia_activos_distintos CHECK (aci_codigo_soporte <> aci_codigo_primario)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_eia_vigencia_naturaleza_numero
+    ON sgspi.evento_incertidumbre_activo(pev_codigo, eia_naturaleza_evento, eia_numero_evento) WHERE eia_esta_activo = 1; -- [AP-09] [AP-22]
+
+CREATE NONCLUSTERED INDEX IX_eia_pev_codigo
+    ON sgspi.evento_incertidumbre_activo(pev_codigo); -- soporte no filtrado de FK_eia_periodo_vigencia
 
 CREATE NONCLUSTERED INDEX IX_eia_pri_codigo
     ON sgspi.evento_incertidumbre_activo(pri_codigo);
@@ -1350,11 +1421,13 @@ CREATE TABLE sgspi.estrategia_tratamiento_catalogo (
     etc_descripcion          NVARCHAR (255) NULL,
     etc_esta_activa          BIT            CONSTRAINT DF_etc_esta_activa DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_etc_estrategia_tratamiento_catalogo PRIMARY KEY CLUSTERED (etc_codigo),
-    CONSTRAINT UQ_etc_nombre_estrategia UNIQUE (etc_nombre_estrategia),
     CONSTRAINT UQ_etc_codigo_naturaleza UNIQUE (etc_codigo, etc_naturaleza_aplicable), -- [AP-06] destino de la FK compuesta de plt
     CONSTRAINT CK_etc_nombre_no_vacio CHECK (LEN(TRIM(etc_nombre_estrategia)) > 0),
     CONSTRAINT CK_etc_naturaleza_aplicable CHECK (etc_naturaleza_aplicable IN (N'RIESGO', N'OPORTUNIDAD'))
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_etc_nombre_estrategia
+    ON sgspi.estrategia_tratamiento_catalogo(etc_nombre_estrategia) WHERE etc_esta_activa = 1; -- [AP-22]
 
 CREATE TABLE sgspi.plan_tratamiento (
     plt_codigo                      INT                IDENTITY (1, 1) NOT NULL,
@@ -1393,6 +1466,8 @@ CREATE TABLE sgspi.plan_tratamiento (
     CONSTRAINT FK_plt_valoracion_meta FOREIGN KEY (epr_codigo_residual_meta, eim_codigo_residual_meta) REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
     CONSTRAINT FK_plt_dbo_persona_evaluador FOREIGN KEY (per_codigo_evaluador) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_plt_naturaleza_evento CHECK (plt_naturaleza_evento IN (N'RIESGO', N'OPORTUNIDAD')), -- [AP-06]
+    CONSTRAINT CK_plt_presupuesto_no_negativo CHECK (plt_presupuesto_estimado_cop IS NULL
+                                                     OR plt_presupuesto_estimado_cop >= 0),
     -- RN-RSG-06: Validación de cronogramas y métricas numéricas KPI
     CONSTRAINT CK_plt_cronograma CHECK (plt_fecha_fin >= plt_fecha_inicio),
     CONSTRAINT CK_plt_unidad_medida_kpi CHECK (plt_unidad_medida_kpi IN (N'PORCENTAJE', N'CANTIDAD', N'DIAS', N'HORAS')), -- [AP-08] antes texto libre no vacío
@@ -1441,7 +1516,6 @@ CREATE TABLE sgspi.actividad_tratamiento (
     act_esta_activa           BIT                CONSTRAINT DF_act_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     act_version               ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_act_actividad_tratamiento PRIMARY KEY CLUSTERED (act_codigo),
-    CONSTRAINT UQ_act_plan_orden UNIQUE (plt_codigo, act_numero_orden), -- [AP-14] clave natural; también cubre la FK a plt
     CONSTRAINT FK_act_plan_tratamiento FOREIGN KEY (plt_codigo) REFERENCES sgspi.plan_tratamiento (plt_codigo),
     CONSTRAINT FK_act_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo),
     CONSTRAINT FK_act_dbo_uaa FOREIGN KEY (uaa_codigo) REFERENCES dbo.uaa (uaa_codigo),
@@ -1457,7 +1531,12 @@ CREATE TABLE sgspi.actividad_tratamiento (
                                              AND uaa_codigo IS NOT NULL))
 );
 
--- [AP-14] IX_act_plt_codigo eliminado: lo cubre UQ_act_plan_orden (plt_codigo es su primera columna)
+CREATE UNIQUE NONCLUSTERED INDEX UX_act_plan_orden
+    ON sgspi.actividad_tratamiento(plt_codigo, act_numero_orden) WHERE act_esta_activa = 1; -- [AP-14] [AP-22]
+
+CREATE NONCLUSTERED INDEX IX_act_plt_codigo
+    ON sgspi.actividad_tratamiento(plt_codigo); -- soporte no filtrado de FK_act_plan_tratamiento
+
 CREATE NONCLUSTERED INDEX IX_act_car_codigo
     ON sgspi.actividad_tratamiento(car_codigo);
 
@@ -1513,10 +1592,14 @@ CREATE TABLE sgspi.estandar_normativo_catalogo (
     enc_anio_edicion  SMALLINT       NULL,
     enc_esta_activo   BIT            CONSTRAINT DF_enc_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_enc_estandar_normativo_catalogo PRIMARY KEY CLUSTERED (enc_codigo),
-    CONSTRAINT UQ_enc_identificador UNIQUE (enc_identificador),
     CONSTRAINT CK_enc_identificador_no_vacio CHECK (LEN(TRIM(enc_identificador)) > 0),
-    CONSTRAINT CK_enc_familia_norma_no_vacia CHECK (LEN(TRIM(enc_familia_norma)) > 0) -- [AP-13]
+    CONSTRAINT CK_enc_familia_norma_no_vacia CHECK (LEN(TRIM(enc_familia_norma)) > 0), -- [AP-13]
+    CONSTRAINT CK_enc_anio_edicion CHECK (enc_anio_edicion IS NULL
+                                          OR enc_anio_edicion BETWEEN 1970 AND 2100)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_enc_identificador
+    ON sgspi.estandar_normativo_catalogo(enc_identificador) WHERE enc_esta_activo = 1; -- [AP-22]
 
 -- [AP-13] Una sola edición activa por familia de norma (reemplaza filtros por cadena de edición en vistas)
 CREATE UNIQUE NONCLUSTERED INDEX UX_enc_familia_activa
@@ -1532,11 +1615,16 @@ CREATE TABLE sgspi.control_referencia_normativa (
     crn_objetivo_requisito    NVARCHAR (1500) NOT NULL,
     crn_esta_activo           BIT             CONSTRAINT DF_crn_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_crn_control_referencia_normativa PRIMARY KEY CLUSTERED (crn_codigo),
-    CONSTRAINT UQ_crn_estandar_identificador UNIQUE (enc_codigo, crn_identificador_control),
     CONSTRAINT FK_crn_estandar_normativo FOREIGN KEY (enc_codigo) REFERENCES sgspi.estandar_normativo_catalogo (enc_codigo),
     CONSTRAINT CK_crn_rol_privacidad_pii CHECK (crn_rol_privacidad_pii IS NULL
                                                 OR crn_rol_privacidad_pii IN (N'CONTROLADOR', N'PROCESADOR', N'COMUN'))
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_crn_estandar_identificador
+    ON sgspi.control_referencia_normativa(enc_codigo, crn_identificador_control) WHERE crn_esta_activo = 1; -- [AP-22]
+
+CREATE NONCLUSTERED INDEX IX_crn_enc_codigo
+    ON sgspi.control_referencia_normativa(enc_codigo); -- soporte no filtrado de FK_crn_estandar_normativo
 
 -- 5.6 [aac], [cra] Atributos de Controles Normativos (ISO/IEC 27002:2022 define 5 tipos de atributo multivaluados por control:
 --     tipo de control, propiedades de seguridad de la información, conceptos de ciberseguridad, capacidades operativas y dominios de seguridad).
@@ -1547,10 +1635,12 @@ CREATE TABLE sgspi.atributo_control_catalogo (
     aac_valor         NVARCHAR (60) NOT NULL, -- Ej: 'Preventivo', 'Confidencialidad', 'Proteger', 'Gobernanza', 'Protección'
     aac_esta_activo   BIT           CONSTRAINT DF_aac_esta_activo DEFAULT 1 NOT NULL, -- [AP-17]
     CONSTRAINT PK_aac_atributo_control_catalogo PRIMARY KEY CLUSTERED (aac_codigo),
-    CONSTRAINT UQ_aac_tipo_valor UNIQUE (aac_tipo_atributo, aac_valor),
     CONSTRAINT CK_aac_tipo_atributo CHECK (aac_tipo_atributo IN (N'TIPO_CONTROL', N'PROPIEDAD_SEGURIDAD', N'CONCEPTO_CIBERSEGURIDAD', N'CAPACIDAD_OPERACIONAL', N'DOMINIO_SEGURIDAD')),
     CONSTRAINT CK_aac_valor_no_vacio CHECK (LEN(TRIM(aac_valor)) > 0)
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_aac_tipo_valor
+    ON sgspi.atributo_control_catalogo(aac_tipo_atributo, aac_valor) WHERE aac_esta_activo = 1; -- [AP-22]
 
 CREATE TABLE sgspi.control_referencia_normativa_atributo (
     crn_codigo      SMALLINT NOT NULL, -- FK a [sgspi].[control_referencia_normativa]([crn_codigo])
@@ -1595,7 +1685,6 @@ CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
     eac_esta_activa                 BIT                CONSTRAINT DF_eac_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     eac_version                     ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_eac_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (eac_codigo),
-    CONSTRAINT UQ_eac_vigencia_control UNIQUE (pev_codigo, crn_codigo),
     CONSTRAINT FK_eac_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_eac_control_referencia FOREIGN KEY (crn_codigo) REFERENCES sgspi.control_referencia_normativa (crn_codigo),
     CONSTRAINT FK_eac_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo),
@@ -1619,6 +1708,12 @@ CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
                                                            AND LEN(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) > 0
                                                            AND UPPER(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) <> N'PENDIENTE'))
 );
+
+CREATE UNIQUE NONCLUSTERED INDEX UX_eac_vigencia_control
+    ON sgspi.evaluacion_aplicabilidad_control(pev_codigo, crn_codigo) WHERE eac_esta_activa = 1; -- [AP-22]
+
+CREATE NONCLUSTERED INDEX IX_eac_pev_codigo
+    ON sgspi.evaluacion_aplicabilidad_control(pev_codigo); -- soporte no filtrado de FK_eac_periodo_vigencia
 
 CREATE NONCLUSTERED INDEX IX_eac_crn_codigo
     ON sgspi.evaluacion_aplicabilidad_control(crn_codigo);
@@ -2984,7 +3079,11 @@ FROM   dbo.usuario_grupo AS ug
        ON pr.pri_codigo = piu.pri_codigo
 WHERE  ug.usg_estado = 1
        AND g.gru_estado = 1
-       AND g.gru_nombre LIKE N'SGSPI[_]%'; -- D5: solo grupos del SGSPI (antes listaba todo el directorio de academia3000)
+       AND ugen.state = 1
+       AND ugen.up IS NOT NULL
+       AND p.per_estado = 1
+       AND u.uaa_estado = 1
+       AND g.gru_nombre LIKE 'SGSPI[_]%'; -- D5: solo grupos del SGSPI (VARCHAR como dbo.grupo.gru_nombre, evita CONVERT_IMPLICIT)
 
 
 GO
@@ -3002,6 +3101,8 @@ RETURN
     SELECT   TOP (1) u.up AS per_codigo
     FROM     dbo.usuario_general AS u
     WHERE    u.us = CONVERT (VARCHAR (128), ORIGINAL_LOGIN()) -- si [us] es VARCHAR, la columna no se convierte y se busca por índice
+             AND u.up IS NOT NULL
+             AND u.state = 1
     ORDER BY u.uid
 
 
@@ -3013,8 +3114,9 @@ IF @@TRANCOUNT = 0
 GO
 -- Una fila si la sesión puede escribir en el proceso. Con @pri_codigo NULL solo hay fila si la sesión es transversal.
 -- Los roles transversales van en lista explícita: un rol nuevo o un usuario sin rol de actor no lo es por omisión.
+-- @per_actor se pasa desde el llamador para evaluar dbo.usuario_general (UNION de 7 tablas) una sola vez por sentencia.
 CREATE OR ALTER FUNCTION sgspi.ufn_proceso_en_alcance
-(@pri_codigo INT)
+(@pri_codigo INT, @per_actor INT)
 RETURNS TABLE 
 AS
 RETURN 
@@ -3023,11 +3125,12 @@ RETURN
            OR ISNULL(IS_MEMBER(N'sgspi_rol_oficial_seguridad_privacidad'), 0) = 1
            OR ISNULL(IS_MEMBER(N'sgspi_rol_comite_direccion'), 0) = 1
            OR ISNULL(IS_MEMBER(N'sgspi_rol_auditor_control'), 0) = 1
-           OR EXISTS (SELECT 1
-                      FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
-                      WHERE  v.per_codigo = (SELECT per_codigo
-                                             FROM   sgspi.ufn_persona_sesion())
-                             AND v.pri_codigo = @pri_codigo)
+           OR (@per_actor IS NOT NULL
+               AND @pri_codigo IS NOT NULL
+               AND EXISTS (SELECT 1
+                           FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
+                           WHERE  v.per_codigo = @per_actor
+                                  AND v.pri_codigo = @pri_codigo))
 
 
 
@@ -3040,24 +3143,24 @@ GO
 -- Una fila si la sesión puede escribir en el activo: es transversal (en activos también el gestor documental), el activo
 -- es de una de sus UAA o está asociado (aip activa) a uno de sus procesos. Con @aci_codigo NULL solo cuenta la UAA.
 CREATE OR ALTER FUNCTION sgspi.ufn_activo_en_alcance
-(@aci_codigo INT, @uaa_codigo INT)
+(@aci_codigo INT, @uaa_codigo INT, @per_actor INT)
 RETURNS TABLE 
 AS
 RETURN 
     SELECT 1 AS permitido
     WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_proceso_en_alcance(NULL))
+                   FROM   sgspi.ufn_proceso_en_alcance(NULL, NULL))
            OR ISNULL(IS_MEMBER(N'sgspi_rol_gestor_documental'), 0) = 1 -- D9: avala y completa todos los activos documentales
-           OR EXISTS (SELECT 1
-                      FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
-                      WHERE  v.per_codigo = (SELECT per_codigo
-                                             FROM   sgspi.ufn_persona_sesion())
-                             AND (v.uaa_codigo = @uaa_codigo
-                                  OR EXISTS (SELECT 1
-                                             FROM   sgspi.activo_informacion_proceso_institucional AS aip
-                                             WHERE  aip.aci_codigo = @aci_codigo
-                                                    AND aip.pri_codigo = v.pri_codigo
-                                                    AND aip.aip_esta_activo = 1)))
+           OR (@per_actor IS NOT NULL
+               AND EXISTS (SELECT 1
+                           FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
+                           WHERE  v.per_codigo = @per_actor
+                                  AND (v.uaa_codigo = @uaa_codigo
+                                       OR EXISTS (SELECT 1
+                                                  FROM   sgspi.activo_informacion_proceso_institucional AS aip
+                                                  WHERE  aip.aci_codigo = @aci_codigo
+                                                         AND aip.pri_codigo = v.pri_codigo
+                                                         AND aip.aip_esta_activo = 1))))
 
 
 
@@ -3076,42 +3179,51 @@ AS
 RETURN
     SELECT 1 AS permitido
     WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_proceso_en_alcance(NULL))
+                   FROM   sgspi.ufn_proceso_en_alcance(NULL, NULL))
            OR (ISNULL(IS_MEMBER(N'sgspi_rol_consulta'), 0) = 1
                AND ISNULL(IS_MEMBER(N'sgspi_rol_base'), 0) = 0)
            OR (@pri_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_proceso_en_alcance(@pri_codigo)))
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(@pri_codigo, ps.per_codigo) AS a))
            OR (@rpi_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.requisito_parte_interesada_proceso_institucional AS rpp
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(rpp.pri_codigo) AS a
-                           WHERE  rpp.rpi_codigo = @rpi_codigo
-                                  AND rpp.rpp_esta_activo = 1))
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  INNER JOIN
+                                  sgspi.requisito_parte_interesada_proceso_institucional AS rpp
+                                  ON rpp.rpi_codigo = @rpi_codigo
+                                     AND rpp.rpp_esta_activo = 1
+                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(rpp.pri_codigo, ps.per_codigo) AS a))
            OR (@eia_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.evento_incertidumbre_activo AS eia
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
-                           WHERE  eia.eia_codigo = @eia_codigo))
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  INNER JOIN
+                                  sgspi.evento_incertidumbre_activo AS eia
+                                  ON eia.eia_codigo = @eia_codigo
+                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a))
            OR (@plt_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.plan_tratamiento AS plt
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  INNER JOIN
+                                  sgspi.plan_tratamiento AS plt
+                                  ON plt.plt_codigo = @plt_codigo
                                   INNER JOIN
                                   sgspi.evento_incertidumbre_activo AS eia
                                   ON eia.eia_codigo = plt.eia_codigo
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
-                           WHERE  plt.plt_codigo = @plt_codigo))
+                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a))
            OR (@act_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.actividad_tratamiento AS act
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  INNER JOIN
+                                  sgspi.actividad_tratamiento AS act
+                                  ON act.act_codigo = @act_codigo
                                   INNER JOIN
                                   sgspi.plan_tratamiento AS plt
                                   ON plt.plt_codigo = act.plt_codigo
                                   INNER JOIN
                                   sgspi.evento_incertidumbre_activo AS eia
                                   ON eia.eia_codigo = plt.eia_codigo
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
-                           WHERE  act.act_codigo = @act_codigo));
+                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a));
 
 
 GO
@@ -3127,25 +3239,30 @@ AS
 RETURN
     SELECT 1 AS permitido
     WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_activo_en_alcance(NULL, NULL))
+                   FROM   sgspi.ufn_activo_en_alcance(NULL, NULL, NULL))
            OR (ISNULL(IS_MEMBER(N'sgspi_rol_consulta'), 0) = 1
                AND ISNULL(IS_MEMBER(N'sgspi_rol_base'), 0) = 0)
            OR (@aci_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_activo_en_alcance(@aci_codigo, @uaa_codigo)))
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  CROSS APPLY sgspi.ufn_activo_en_alcance(@aci_codigo, @uaa_codigo, ps.per_codigo) AS a))
            OR (@aci_codigo_padre IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.activo_informacion AS aci
-                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo) AS a
-                           WHERE  aci.aci_codigo = @aci_codigo_padre))
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  INNER JOIN
+                                  sgspi.activo_informacion AS aci
+                                  ON aci.aci_codigo = @aci_codigo_padre
+                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, ps.per_codigo) AS a))
            OR (@sif_codigo IS NOT NULL
                AND EXISTS (SELECT 1
-                           FROM   sgspi.sistema_informacion_ficha AS sif
+                           FROM   sgspi.ufn_persona_sesion() AS ps
+                                  INNER JOIN
+                                  sgspi.sistema_informacion_ficha AS sif
+                                  ON sif.sif_codigo = @sif_codigo
                                   INNER JOIN
                                   sgspi.activo_informacion AS aci
                                   ON aci.aci_codigo = sif.aci_codigo
-                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo) AS a
-                           WHERE  sif.sif_codigo = @sif_codigo));
+                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, ps.per_codigo) AS a));
 
 
 GO
@@ -3191,7 +3308,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                              FROM   sgspi.estado_flujo_catalogo AS efc
                                              WHERE  efc.efc_dominio = N'ACF'
                                                     AND efc.efc_identificador = i.acf_estado_registro
-                                                    AND efc.efc_es_inicial = 1))
+                                                    AND efc.efc_es_inicial = 1
+                                                    AND efc.efc_esta_activo = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[analisis_contexto_factor] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -3213,7 +3331,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                               UNION
                               SELECT pri_codigo
                               FROM   deleted) AS x
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[analisis_contexto_factor].', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
@@ -3242,13 +3360,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                   FROM   sgspi.estado_flujo_catalogo AS efc
                                                   WHERE  efc.efc_dominio = N'ACF'
                                                          AND efc.efc_identificador = d.acf_estado_registro
-                                                         AND efc.efc_permite_edicion = 0))
+                                                         AND (efc.efc_permite_edicion = 0
+                                                              OR efc.efc_esta_activo = 0)))
                                      OR (i.acf_estado_registro <> d.acf_estado_registro
                                          AND NOT EXISTS (SELECT 1
                                                          FROM   sgspi.transicion_estado_flujo AS tef
+                                                                INNER JOIN
+                                                                sgspi.estado_flujo_catalogo AS efc_dest
+                                                                ON efc_dest.efc_dominio = tef.efc_dominio
+                                                                   AND efc_dest.efc_identificador = tef.efc_identificador_destino
                                                          WHERE  tef.efc_dominio = N'ACF'
                                                                 AND tef.efc_identificador_origen = d.acf_estado_registro
                                                                 AND tef.efc_identificador_destino = i.acf_estado_registro
+                                                                AND tef.tef_esta_activa = 1
+                                                                AND efc_dest.efc_esta_activo = 1
                                                                 AND (tef.tef_rol_requerido IS NULL
                                                                      OR IS_MEMBER(tef.tef_rol_requerido) = 1
                                                                      OR IS_MEMBER(N'db_owner') = 1))))
@@ -3277,7 +3402,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'ACF'
                                                         AND efc.efc_identificador IN (d.acf_estado_registro, i.acf_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0)
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0))
                               EXCEPT
                               SELECT d.acf_codigo,
                                      d.pev_codigo,
@@ -3302,9 +3428,11 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'ACF'
                                                         AND efc.efc_identificador IN (d.acf_estado_registro, i.acf_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0))
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[analisis_contexto_factor].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (acf_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_analisis_contexto_factor (
                        acf_codigo,
                        pev_codigo,
@@ -3326,6 +3454,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                        aaf_usuario_bd,
                        aaf_fecha_cambio
                    )
+                   OUTPUT inserted.acf_codigo INTO @cambiadas (acf_codigo)
                    SELECT d.acf_codigo,
                           d.pev_codigo,
                           d.pri_codigo,
@@ -3379,14 +3508,16 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                          d.acf_fecha_actualizacion,
                                          d.acf_esta_activo);
                    IF NOT UPDATE (acf_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.acf_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
                        FROM   sgspi.analisis_contexto_factor AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.acf_codigo = t.acf_codigo;
+                              @cambiadas AS c
+                              ON c.acf_codigo = t.acf_codigo;
                    UPDATE t
-                   SET    t.per_codigo_aprobador = @per_actor
+                   SET    t.per_codigo_aprobador = CASE WHEN i.acf_estado_registro = N'VIGENTE' THEN @per_actor ELSE NULL END
                    FROM   sgspi.analisis_contexto_factor AS t
                           INNER JOIN
                           inserted AS i
@@ -3395,7 +3526,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                           deleted AS d
                           ON d.acf_codigo = i.acf_codigo
                    WHERE  d.acf_estado_registro <> i.acf_estado_registro
-                          AND i.acf_estado_registro = N'VIGENTE';
+                          AND (i.acf_estado_registro = N'VIGENTE'
+                               OR (d.acf_estado_registro = N'VIGENTE'
+                                   AND i.acf_estado_registro <> N'HISTORICO')
+                               OR i.acf_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
                END
            ELSE
                INSERT INTO sgspi.aud_analisis_contexto_factor (
@@ -3474,7 +3608,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                              FROM   sgspi.estado_flujo_catalogo AS efc
                                              WHERE  efc.efc_dominio = N'RPI'
                                                     AND efc.efc_identificador = i.rpi_estado_registro
-                                                    AND efc.efc_es_inicial = 1))
+                                                    AND efc.efc_es_inicial = 1
+                                                    AND efc.efc_esta_activo = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[requisito_parte_interesada] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -3491,12 +3626,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[requisito_parte_interesada].', 1;
            -- [AP-02] D5: un rol no transversal solo escribe en rpi con al menos un proceso activo (rpp) en su alcance
            IF NOT EXISTS (SELECT 1
-                          FROM   sgspi.ufn_proceso_en_alcance(NULL))
+                          FROM   sgspi.ufn_proceso_en_alcance(NULL, @per_actor))
               AND EXISTS (SELECT 1
                           FROM   inserted AS i
                           WHERE  NOT EXISTS (SELECT 1
                                              FROM   sgspi.requisito_parte_interesada_proceso_institucional AS rpp
-                                                    CROSS APPLY sgspi.ufn_proceso_en_alcance(rpp.pri_codigo) AS a
+                                                    CROSS APPLY sgspi.ufn_proceso_en_alcance(rpp.pri_codigo, @per_actor) AS a
                                              WHERE  rpp.rpi_codigo = i.rpi_codigo
                                                     AND rpp.rpp_esta_activo = 1))
                THROW 50021, N'Fuera de alcance: el requisito no tiene procesos activos en las UAA del usuario en [sgspi].[requisito_parte_interesada].', 1;
@@ -3526,13 +3661,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                   FROM   sgspi.estado_flujo_catalogo AS efc
                                                   WHERE  efc.efc_dominio = N'RPI'
                                                          AND efc.efc_identificador = d.rpi_estado_registro
-                                                         AND efc.efc_permite_edicion = 0))
+                                                         AND (efc.efc_permite_edicion = 0
+                                                              OR efc.efc_esta_activo = 0)))
                                      OR (i.rpi_estado_registro <> d.rpi_estado_registro
                                          AND NOT EXISTS (SELECT 1
                                                          FROM   sgspi.transicion_estado_flujo AS tef
+                                                                INNER JOIN
+                                                                sgspi.estado_flujo_catalogo AS efc_dest
+                                                                ON efc_dest.efc_dominio = tef.efc_dominio
+                                                                   AND efc_dest.efc_identificador = tef.efc_identificador_destino
                                                          WHERE  tef.efc_dominio = N'RPI'
                                                                 AND tef.efc_identificador_origen = d.rpi_estado_registro
                                                                 AND tef.efc_identificador_destino = i.rpi_estado_registro
+                                                                AND tef.tef_esta_activa = 1
+                                                                AND efc_dest.efc_esta_activo = 1
                                                                 AND (tef.tef_rol_requerido IS NULL
                                                                      OR IS_MEMBER(tef.tef_rol_requerido) = 1
                                                                      OR IS_MEMBER(N'db_owner') = 1))))
@@ -3559,7 +3701,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'RPI'
                                                         AND efc.efc_identificador IN (d.rpi_estado_registro, i.rpi_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0)
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0))
                               EXCEPT
                               SELECT d.rpi_codigo,
                                      d.pev_codigo,
@@ -3582,9 +3725,11 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'RPI'
                                                         AND efc.efc_identificador IN (d.rpi_estado_registro, i.rpi_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0))
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[requisito_parte_interesada].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (rpi_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_requisito_parte_interesada (
                        rpi_codigo,
                        pev_codigo,
@@ -3604,6 +3749,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                        ari_usuario_bd,
                        ari_fecha_cambio
                    )
+                   OUTPUT inserted.rpi_codigo INTO @cambiadas (rpi_codigo)
                    SELECT d.rpi_codigo,
                           d.pev_codigo,
                           d.pai_codigo,
@@ -3651,14 +3797,16 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                          d.rpi_fecha_actualizacion,
                                          d.rpi_esta_activo);
                    IF NOT UPDATE (rpi_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
                        FROM   sgspi.requisito_parte_interesada AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.rpi_codigo = t.rpi_codigo;
+                              @cambiadas AS c
+                              ON c.rpi_codigo = t.rpi_codigo;
                    UPDATE t
-                   SET    t.per_codigo_aprobador = @per_actor
+                   SET    t.per_codigo_aprobador = CASE WHEN i.rpi_estado_registro = N'VIGENTE' THEN @per_actor ELSE NULL END
                    FROM   sgspi.requisito_parte_interesada AS t
                           INNER JOIN
                           inserted AS i
@@ -3667,7 +3815,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                           deleted AS d
                           ON d.rpi_codigo = i.rpi_codigo
                    WHERE  d.rpi_estado_registro <> i.rpi_estado_registro
-                          AND i.rpi_estado_registro = N'VIGENTE';
+                          AND (i.rpi_estado_registro = N'VIGENTE'
+                               OR (d.rpi_estado_registro = N'VIGENTE'
+                                   AND i.rpi_estado_registro <> N'HISTORICO')
+                               OR i.rpi_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
                END
            ELSE
                INSERT INTO sgspi.aud_requisito_parte_interesada (
@@ -3742,7 +3893,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                              FROM   sgspi.estado_flujo_catalogo AS efc
                                              WHERE  efc.efc_dominio = N'ACI'
                                                     AND efc.efc_identificador = i.aci_estado_registro
-                                                    AND efc.efc_es_inicial = 1))
+                                                    AND efc.efc_es_inicial = 1
+                                                    AND efc.efc_esta_activo = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[activo_informacion] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones y la revisión de Archivo
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -3766,7 +3918,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                               SELECT aci_codigo,
                                      uaa_codigo
                               FROM   deleted) AS x
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(x.aci_codigo, x.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(x.aci_codigo, x.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion].', 1;
            IF EXISTS (SELECT 1
@@ -3783,13 +3935,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                   FROM   sgspi.estado_flujo_catalogo AS efc
                                                   WHERE  efc.efc_dominio = N'ACI'
                                                          AND efc.efc_identificador = d.aci_estado_registro
-                                                         AND efc.efc_permite_edicion = 0))
+                                                         AND (efc.efc_permite_edicion = 0
+                                                              OR efc.efc_esta_activo = 0)))
                                      OR (i.aci_estado_registro <> d.aci_estado_registro
                                          AND NOT EXISTS (SELECT 1
                                                          FROM   sgspi.transicion_estado_flujo AS tef
+                                                                INNER JOIN
+                                                                sgspi.estado_flujo_catalogo AS efc_dest
+                                                                ON efc_dest.efc_dominio = tef.efc_dominio
+                                                                   AND efc_dest.efc_identificador = tef.efc_identificador_destino
                                                          WHERE  tef.efc_dominio = N'ACI'
                                                                 AND tef.efc_identificador_origen = d.aci_estado_registro
                                                                 AND tef.efc_identificador_destino = i.aci_estado_registro
+                                                                AND tef.tef_esta_activa = 1
+                                                                AND efc_dest.efc_esta_activo = 1
                                                                 AND (tef.tef_rol_requerido IS NULL
                                                                      OR IS_MEMBER(tef.tef_rol_requerido) = 1
                                                                      OR IS_MEMBER(N'db_owner') = 1))))
@@ -3836,7 +3995,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'ACI'
                                                         AND efc.efc_identificador IN (d.aci_estado_registro, i.aci_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0)
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0))
                               EXCEPT
                               SELECT d.aci_codigo,
                                      d.aci_codigo_inventario,
@@ -3879,7 +4039,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'ACI'
                                                         AND efc.efc_identificador IN (d.aci_estado_registro, i.aci_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0))
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[activo_informacion].', 1;
                    -- [AP-16] D3: un activo solo se aprueba con su propietario activo (único por UX_air_propietario_activo)
                    IF EXISTS (SELECT 1
@@ -3915,6 +4076,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                                 AND air.air_tipo_responsabilidad = N'CUSTODIO')))
                        THROW 50020, N'Transición incompleta: VIGENTE exige el aval de Archivo (activo documental) y un custodio activo en [sgspi].[activo_informacion].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (aci_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_activo_informacion (
                        aci_codigo,
                        aai_codigo_inventario,
@@ -3954,6 +4116,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                        aai_usuario_bd,
                        aai_fecha_cambio
                    )
+                   OUTPUT inserted.aci_codigo INTO @cambiadas (aci_codigo)
                    SELECT d.aci_codigo,
                           d.aci_codigo_inventario,
                           d.aci_nombre_activo,
@@ -4061,14 +4224,16 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                          d.aci_fecha_actualizacion,
                                          d.aci_esta_activo);
                    IF NOT UPDATE (aci_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.aci_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
                        FROM   sgspi.activo_informacion AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.aci_codigo = t.aci_codigo;
+                              @cambiadas AS c
+                              ON c.aci_codigo = t.aci_codigo;
                    UPDATE t
-                   SET    t.per_codigo_aprobador = @per_actor
+                   SET    t.per_codigo_aprobador = CASE WHEN i.aci_estado_registro = N'VIGENTE' THEN @per_actor ELSE NULL END
                    FROM   sgspi.activo_informacion AS t
                           INNER JOIN
                           inserted AS i
@@ -4077,10 +4242,14 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                           deleted AS d
                           ON d.aci_codigo = i.aci_codigo
                    WHERE  d.aci_estado_registro <> i.aci_estado_registro
-                          AND i.aci_estado_registro = N'VIGENTE';
-                   -- Firma de Archivo: la pone el trigger al salir de EN_REVISION_ARCHIVO hacia EN_REVISION_SGSPI
+                          AND (i.aci_estado_registro = N'VIGENTE'
+                               OR (d.aci_estado_registro = N'VIGENTE'
+                                   AND i.aci_estado_registro <> N'HISTORICO')
+                               OR i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
+                   -- Firma de Archivo: se registra en EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI y se limpia al observar/reabrir a borrador o revisión de Archivo
                    UPDATE ado
-                   SET    ado.per_codigo_revisor_archivo = @per_actor
+                   SET    ado.per_codigo_revisor_archivo = CASE WHEN d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+                                                                     AND i.aci_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE NULL END
                    FROM   sgspi.activo_documental AS ado
                           INNER JOIN
                           inserted AS i
@@ -4088,8 +4257,11 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                           INNER JOIN
                           deleted AS d
                           ON d.aci_codigo = i.aci_codigo
-                   WHERE  d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
-                          AND i.aci_estado_registro = N'EN_REVISION_SGSPI';
+                   WHERE  (d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+                           AND i.aci_estado_registro = N'EN_REVISION_SGSPI')
+                          OR (d.aci_estado_registro <> i.aci_estado_registro
+                              AND i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR', N'EN_REVISION_ARCHIVO')
+                              AND ado.per_codigo_revisor_archivo IS NOT NULL);
                END
            ELSE
                INSERT INTO sgspi.aud_activo_informacion (
@@ -4207,7 +4379,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = aci.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar un activo documental cuyo activo de información no es editable en [sgspi].[activo_documental].', 1;
            -- La firma de Archivo la escribe TR_aci; en UPDATE la impide el DENY de columna, en INSERT esta comprobación
            IF EXISTS (SELECT 1
@@ -4241,7 +4414,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental].', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
@@ -4266,6 +4439,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                                                  FROM   inserted AS i
                                                  WHERE  i.ado_codigo = d.ado_codigo))
                        THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental]; desactive la fila y cree una nueva.', 1;
+                   DECLARE @cambiadas TABLE (ado_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_activo_documental (
                        ado_codigo,
                        pev_codigo,
@@ -4284,6 +4458,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                        aao_usuario_bd,
                        aao_fecha_cambio
                    )
+                   OUTPUT inserted.ado_codigo INTO @cambiadas (ado_codigo)
                    SELECT d.ado_codigo,
                           d.pev_codigo,
                           d.sdo_codigo,
@@ -4327,13 +4502,45 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                                          d.per_codigo_revisor_archivo,
                                          d.ado_fecha_actualizacion,
                                          d.ado_esta_activo);
-                   IF NOT UPDATE (ado_fecha_actualizacion)
+                   -- Actualiza fecha solo en filas con cambio real y limpia la firma de Archivo si cambiaron metadatos archivísticos (no cuando TR_aci solo firma/limpia)
+                   DECLARE @actualizar_fecha AS BIT = CASE WHEN UPDATE (ado_fecha_actualizacion) THEN 0 ELSE 1 END;
+                   IF EXISTS (SELECT 1
+                              FROM   @cambiadas)
                        UPDATE t
-                       SET    t.ado_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+                       SET    t.ado_fecha_actualizacion    = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.ado_fecha_actualizacion END, -- [AP-11] [AP-12]
+                              t.per_codigo_revisor_archivo = CASE WHEN m.metadato_cambio = 1 THEN NULL ELSE t.per_codigo_revisor_archivo END
                        FROM   sgspi.activo_documental AS t
                               INNER JOIN
+                              @cambiadas AS c
+                              ON c.ado_codigo = t.ado_codigo
+                              INNER JOIN
                               inserted AS i
-                              ON i.ado_codigo = t.ado_codigo;
+                              ON i.ado_codigo = t.ado_codigo
+                              INNER JOIN
+                              deleted AS d
+                              ON d.ado_codigo = t.ado_codigo
+                              CROSS APPLY (SELECT CASE WHEN EXISTS (SELECT i.pev_codigo,
+                                                                           i.sdo_codigo,
+                                                                           i.sbd_codigo,
+                                                                           i.pdc_codigo,
+                                                                           i.ado_fecha_ingreso_tabla_retencion,
+                                                                           i.ado_fecha_ingreso_archivo,
+                                                                           i.epc_codigo,
+                                                                           i.ado_lugar_consulta_ubicacion,
+                                                                           i.ado_esta_activo
+                                                                    EXCEPT
+                                                                    SELECT d.pev_codigo,
+                                                                           d.sdo_codigo,
+                                                                           d.sbd_codigo,
+                                                                           d.pdc_codigo,
+                                                                           d.ado_fecha_ingreso_tabla_retencion,
+                                                                           d.ado_fecha_ingreso_archivo,
+                                                                           d.epc_codigo,
+                                                                           d.ado_lugar_consulta_ubicacion,
+                                                                           d.ado_esta_activo) THEN 1 ELSE 0 END AS metadato_cambio) AS m
+                       WHERE  @actualizar_fecha = 1
+                              OR (m.metadato_cambio = 1
+                                  AND t.per_codigo_revisor_archivo IS NOT NULL);
                END
            ELSE
                INSERT INTO sgspi.aud_activo_documental (
@@ -4406,7 +4613,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                              FROM   sgspi.estado_flujo_catalogo AS efc
                                              WHERE  efc.efc_dominio = N'EIA'
                                                     AND efc.efc_identificador = i.eia_estado_registro
-                                                    AND efc.efc_es_inicial = 1))
+                                                    AND efc.efc_es_inicial = 1
+                                                    AND efc.efc_esta_activo = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[evento_incertidumbre_activo] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las validaciones y aprobaciones
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -4428,7 +4636,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               UNION
                               SELECT pri_codigo
                               FROM   deleted) AS x
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[evento_incertidumbre_activo].', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
@@ -4443,6 +4651,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                              WHERE  d.eia_codigo = i.eia_codigo
                                                     AND d.pev_codigo = i.pev_codigo))
                THROW 50022, N'Vigencia cerrada: no se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en [sgspi].[evento_incertidumbre_activo].', 1;
+           -- Exige asociación activo-proceso activa y ambos activos (primario y soporte) activos en alta, cambio de vínculo o reactivación
+           IF EXISTS (SELECT 1
+                      FROM   inserted AS i
+                             LEFT OUTER JOIN
+                             deleted AS d
+                             ON d.eia_codigo = i.eia_codigo
+                      WHERE  (d.eia_codigo IS NULL
+                              OR (i.eia_esta_activo = 1
+                                  AND (i.aci_codigo_primario <> d.aci_codigo_primario
+                                       OR i.aci_codigo_soporte <> d.aci_codigo_soporte
+                                       OR i.pri_codigo <> d.pri_codigo
+                                       OR d.eia_esta_activo = 0)))
+                             AND (NOT EXISTS (SELECT 1
+                                              FROM   sgspi.activo_informacion_proceso_institucional AS aip
+                                              WHERE  aip.aci_codigo = i.aci_codigo_primario
+                                                     AND aip.pri_codigo = i.pri_codigo
+                                                     AND aip.aip_esta_activo = 1)
+                                  OR NOT EXISTS (SELECT 1
+                                                 FROM   sgspi.activo_informacion AS aci
+                                                 WHERE  aci.aci_codigo = i.aci_codigo_primario
+                                                        AND aci.aci_esta_activo = 1)
+                                  OR NOT EXISTS (SELECT 1
+                                                 FROM   sgspi.activo_informacion AS aci
+                                                 WHERE  aci.aci_codigo = i.aci_codigo_soporte
+                                                        AND aci.aci_esta_activo = 1)))
+               THROW 50011, N'Activo o asociación inactiva: el activo primario, el activo de soporte y la asociación activo-proceso deben estar activos en [sgspi].[evento_incertidumbre_activo].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -4457,13 +4691,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                   FROM   sgspi.estado_flujo_catalogo AS efc
                                                   WHERE  efc.efc_dominio = N'EIA'
                                                          AND efc.efc_identificador = d.eia_estado_registro
-                                                         AND efc.efc_permite_edicion = 0))
+                                                         AND (efc.efc_permite_edicion = 0
+                                                              OR efc.efc_esta_activo = 0)))
                                      OR (i.eia_estado_registro <> d.eia_estado_registro
                                          AND NOT EXISTS (SELECT 1
                                                          FROM   sgspi.transicion_estado_flujo AS tef
+                                                                INNER JOIN
+                                                                sgspi.estado_flujo_catalogo AS efc_dest
+                                                                ON efc_dest.efc_dominio = tef.efc_dominio
+                                                                   AND efc_dest.efc_identificador = tef.efc_identificador_destino
                                                          WHERE  tef.efc_dominio = N'EIA'
                                                                 AND tef.efc_identificador_origen = d.eia_estado_registro
                                                                 AND tef.efc_identificador_destino = i.eia_estado_registro
+                                                                AND tef.tef_esta_activa = 1
+                                                                AND efc_dest.efc_esta_activo = 1
                                                                 AND (tef.tef_rol_requerido IS NULL
                                                                      OR IS_MEMBER(tef.tef_rol_requerido) = 1
                                                                      OR IS_MEMBER(N'db_owner') = 1))))
@@ -4497,7 +4738,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'EIA'
                                                         AND efc.efc_identificador IN (d.eia_estado_registro, i.eia_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0)
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0))
                               EXCEPT
                               SELECT d.eia_codigo,
                                      d.pev_codigo,
@@ -4527,7 +4769,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'EIA'
                                                         AND efc.efc_identificador IN (d.eia_estado_registro, i.eia_estado_registro)
-                                                        AND efc.efc_permite_edicion = 0))
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[evento_incertidumbre_activo].', 1;
                    -- [AP-16] Requisitos de la transición (50020): plan activo para aprobar, paso por el comité cuando la celda
                    -- inherente o la residual meta lo exige (RN-RSG-03), meta residual no mayor a la inherente en RIESGO (RN-RSG-04),
@@ -4648,6 +4891,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                             AND plt.plt_es_tratamiento_eficaz = 1))
                        THROW 50020, N'Transición incompleta: CERRADO_EFICAZ exige un plan de tratamiento dictaminado eficaz en [sgspi].[evento_incertidumbre_activo].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (eia_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_evento_incertidumbre_activo (
                        eia_codigo,
                        pev_codigo,
@@ -4676,6 +4920,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                        aea_usuario_bd,
                        aea_fecha_cambio
                    )
+                   OUTPUT inserted.eia_codigo INTO @cambiadas (eia_codigo)
                    SELECT d.eia_codigo,
                           d.pev_codigo,
                           d.eia_numero_evento,
@@ -4750,19 +4995,21 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                          d.eia_fecha_actualizacion,
                                          d.eia_esta_activo);
                    IF NOT UPDATE (eia_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.eia_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
                        FROM   sgspi.evento_incertidumbre_activo AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.eia_codigo = t.eia_codigo;
+                              @cambiadas AS c
+                              ON c.eia_codigo = t.eia_codigo;
                    UPDATE t
-                   SET    t.per_codigo_validador_lider  = CASE WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
-                                                                    AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
-                          t.per_codigo_revisor_sgspi    = CASE WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
-                                                                    AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
-                          t.per_codigo_aprobador_comite = CASE WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                                                                    AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
+                   SET    t.per_codigo_validador_lider  = CASE WHEN i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
+                                                                     AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
+                          t.per_codigo_revisor_sgspi    = CASE WHEN i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                                                                     AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
+                          t.per_codigo_aprobador_comite = CASE WHEN i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
+                                                                     AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
                    FROM   sgspi.evento_incertidumbre_activo AS t
                           INNER JOIN
                           inserted AS i
@@ -4775,7 +5022,9 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                           OR (d.eia_estado_registro = N'EN_REVISION_SGSPI'
                               AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'))
                           OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                              AND i.eia_estado_registro = N'APROBADO_PLANIFICADO');
+                              AND i.eia_estado_registro = N'APROBADO_PLANIFICADO')
+                          OR (d.eia_estado_registro <> i.eia_estado_registro
+                              AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
                END
            ELSE
                INSERT INTO sgspi.aud_evento_incertidumbre_activo (
@@ -4871,7 +5120,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'EIA'
                                 AND efc.efc_identificador = eia.eia_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar el plan de tratamiento de un evento no editable en [sgspi].[plan_tratamiento].', 1;
            -- [AP-03] Persona de la sesión: firma el dictamen y queda en la auditoría
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -4888,27 +5138,31 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                              LEFT OUTER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = x.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento].', 1;
-           -- [AP-15] Dictamen de eficacia nuevo o cambiado (EXCEPT trata NULL = NULL): lo firma la persona de la sesión
+           -- [AP-15] Dictamen de eficacia nuevo o cambiado (EXCEPT trata NULL = NULL): solo en EN_EVALUACION_EFICACIA, con SoD y firmado por la persona de la sesión
            -- [AP-03] y su fecha es la del servidor, aunque CK_plt_coherencia_eficacia obligue al cliente a enviarla
            DECLARE @dictamen TABLE (
                plt_codigo           INT PRIMARY KEY,
-               per_codigo_evaluador INT NOT NULL);
+               eia_codigo           INT NOT NULL,
+               per_codigo_evaluador INT NULL);
            INSERT INTO @dictamen (
                plt_codigo,
+               eia_codigo,
                per_codigo_evaluador
            )
            SELECT i.plt_codigo,
+                  i.eia_codigo,
                   i.per_codigo_evaluador
            FROM   inserted AS i
                   LEFT OUTER JOIN
                   deleted AS d
                   ON d.plt_codigo = i.plt_codigo
-           WHERE  i.per_codigo_evaluador IS NOT NULL
-                  AND (d.plt_codigo IS NULL
-                       OR EXISTS (SELECT i.plt_es_tratamiento_eficaz,
+           WHERE  (d.plt_codigo IS NULL
+                   AND i.per_codigo_evaluador IS NOT NULL)
+                  OR (d.plt_codigo IS NOT NULL
+                      AND EXISTS (SELECT i.plt_es_tratamiento_eficaz,
                                          i.plt_dictamen_eficacia,
                                          i.per_codigo_evaluador,
                                          i.plt_fecha_evaluacion_eficacia
@@ -4925,20 +5179,40 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                       AND ISNULL(IS_MEMBER(N'db_owner'), 0) = 0
                        THROW 50011, N'Operación denegada: el dictamen de eficacia solo lo registra el auditor (sgspi_rol_auditor_control) en [sgspi].[plan_tratamiento].', 1;
                    IF EXISTS (SELECT 1
+                              FROM   @dictamen AS x
+                                     INNER JOIN
+                                     sgspi.evento_incertidumbre_activo AS eia
+                                     ON eia.eia_codigo = x.eia_codigo
+                              WHERE  eia.eia_estado_registro <> N'EN_EVALUACION_EFICACIA')
+                       THROW 50011, N'Estado inválido: el dictamen de eficacia solo puede registrarse o modificarse cuando el evento está en EN_EVALUACION_EFICACIA en [sgspi].[plan_tratamiento].', 1;
+                   IF EXISTS (SELECT 1
                               FROM   @dictamen
-                              WHERE  per_codigo_evaluador <> @per_actor)
+                              WHERE  per_codigo_evaluador IS NOT NULL
+                                     AND per_codigo_evaluador <> @per_actor)
                        THROW 50019, N'Evaluador inválido: [per_codigo_evaluador] debe ser la persona de la sesión en [sgspi].[plan_tratamiento].', 1;
+                   IF EXISTS (SELECT 1
+                              FROM   @dictamen AS x
+                                     INNER JOIN
+                                     sgspi.evento_incertidumbre_activo AS eia
+                                     ON eia.eia_codigo = x.eia_codigo
+                              WHERE  x.per_codigo_evaluador IS NOT NULL
+                                     AND (@per_actor = eia.per_codigo_creador
+                                          OR @per_actor = eia.per_codigo_validador_lider
+                                          OR @per_actor = eia.per_codigo_revisor_sgspi))
+                       THROW 50019, N'Segregación de funciones: el evaluador de eficacia no puede ser creador, validador líder ni revisor SGSPI del evento en [sgspi].[plan_tratamiento].', 1;
                    UPDATE t
                    SET    t.plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() -- [AP-12]
                    FROM   sgspi.plan_tratamiento AS t
                           INNER JOIN
                           @dictamen AS x
-                          ON x.plt_codigo = t.plt_codigo;
+                          ON x.plt_codigo = t.plt_codigo
+                   WHERE  x.per_codigo_evaluador IS NOT NULL;
                END
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (plt_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_plan_tratamiento (
                        plt_codigo,
                        eia_codigo,
@@ -4968,6 +5242,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                        apt_usuario_bd,
                        apt_fecha_cambio
                    )
+                   OUTPUT inserted.plt_codigo INTO @cambiadas (plt_codigo)
                    SELECT d.plt_codigo,
                           d.eia_codigo,
                           d.plt_naturaleza_evento,
@@ -5045,12 +5320,14 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                                          d.plt_fecha_actualizacion,
                                          d.plt_esta_activo);
                    IF NOT UPDATE (plt_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.plt_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
                        FROM   sgspi.plan_tratamiento AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.plt_codigo = t.plt_codigo;
+                              @cambiadas AS c
+                              ON c.plt_codigo = t.plt_codigo;
                END
            ELSE
                INSERT INTO sgspi.aud_plan_tratamiento (
@@ -5145,7 +5422,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                              FROM   sgspi.estado_flujo_catalogo AS efc
                                              WHERE  efc.efc_dominio = N'ACT'
                                                     AND efc.efc_identificador = i.act_estado_actividad
-                                                    AND efc.efc_es_inicial = 1))
+                                                    AND efc.efc_es_inicial = 1
+                                                    AND efc.efc_esta_activo = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[actividad_tratamiento] solo puede crearse en el estado inicial del flujo.', 1;
            -- No se tocan actividades de un evento en estado no editable
            IF EXISTS (SELECT 1
@@ -5164,7 +5442,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'EIA'
                                 AND efc.efc_identificador = eia.eia_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar actividades de un evento no editable en [sgspi].[actividad_tratamiento].', 1;
            -- [AP-03] Persona de la sesión: queda en la auditoría
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -5184,7 +5463,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                              LEFT OUTER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[actividad_tratamiento].', 1;
            IF EXISTS (SELECT 1
@@ -5201,13 +5480,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                                   FROM   sgspi.estado_flujo_catalogo AS efc
                                                   WHERE  efc.efc_dominio = N'ACT'
                                                          AND efc.efc_identificador = d.act_estado_actividad
-                                                         AND efc.efc_permite_edicion = 0))
+                                                         AND (efc.efc_permite_edicion = 0
+                                                              OR efc.efc_esta_activo = 0)))
                                      OR (i.act_estado_actividad <> d.act_estado_actividad
                                          AND NOT EXISTS (SELECT 1
                                                          FROM   sgspi.transicion_estado_flujo AS tef
+                                                                INNER JOIN
+                                                                sgspi.estado_flujo_catalogo AS efc_dest
+                                                                ON efc_dest.efc_dominio = tef.efc_dominio
+                                                                   AND efc_dest.efc_identificador = tef.efc_identificador_destino
                                                          WHERE  tef.efc_dominio = N'ACT'
                                                                 AND tef.efc_identificador_origen = d.act_estado_actividad
                                                                 AND tef.efc_identificador_destino = i.act_estado_actividad
+                                                                AND tef.tef_esta_activa = 1
+                                                                AND efc_dest.efc_esta_activo = 1
                                                                 AND (tef.tef_rol_requerido IS NULL
                                                                      OR IS_MEMBER(tef.tef_rol_requerido) = 1
                                                                      OR IS_MEMBER(N'db_owner') = 1))))
@@ -5233,7 +5519,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'ACT'
                                                         AND efc.efc_identificador IN (d.act_estado_actividad, i.act_estado_actividad)
-                                                        AND efc.efc_permite_edicion = 0)
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0))
                               EXCEPT
                               SELECT d.act_codigo,
                                      d.plt_codigo,
@@ -5255,9 +5542,11 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                                  FROM   sgspi.estado_flujo_catalogo AS efc
                                                  WHERE  efc.efc_dominio = N'ACT'
                                                         AND efc.efc_identificador IN (d.act_estado_actividad, i.act_estado_actividad)
-                                                        AND efc.efc_permite_edicion = 0))
+                                                        AND (efc.efc_permite_edicion = 0
+                                                             OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[actividad_tratamiento].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (act_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_actividad_tratamiento (
                        act_codigo,
                        plt_codigo,
@@ -5275,6 +5564,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                        aat_usuario_bd,
                        aat_fecha_cambio
                    )
+                   OUTPUT inserted.act_codigo INTO @cambiadas (act_codigo)
                    SELECT d.act_codigo,
                           d.plt_codigo,
                           d.act_numero_orden,
@@ -5316,12 +5606,14 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                          d.act_fecha_actualizacion,
                                          d.act_esta_activa);
                    IF NOT UPDATE (act_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.act_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
                        FROM   sgspi.actividad_tratamiento AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.act_codigo = t.act_codigo;
+                              @cambiadas AS c
+                              ON c.act_codigo = t.act_codigo;
                END
            ELSE
                INSERT INTO sgspi.aud_actividad_tratamiento (
@@ -5403,6 +5695,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                       FROM   deleted)
                BEGIN
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
+                   DECLARE @cambiadas TABLE (eac_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_evaluacion_aplicabilidad_control (
                        eac_codigo,
                        pev_codigo,
@@ -5422,6 +5715,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                        aae_usuario_bd,
                        aae_fecha_cambio
                    )
+                   OUTPUT inserted.eac_codigo INTO @cambiadas (eac_codigo)
                    SELECT d.eac_codigo,
                           d.pev_codigo,
                           d.crn_codigo,
@@ -5469,12 +5763,14 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                                          d.eac_fecha_actualizacion,
                                          d.eac_esta_activa);
                    IF NOT UPDATE (eac_fecha_actualizacion)
+                      AND EXISTS (SELECT 1
+                                  FROM   @cambiadas)
                        UPDATE t
                        SET    t.eac_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
                        FROM   sgspi.evaluacion_aplicabilidad_control AS t
                               INNER JOIN
-                              inserted AS i
-                              ON i.eac_codigo = t.eac_codigo;
+                              @cambiadas AS c
+                              ON c.eac_codigo = t.eac_codigo;
                END
            ELSE
                INSERT INTO sgspi.aud_evaluacion_aplicabilidad_control (
@@ -5577,7 +5873,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                              LEFT OUTER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
            -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
@@ -5692,7 +5988,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                              LEFT OUTER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
            -- Si hay varias filas de la misma actividad en el lote, prevalece la de mayor sga_codigo
@@ -5769,7 +6065,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'RPI'
                                 AND efc.efc_identificador = p.rpi_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[requisito_parte_interesada_proceso_institucional] cuando el padre no es editable.', 1;
        END
 
@@ -5801,9 +6098,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_proceso_institucional] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio asocian a sus procesos solo activos de sus UAA (la asociación nueva no da alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo,
                                      pri_codigo
@@ -5815,8 +6115,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo) AS ap
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo) AS aa
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS ap
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo, @per_actor) AS aa
                       WHERE  ap.permitido IS NULL
                              OR aa.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo o el proceso no son de las UAA del usuario en [sgspi].[activo_informacion_proceso_institucional].', 1;
@@ -5850,9 +6150,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_sede] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo
                               FROM   inserted
@@ -5862,7 +6165,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_sede].', 1;
        END
@@ -5895,9 +6198,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_responsable] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo
                               FROM   inserted
@@ -5907,7 +6213,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_responsable].', 1;
        END
@@ -5940,9 +6246,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_soporte_registro] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
                               FROM   inserted
@@ -5952,7 +6261,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_soporte_registro].', 1;
        END
@@ -5985,9 +6294,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_medio_conservacion] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
                               FROM   inserted
@@ -5997,7 +6309,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_medio_conservacion].', 1;
        END
@@ -6030,9 +6342,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_idioma] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
                               FROM   inserted
@@ -6042,7 +6357,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_idioma].', 1;
        END
@@ -6075,9 +6390,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_formato_archivo] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
                               FROM   inserted
@@ -6087,7 +6405,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS p
                              ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_formato_archivo].', 1;
        END
@@ -6120,7 +6438,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_unidad_productora] cuando el padre no es editable.', 1;
        END
 
@@ -6155,9 +6474,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_bloquear_padre_no_editable
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'EIA'
                                 AND efc.efc_identificador = p.eia_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[plan_tratamiento_control_referencia_normativa] cuando el padre no es editable.', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance; LEFT JOIN evita bypass por RLS)
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF EXISTS (SELECT 1
                       FROM   (SELECT plt_codigo
                               FROM   inserted
@@ -6170,7 +6492,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_bloquear_padre_no_editable
                              LEFT OUTER JOIN
                              sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo) AS a
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
        END
@@ -7742,7 +8064,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = aci.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar la ficha de un sistema cuyo activo de información no es editable en [sgspi].[sistema_informacion_ficha].', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
@@ -7758,7 +8081,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS aci
                              ON aci.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: la ficha de sistema no está asociada a un activo de las UAA ni de los procesos del usuario en [sgspi].[sistema_informacion_ficha].', 1;
            IF NOT EXISTS (SELECT 1
@@ -7888,7 +8211,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                              sgspi.estado_flujo_catalogo AS efc
                              ON efc.efc_dominio = N'ACI'
                                 AND efc.efc_identificador = aci.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0)
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar módulos de un sistema cuyo activo de información no es editable en [sgspi].[modulo_sistema_informacion].', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
@@ -7907,7 +8231,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                              LEFT OUTER JOIN
                              sgspi.activo_informacion AS aci
                              ON aci.aci_codigo = sif.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo) AS a
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el sistema del módulo no está asociado a un activo de las UAA ni de los procesos del usuario en [sgspi].[modulo_sistema_informacion].', 1;
            IF NOT EXISTS (SELECT 1
@@ -8882,6 +9206,311 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
            SET NOCOUNT ON;
            IF EXISTS (SELECT 1
                       FROM   deleted)
+              AND NOT EXISTS (SELECT 1
+                              FROM   inserted)
+               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_soporte_registro].', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   inserted)
+               RETURN;
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_soporte_registro (
+                       ado_codigo,
+                       src_codigo,
+                       aad_esta_activo,
+                       per_codigo,
+                       aad_operacion,
+                       aad_usuario_bd,
+                       aad_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.src_codigo,
+                          i.ads_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.src_codigo = d.src_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_soporte_registro]; desactive la fila y cree una nueva.', 1;
+           INSERT INTO sgspi.aud_activo_documental_soporte_registro (
+               ado_codigo,
+               src_codigo,
+               aad_esta_activo,
+               per_codigo,
+               aad_operacion,
+               aad_usuario_bd,
+               aad_fecha_cambio
+           )
+           SELECT d.ado_codigo,
+                  d.src_codigo,
+                  d.ads_esta_activo,
+                  @per_actor,
+                  'U',
+                  ORIGINAL_LOGIN(),
+                  SYSDATETIMEOFFSET()
+           FROM   deleted AS d
+                  INNER JOIN
+                  inserted AS i
+                  ON i.ado_codigo = d.ado_codigo
+                     AND i.src_codigo = d.src_codigo
+           WHERE  EXISTS (SELECT i.ads_esta_activo
+                          EXCEPT
+                          SELECT d.ads_esta_activo);
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [aam] La auditoría no se edita ni se borra
+CREATE OR ALTER TRIGGER sgspi.TR_aam_inmutabilidad
+    ON sgspi.aud_activo_documental_medio_conservacion
+    INSTEAD OF UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_medio_conservacion] es inmutable y no admite modificaciones ni borrados.', 1;
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [adm] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_medio_conservacion] las altas ('I') y la versión anterior de cada fila modificada ('U')
+CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
+    ON sgspi.activo_documental_medio_conservacion
+    AFTER INSERT, UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           IF EXISTS (SELECT 1
+                      FROM   deleted)
+              AND NOT EXISTS (SELECT 1
+                              FROM   inserted)
+               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_medio_conservacion].', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   inserted)
+               RETURN;
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_medio_conservacion (
+                       ado_codigo,
+                       mcc_codigo,
+                       aam_esta_activo,
+                       per_codigo,
+                       aam_operacion,
+                       aam_usuario_bd,
+                       aam_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.mcc_codigo,
+                          i.adm_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.mcc_codigo = d.mcc_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_medio_conservacion]; desactive la fila y cree una nueva.', 1;
+           INSERT INTO sgspi.aud_activo_documental_medio_conservacion (
+               ado_codigo,
+               mcc_codigo,
+               aam_esta_activo,
+               per_codigo,
+               aam_operacion,
+               aam_usuario_bd,
+               aam_fecha_cambio
+           )
+           SELECT d.ado_codigo,
+                  d.mcc_codigo,
+                  d.adm_esta_activo,
+                  @per_actor,
+                  'U',
+                  ORIGINAL_LOGIN(),
+                  SYSDATETIMEOFFSET()
+           FROM   deleted AS d
+                  INNER JOIN
+                  inserted AS i
+                  ON i.ado_codigo = d.ado_codigo
+                     AND i.mcc_codigo = d.mcc_codigo
+           WHERE  EXISTS (SELECT i.adm_esta_activo
+                          EXCEPT
+                          SELECT d.adm_esta_activo);
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [aid] La auditoría no se edita ni se borra
+CREATE OR ALTER TRIGGER sgspi.TR_aid_inmutabilidad
+    ON sgspi.aud_activo_documental_idioma
+    INSTEAD OF UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_idioma] es inmutable y no admite modificaciones ni borrados.', 1;
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [adi] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_idioma] las altas ('I') y la versión anterior de cada fila modificada ('U')
+CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
+    ON sgspi.activo_documental_idioma
+    AFTER INSERT, UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           IF EXISTS (SELECT 1
+                      FROM   deleted)
+              AND NOT EXISTS (SELECT 1
+                              FROM   inserted)
+               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_idioma].', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   inserted)
+               RETURN;
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_idioma (
+                       ado_codigo,
+                       idi_codigo,
+                       aid_esta_activo,
+                       per_codigo,
+                       aid_operacion,
+                       aid_usuario_bd,
+                       aid_fecha_cambio
+                   )
+                   SELECT i.ado_codigo,
+                          i.idi_codigo,
+                          i.adi_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
+                   RETURN;
+               END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.idi_codigo = d.idi_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_idioma]; desactive la fila y cree una nueva.', 1;
+           INSERT INTO sgspi.aud_activo_documental_idioma (
+               ado_codigo,
+               idi_codigo,
+               aid_esta_activo,
+               per_codigo,
+               aid_operacion,
+               aid_usuario_bd,
+               aid_fecha_cambio
+           )
+           SELECT d.ado_codigo,
+                  d.idi_codigo,
+                  d.adi_esta_activo,
+                  @per_actor,
+                  'U',
+                  ORIGINAL_LOGIN(),
+                  SYSDATETIMEOFFSET()
+           FROM   deleted AS d
+                  INNER JOIN
+                  inserted AS i
+                  ON i.ado_codigo = d.ado_codigo
+                     AND i.idi_codigo = d.idi_codigo
+           WHERE  EXISTS (SELECT i.adi_esta_activo
+                          EXCEPT
+                          SELECT d.adi_esta_activo);
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [afd] La auditoría no se edita ni se borra
+CREATE OR ALTER TRIGGER sgspi.TR_afd_inmutabilidad
+    ON sgspi.aud_activo_documental_formato_archivo
+    INSTEAD OF UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_formato_archivo] es inmutable y no admite modificaciones ni borrados.', 1;
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [adf] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_formato_archivo] las altas ('I') y la versión anterior de cada fila modificada ('U')
+CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
+    ON sgspi.activo_documental_formato_archivo
+    AFTER INSERT, UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           IF EXISTS (SELECT 1
+                      FROM   deleted)
+              AND NOT EXISTS (SELECT 1
+                              FROM   inserted)
+               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_formato_archivo].', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   inserted)
+               RETURN;
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
+           IF @per_actor IS NULL
+               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           IF NOT EXISTS (SELECT 1
+                          FROM   deleted)
+               BEGIN
+                   INSERT INTO sgspi.aud_activo_documental_formato_archivo (
+                       ado_codigo,
+                       fac_codigo,
+                       afd_esta_activo,
                        per_codigo,
                        afd_operacion,
                        afd_usuario_bd,
@@ -10391,15 +11020,18 @@ DENY INSERT, UPDATE, DELETE
 DENY INSERT, UPDATE, DELETE
     ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
 
--- Columnas inmutables para la aplicación: creador, fechas de control (las mantienen DEFAULT y triggers) y avance derivado de [sga].
+-- Columnas inmutables para la aplicación: creador, consecutivos, fechas de control (las mantienen DEFAULT y triggers) y avance derivado de [sga].
 DENY UPDATE
     ON sgspi.periodo_vigencia (pev_fecha_creacion) TO sgspi_rol_base;
 
 DENY UPDATE
-    ON sgspi.analisis_contexto_factor (per_codigo_creador, per_codigo_aprobador, acf_fecha_creacion, acf_fecha_actualizacion) TO sgspi_rol_base;
+    ON sgspi.analisis_contexto_factor (acf_numero_factor, per_codigo_creador, per_codigo_aprobador, acf_fecha_creacion, acf_fecha_actualizacion) TO sgspi_rol_base;
 
 DENY UPDATE
     ON sgspi.requisito_parte_interesada (per_codigo_creador, per_codigo_aprobador, rpi_fecha_creacion, rpi_fecha_actualizacion) TO sgspi_rol_base;
+
+DENY UPDATE
+    ON sgspi.requisito_parte_interesada_proceso_institucional (rpp_fecha_registro) TO sgspi_rol_base;
 
 DENY UPDATE
     ON sgspi.activo_informacion (per_codigo_creador, per_codigo_aprobador, aci_fecha_creacion, aci_fecha_actualizacion) TO sgspi_rol_base;
@@ -10408,7 +11040,7 @@ DENY UPDATE
     ON sgspi.activo_documental (per_codigo_revisor_archivo, ado_fecha_creacion, ado_fecha_actualizacion) TO sgspi_rol_base;
 
 DENY UPDATE
-    ON sgspi.evento_incertidumbre_activo (per_codigo_creador, per_codigo_validador_lider, per_codigo_revisor_sgspi, per_codigo_aprobador_comite, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
+    ON sgspi.evento_incertidumbre_activo (eia_numero_evento, per_codigo_creador, per_codigo_validador_lider, per_codigo_revisor_sgspi, per_codigo_aprobador_comite, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
 
 DENY UPDATE
     ON sgspi.plan_tratamiento (plt_fecha_creacion, plt_fecha_actualizacion) TO sgspi_rol_base;
@@ -10812,7 +11444,8 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- RLS en lectura [AP-02]: custodios y líderes solo leen registros en su alcance UAA/proceso en las 10 tablas operativas.
+-- RLS en lectura y escritura [AP-02]: custodios y líderes solo leen y escriben registros en su alcance UAA/proceso en las 10 tablas operativas.
+-- BLOCK PREDICATE es obligatorio junto a FILTER PREDICATE: sin él, FILTER oculta inserted en los triggers AFTER y anula sus validaciones/auditoría.
 -- SCHEMABINDING = OFF es obligatorio porque dbo.usuario_general es vista sin SCHEMABINDING en academia3000.
 IF EXISTS (SELECT 1
            FROM   sys.security_policies
@@ -10822,15 +11455,25 @@ IF EXISTS (SELECT 1
 
 CREATE SECURITY POLICY sgspi.spol_alcance_lectura
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
+    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion,
+    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion
     WITH (STATE = ON, SCHEMABINDING = OFF);
 
 
@@ -11379,8 +12022,8 @@ IF (SELECT COUNT(*)
                          AND sp.is_enabled = 1
                          AND (SELECT COUNT(*)
                               FROM   sys.security_predicates AS pr
-                              WHERE  pr.object_id = sp.object_id) = 10)
-    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 109 triggers, 7 vistas, 5 funciones, política RLS spol_alcance_lectura activa con 10 predicados).';
+                              WHERE  pr.object_id = sp.object_id) = 20)
+    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 109 triggers, 7 vistas, 5 funciones, política RLS spol_alcance_lectura activa con 20 predicados).';
 
 DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST(v.nombre AS NVARCHAR (MAX)), N', ')
                                                       FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'),
@@ -11552,7 +12195,9 @@ FROM     dbo.usuario_grupo AS ug
          ON mr.gru_nombre = g.gru_nombre
 WHERE    ug.usg_estado = 1
          AND g.gru_estado = 1
-         AND g.gru_nombre LIKE N'SGSPI[_]%'
+         AND u.state = 1
+         AND u.up IS NOT NULL
+         AND g.gru_nombre LIKE 'SGSPI[_]%'
          AND NOT EXISTS (SELECT 1
                          FROM   cte_membresia_bd AS mb
                          WHERE  mb.login_bd = u.us
@@ -11564,7 +12209,9 @@ SELECT   DISTINCT N'Usuario de BD en rol de actor cuyo login no está en dbo.usu
 FROM     cte_membresia_bd AS mb
 WHERE    NOT EXISTS (SELECT 1
                      FROM   dbo.usuario_general AS u
-                     WHERE  u.us = mb.login_bd)
+                     WHERE  u.us = mb.login_bd
+                            AND u.state = 1
+                            AND u.up IS NOT NULL)
 UNION ALL
 SELECT   N'Usuario de BD en más de un rol SGSPI' AS hallazgo,
          ms.usuario_bd AS usuario,
@@ -11591,6 +12238,8 @@ SELECT   N'Login de rol de actor con varias personas en dbo.usuario_general' AS 
 FROM     dbo.usuario_general AS u
 WHERE    u.us IN (SELECT mb.login_bd
                   FROM   cte_membresia_bd AS mb)
+         AND u.state = 1
+         AND u.up IS NOT NULL
 GROUP BY u.us
 HAVING   COUNT(DISTINCT u.up) > 1
 UNION ALL
