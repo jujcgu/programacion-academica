@@ -1,31 +1,46 @@
 -- Auditoría del servidor y de la base de datos para el esquema [sgspi] (T2, ISO/IEC 27001 A.8.15).
 -- Se ejecuta fuera de DDL_SGSPI_SQLSERVER2019_v2.sql porque CREATE SERVER AUDIT no puede ir dentro de una transacción.
+-- Requiere sysadmin y las variables de sqlcmd BD_SGSPI y RUTA_AUDITORIA (en SSMS, modo SQLCMD):
+--   sqlcmd -S <servidor> -E -b -I -v BD_SGSPI=academia3000 RUTA_AUDITORIA="<carpeta fuera del alcance del DBA de la BD>" -i sql/sgspi/auditoria_servidor.sql
+-- D10: con ON_FAILURE = FAIL_OPERATION, si la auditoría no puede escribir fallan las acciones auditadas en lugar de quedar
+-- sin rastro (como el error 50017). Antes de que MAX_ROLLOVER_FILES borre un archivo, se copia a un almacenamiento fuera
+-- del alcance del DBA, según la política institucional de retención.
 
 USE master;
 GO
 CREATE SERVER AUDIT sgspi_auditoria
-    TO FILE (FILEPATH = N'<ruta fuera del alcance del DBA de la BD>', MAXSIZE = 256 MB, MAX_ROLLOVER_FILES = 100)
-    WITH (ON_FAILURE = CONTINUE);
+    TO FILE (FILEPATH = N'$(RUTA_AUDITORIA)', MAXSIZE = 256 MB, MAX_ROLLOVER_FILES = 100)
+    WITH (ON_FAILURE = FAIL_OPERATION);
 GO
 ALTER SERVER AUDIT sgspi_auditoria WITH (STATE = ON);
 GO
+CREATE SERVER AUDIT SPECIFICATION sgspi_auditoria_servidor
+    FOR SERVER AUDIT sgspi_auditoria
+    ADD (SERVER_ROLE_MEMBER_CHANGE_GROUP),  -- altas y bajas en roles de servidor (sysadmin)
+    ADD (AUDIT_CHANGE_GROUP)                -- cambios o apagado de la propia auditoría
+    WITH (STATE = ON);
+GO
 
-USE academia3000;
+USE $(BD_SGSPI);
 GO
 CREATE DATABASE AUDIT SPECIFICATION sgspi_auditoria_bd
     FOR SERVER AUDIT sgspi_auditoria
     ADD (SCHEMA_OBJECT_CHANGE_GROUP),             -- ALTER de tablas y triggers (incluye DISABLE/ENABLE TRIGGER)
     ADD (DATABASE_ROLE_MEMBER_CHANGE_GROUP),      -- altas y bajas en sgspi_rol_*
+    ADD (DATABASE_PRINCIPAL_CHANGE_GROUP),        -- CREATE/ALTER/DROP USER y ROLE
     ADD (SCHEMA_OBJECT_PERMISSION_CHANGE_GROUP),  -- GRANT/DENY sobre objetos
     ADD (DATABASE_PERMISSION_CHANGE_GROUP),
-    ADD (INSERT, UPDATE, DELETE ON SCHEMA::sgspi BY public)  -- incluye la carga histórica con triggers apagados
+    ADD (INSERT, UPDATE, DELETE ON SCHEMA::sgspi BY public),                -- incluye la carga histórica con triggers apagados
+    ADD (INSERT, UPDATE, DELETE ON OBJECT::dbo.usuario_grupo BY public),    -- quién da grupo SGSPI_* y UAA (alcance, error 50021)
+    ADD (INSERT, UPDATE, DELETE ON OBJECT::dbo.grupo BY public),
+    ADD (SELECT ON OBJECT::sgspi.evento_incertidumbre_activo BY public),     -- lectura del mapa de vulnerabilidades
+    ADD (SELECT ON OBJECT::sgspi.aud_evento_incertidumbre_activo BY public)
     WITH (STATE = ON);
 GO
 
--- Verificación en la instancia tras probar DISABLE TRIGGER y ALTER ROLE ... ADD MEMBER:
--- SELECT event_time, action_id, succeeded, server_principal_name, object_name, statement
--- FROM   sys.fn_get_audit_file(N'<ruta fuera del alcance del DBA de la BD>\*.sqlaudit', DEFAULT, DEFAULT)
--- WHERE  database_name = N'academia3000'
+-- Verificación tras probar DISABLE TRIGGER, ALTER ROLE ... ADD MEMBER, un alta en dbo.usuario_grupo y un SELECT de eia:
+-- SELECT event_time, action_id, succeeded, server_principal_name, database_name, object_name, statement
+-- FROM   sys.fn_get_audit_file(N'$(RUTA_AUDITORIA)\*.sqlaudit', DEFAULT, DEFAULT)
 -- ORDER BY event_time DESC;
 
 -- Consultas de control tras una carga histórica con triggers deshabilitados (AP-04; todas deben devolver 0 filas):

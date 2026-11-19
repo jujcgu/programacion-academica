@@ -78,8 +78,9 @@ sgspi.aud_<tabla> (sección 5.9) con las altas (<aud>_operacion = 'I', con los v
 y la versión anterior de cada fila modificada (<aud>_operacion = 'U'), quién ejecutó la operación (per_codigo de
 ORIGINAL_LOGIN(), error 50017 si no hay persona; también para un DBA) y cuándo. Las tablas aud_* son inmutables
 (error 50016) y el borrado físico de cualquier tabla lo rechaza la FK de su aud_* (547, también a dbo; el trigger, 50010,
-queda como segunda barrera). La auditoría del servidor
-(DISABLE TRIGGER, roles y permisos) se configura fuera de la transacción en sql/sgspi/auditoria_servidor.sql.
+queda como segunda barrera). La auditoría del servidor (DISABLE TRIGGER, roles de BD y de servidor, usuarios, permisos,
+DML de [sgspi] y de dbo.usuario_grupo/dbo.grupo, lecturas de [eia] y cambios de la propia auditoría) se configura fuera de
+la transacción en sql/sgspi/auditoria_servidor.sql.
 AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
 tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno

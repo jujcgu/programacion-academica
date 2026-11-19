@@ -89,6 +89,19 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
                                              AND cc.name LIKE N''CK[_]___[_]operacion'')))
     THROW 51000, N''hay tablas sin auditoría o con columnas distintas'', 1;', 0;
 
+-- T1: cada tabla tiene un trigger que escribe en su aud_* y cada aud_* su trigger INSTEAD OF de inmutabilidad.
+-- Si un reemplazo masivo trunca uno de los 112 triggers (como en d0df220 y 17d5b8b), esta prueba lo nombra.
+EXECUTE #espera N'T1 cada tabla tiene su trigger de auditoría y cada aud_* su trigger de inmutabilidad', N'
+IF EXISTS (SELECT 1 FROM sys.tables AS t
+           WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+                  AND ((t.name LIKE N''aud[_]%''
+                        AND NOT EXISTS (SELECT 1 FROM sys.triggers AS tr WHERE tr.parent_id = t.object_id AND tr.is_instead_of_trigger = 1))
+                       OR (t.name NOT LIKE N''aud[_]%''
+                           AND NOT EXISTS (SELECT 1 FROM sys.triggers AS tr
+                                           INNER JOIN sys.sql_expression_dependencies AS d ON d.referencing_id = tr.object_id
+                                           WHERE tr.parent_id = t.object_id AND d.referenced_id = OBJECT_ID(N''sgspi.aud_'' + t.name)))))
+    THROW 51000, N''hay tablas sin trigger de auditoría o aud_* sin trigger de inmutabilidad'', 1;', 0;
+
 -- Guarda de los EXCEPT de transición: toda columna de contenido de las 5 tablas con flujo debe estar en el EXCEPT previo a aud_*
 EXECUTE #espera N'AP-05 toda columna de contenido de las tablas con flujo está en el EXCEPT de su trigger', N'
 IF EXISTS (SELECT 1

@@ -16,6 +16,7 @@ Escala: **5** sin hallazgos · **4** detalles menores · **3** brechas relevante
 | Desplegar HEAD con el parche F0.1 | Despliega en ~1 s: 100 tablas, 112 triggers, 7 vistas, 3 funciones. |
 | `PRUEBAS_DDL_SGSPI_v2.sql` sobre el parche | **185 de 188 pasan.** Las 3 fallas (L180, L315, L728) esperan 50010/50016 al borrar y reciben 547 de la FK `aud_* → origen` (dimensión 2). |
 | Tras aplicar la fase 0 en el repo | Despliega con `-b`, **188 de 188** pruebas pasan y un lote roto sin `-b` revierte todo. |
+| Tras aplicar la fase 1 | **189 de 189** (se suma T1) y la auditoría del servidor del repo registra lo probado en T3. |
 
 Origen del defecto:
 - `d0df220` ("Datos sensibles") truncó `TR_aid_inmutabilidad`.
@@ -174,6 +175,34 @@ La guarda quedó con el formato del script y un `shortcut:` sobre los cuatro nú
 
 ### Fase 1 — Trazabilidad (dimensión 10)
 
+**Estado:** aplicada el 2026-11-19.
+- **T1:** está en PRUEBAS; el ciclo F0.4 da **189 de 189**.
+- **T2 y D10:** van en `sql/sgspi/auditoria_servidor.sql`, que ahora toma las variables `BD_SGSPI` y `RUTA_AUDITORIA`. Se actualizaron la cabecera AP-01 del DDL y la especificación (RN-INT-17 y 12.1).
+- **T3:** el script del repo se ejecutó contra la base desechable en la instancia local, con los archivos en la carpeta `DATA` de la instancia. La auditoría quedó `STARTED` con `FAIL OPERATION`. Después se borraron la auditoría, sus especificaciones, los archivos y la base.
+
+Resultado de T3 en `sys.fn_get_audit_file`:
+
+| Acción probada | Evento |
+|---|---|
+| `DISABLE TRIGGER` / `ENABLE TRIGGER` | `AL` (las dos) |
+| `CREATE USER … WITHOUT LOGIN` | `CR` |
+| `ALTER ROLE sgspi_rol_lider_propietario ADD MEMBER` | `APRL` |
+| `GRANT SELECT` sobre un objeto | `G` |
+| Alta en `dbo.grupo` y `dbo.usuario_grupo` | `IN` (las dos) |
+| `SELECT` de `eia` y de `aud_evento_incertidumbre_activo` | `SL` (las dos) |
+| `SELECT` de `vw_matriz_tratamiento_riesgos` | `SL` sobre `eia`: la lectura por vista también queda |
+| `UPDATE` en `sgspi.parte_interesada` | `UP`, más el `IN` que hace su trigger en `aud_parte_interesada` (unos 2 eventos por escritura) |
+| `TRUNCATE TABLE sgspi.aud_idioma_catalogo` como `db_owner` | `AL` + `DL`. **Vació la tabla (2 → 0 filas) sin pasar por el trigger de inmutabilidad**; queda el hecho, no el contenido |
+| `ALTER SERVER AUDIT SPECIFICATION … STATE = OFF` | `AL`. El `ON` siguiente no deja evento (el grupo estaba apagado), pero el hueco se ve |
+| Creación de la propia especificación de BD | `CR` |
+
+Sin probar:
+- `SERVER_ROLE_MEMBER_CHANGE_GROUP`, porque requiere crear un login de prueba;
+- el comportamiento de `FAIL_OPERATION` con el destino caído;
+- la ejecución en producción, que corresponde al DBA.
+
+El riesgo residual del `TRUNCATE` quedó escrito en RN-INT-17.
+
 5. **T1 Prueba estructural [S].** En PRUEBAS, después de L90:
    ```sql
    EXECUTE #espera N'AP-01 cada tabla tiene su trigger de auditoría y cada aud_* su trigger de inmutabilidad', N'
@@ -228,7 +257,7 @@ La guarda quedó con el formato del script y un `shortcut:` sobre los cuatro nú
 
 | # | Pregunta | Recomendación |
 |---|---|---|
-| D10 | ¿Qué hace la auditoría del servidor si no puede escribir, y qué se hace con los archivos que rota? | `ON_FAILURE = FAIL_OPERATION`, coherente con 50017 ("no hay cambio sin rastro"): solo fallan las acciones auditadas. Los archivos rotados se copian a un almacenamiento fuera del alcance del DBA antes de que `MAX_ROLLOVER_FILES` los borre. |
+| D10 | ¿Qué hace la auditoría del servidor si no puede escribir, y qué se hace con los archivos que rota? | `ON_FAILURE = FAIL_OPERATION`, coherente con 50017 ("no hay cambio sin rastro"): solo fallan las acciones auditadas. Los archivos rotados se copian a un almacenamiento fuera del alcance del DBA antes de que `MAX_ROLLOVER_FILES` los borre. **Aplicada la recomendada con la fase 1**; volver a `CONTINUE` es una línea del script. |
 | D11 | ¿Convertir `RA-nn`/`OA-nn` en número + identificador calculado (A2)? | Sí, si se toca `TR_eia` por otra razón. Si no, dejarlo: funciona y está probado. |
 | D12 | ¿Generar la auditoría desde metadatos (A3)? | No por ahora: A1 cubre el riesgo con esfuerzo S. Sí, si el esquema seguirá creciendo. |
 | D13 | ¿Un activo puede tener datos personales de varias categorías? | Si sí, una tabla puente activo–categoría. Si no, documentar que se registra la más restrictiva. |
@@ -255,11 +284,11 @@ La guarda quedó con el formato del script y un `shortcut:` sobre los cuatro nú
 
 ## 6. Efecto esperado
 
-| Dimensión | Al revisar | Tras la fase 0 | Tras el plan |
-|---|:-:|:-:|:-:|
-| 14 Compatibilidad de despliegue | 2 | 4 (quedan la comprobación (g) y la base escrita a mano en `auditoria_servidor.sql`) | 5 |
-| 10 Trazabilidad | 3 | 3 (inmutabilidad y auditoría de `adm` ya restauradas; faltan T1–T3) | 4 (5 con T3 probado en producción) |
-| 3 Antipatrones | 3 | 3 (el ciclo F0.4 ya existe; falta T1 para cerrar A1) | 4 (5 con A3) |
+| Dimensión | Al revisar | Tras la fase 0 | Tras la fase 1 | Tras el plan |
+|---|:-:|:-:|:-:|:-:|
+| 14 Compatibilidad de despliegue | 2 | 4 (quedan la comprobación (g) y la base escrita a mano en `auditoria_servidor.sql`) | 4 (la base ya es variable; queda (g)) | 5 |
+| 10 Trazabilidad | 3 | 3 (inmutabilidad y auditoría de `adm` ya restauradas; faltan T1–T3) | 4 (5 con T3 en producción) | 5 |
+| 3 Antipatrones | 3 | 3 (el ciclo F0.4 ya existe; falta T1 para cerrar A1) | 4 (A1 cerrado) | 4 (5 con A3) |
 
 Fuera del DDL siguen los puntos de la ronda 2: `TrustServerCertificate=true` y la clave SQL real en `$_SESSION`. Además, `clases/Inicio_sesion.php` (L50) arma `where us = '{$txtUsuario}'` por concatenación con la cuenta de login, lo que permite inyección SQL.
 
