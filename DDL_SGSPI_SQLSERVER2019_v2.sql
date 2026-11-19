@@ -154,13 +154,15 @@ eia_numero_evento por vigencia y naturaleza, act_numero_orden por plan), con rei
 ==================================================================================================*/
 -- Opciones SET obligatorias para toda sesión, script o job del Agente SQL que ejecute DML sobre [sgspi]
 -- (sqlcmd requiere -I para QUOTED_IDENTIFIER ON): los índices filtrados (UX_*) y las columnas calculadas
--- indexadas (upc, mvr, eia) fallan con el error 1934 si alguna de estas opciones está en OFF.
+-- indexadas (upc, mvr, eia) fallan con el error 1934 si alguna de estas opciones no tiene este valor.
 SET ANSI_NULLS ON;
-
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
 SET QUOTED_IDENTIFIER ON;
-
+SET NUMERIC_ROUNDABORT OFF;
 SET NOCOUNT ON;
-
 SET XACT_ABORT ON;
 
 
@@ -171,10 +173,12 @@ Si la verificación falla, SET NOEXEC ON hace que el resto del script se compile
 Si pasa, todo el despliegue corre en UNA transacción: ante un error, XACT_ABORT la revierte y la guarda
 "IF @@TRANCOUNT = 0 SET NOEXEC ON" que abre cada lote impide que los lotes siguientes se ejecuten sueltos,
 de modo que nunca queda un despliegue a medias. El script termina con COMMIT y SET NOEXEC OFF.
-La transacción retiene bloqueos de esquema sobre las tablas de [dbo] referenciadas hasta el COMMIT:
-desplegar en ventana de baja carga.
-Un error de sintaxis (nivel 15) no revierte la transacción, ni siquiera con XACT_ABORT: la guarda previa al COMMIT cuenta
-tablas, triggers, vistas y funciones y, si falta alguno, revierte todo (DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS), con o sin "sqlcmd -b".
+VENTANA DE MANTENIMIENTO: la transacción retiene bloqueos de esquema (Sch-M) sobre dbo.persona, dbo.uaa,
+dbo.cargo, dbo.espacio y dbo.sub_sede hasta el COMMIT (bloquea lecturas y escrituras concurrentes sobre
+esas tablas); se conservan las FK hacia dbo.persona en negocio y aud_* para integridad referencial [AP-01].
+Un error de sintaxis (nivel 15) no revierte la transacción, ni siquiera con XACT_ABORT: la guarda previa al COMMIT valida
+conteos, objetos nominales clave, paridad aud_* y compilación de vistas (sp_refreshview); si algo falla, revierte todo
+(DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS), con o sin "sqlcmd -b".
 ==================================================================================================*/
 DECLARE @errores AS NVARCHAR (2000) = N'';
 
@@ -218,7 +222,8 @@ VALUES                     (N'dbo.uaa', N'uaa_codigo'),
                            (N'dbo.usuario_grupo', N'usg_estado'),
                            (N'dbo.usuario_general', N'uid'),
                            (N'dbo.usuario_general', N'up'),
-                           (N'dbo.usuario_general', N'us');
+                           (N'dbo.usuario_general', N'us'),
+                           (N'dbo.usuario_general', N'state');
 
 DECLARE @faltantes AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(tabla, N'.', columna), N', ')
                                          FROM   @dependencias
@@ -226,6 +231,37 @@ DECLARE @faltantes AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(tabla, N'.', c
 
 IF @faltantes IS NOT NULL
     SET @errores += N' Faltan dependencias del esquema corporativo: ' + @faltantes + N'.';
+
+DECLARE @sin_clave_fk AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(v.tabla, N'(', v.columna, N')'), N', ')
+                                            FROM   (VALUES (N'dbo.uaa', N'uaa_codigo'),
+                                                           (N'dbo.cargo', N'car_codigo'),
+                                                           (N'dbo.persona', N'per_codigo'),
+                                                           (N'dbo.espacio', N'esp_codigo'),
+                                                           (N'dbo.sub_sede', N'sus_codigo')) AS v(tabla, columna)
+                                            WHERE  COL_LENGTH(v.tabla, v.columna) IS NOT NULL
+                                                   AND NOT EXISTS (SELECT 1
+                                                                   FROM   sys.indexes AS ix
+                                                                          INNER JOIN
+                                                                          sys.index_columns AS ic
+                                                                          ON ic.object_id = ix.object_id
+                                                                             AND ic.index_id = ix.index_id
+                                                                             AND ic.is_included_column = 0
+                                                                          INNER JOIN
+                                                                          sys.columns AS c
+                                                                          ON c.object_id = ic.object_id
+                                                                             AND c.column_id = ic.column_id
+                                                                   WHERE  ix.object_id = OBJECT_ID(v.tabla)
+                                                                          AND OBJECTPROPERTY(ix.object_id, N'IsUserTable') = 1
+                                                                          AND ix.is_unique = 1
+                                                                          AND ix.is_disabled = 0
+                                                                          AND ix.has_filter = 0
+                                                                          AND ix.is_hypothetical = 0
+                                                                   GROUP BY ix.index_id
+                                                                   HAVING COUNT(*) = 1
+                                                                          AND MAX(c.name) = v.columna));
+
+IF @sin_clave_fk IS NOT NULL
+    SET @errores += N' Tablas de [dbo] sin PK/UQ activa para FK: ' + @sin_clave_fk + N'.';
 
 IF LEN(@errores) > 0
     BEGIN
@@ -244,7 +280,11 @@ IF NOT EXISTS (SELECT 1
         EXECUTE (N'CREATE SCHEMA sgspi AUTHORIZATION dbo;');
     END
 
-EXECUTE sys.sp_addextendedproperty N'sgspi_version', N'2.1', N'SCHEMA', N'sgspi';
+IF EXISTS (SELECT 1
+           FROM   sys.fn_listextendedproperty(N'sgspi_version', N'SCHEMA', N'sgspi', NULL, NULL, NULL, NULL))
+    EXECUTE sys.sp_updateextendedproperty N'sgspi_version', N'2.1', N'SCHEMA', N'sgspi';
+ELSE
+    EXECUTE sys.sp_addextendedproperty N'sgspi_version', N'2.1', N'SCHEMA', N'sgspi';
 
 
 GO
@@ -8966,290 +9006,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                        ado_codigo,
                        fac_codigo,
                        afd_esta_activo,
-                       per_codigo,
-                       afd_operacion,
-                       afd_usuario_bd,
-                       afd_fecha_cambio
-                   )
-                   SELECT i.ado_codigo,
-                          i.fac_codigo,
-                          i.adf_esta_activo,
-                          @per_actor,
-                          'I',
-                          ORIGINAL_LOGIN(),
-                          SYSDATETIMEOFFSET()
-                   FROM   inserted AS i;
-                   RETURN;
-               END
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo
-                                                AND i.fac_codigo = d.fac_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_formato_archivo]; desactive la fila y cree una nueva.', 1;
-           INSERT INTO sgspi.aud_activo_documental_formato_archivo (
-               ado_codigo,
-               fac_codigo,
-               afd_esta_activo,
-               per_codigo,
-               afd_operacion,
-               afd_usuario_bd,
-               afd_fecha_cambio
-           )
-           SELECT d.ado_codigo,
-                  d.fac_codigo,
-                  d.adf_esta_activo,
-                  @per_actor,
-                  'U',
-                  ORIGINAL_LOGIN(),
-                  SYSDATETIMEOFFSET()
-           FROM   deleted AS d
-                  INNER JOIN
-                  inserted AS i
-                  ON i.ado_codigo = d.ado_codigo
-                     AND i.fac_codigo = d.fac_codigo
-           WHERE  EXISTS (SELECT i.adf_esta_activo
-                          EXCEPT
-                          SELECT d.adf_esta_activo);
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [aau] La auditoría no se edita ni se borra
-CREATE OR ALTER TRIGGER sgspi.TR_aau_inmutabilidad
-    ON sgspi.aud_activo_documental_unidad_productora
-    INSTEAD OF UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_unidad_productora] es inmutable y no admite modificaciones ni borrados.', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [adu] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_unidad_productora] las altas ('I') y la versión anterior de cada fila modificada ('U')
-CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
-    ON sgspi.activo_documental_unidad_productora
-    AFTER INSERT, UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF EXISTS (SELECT 1
-                      FROM   deleted)
-              AND NOT EXISTS (SELECT 1
-                              FROM   inserted)
-               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_unidad_productora].', 1;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-           IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
-               BEGIN
-                   INSERT INTO sgspi.aud_activo_documental_idioma (
-                       ado_codigo,
-                       idi_codigo,
-                       aid_esta_activo,
-                       per_codigo,
-                       aid_operacion,
-                       aid_usuario_bd,
-                       aid_fecha_cambio
-                   )
-                   SELECT i.ado_codigo,
-                          i.idi_codigo,
-                          i.adi_esta_activo,
-                          @per_actor,
-                          'I',
-                          ORIGINAL_LOGIN(),
-                          SYSDATETIMEOFFSET()
-                   FROM   inserted AS i;
-                   RETURN;
-               END
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo
-                                                AND i.idi_codigo = d.idi_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_idioma]; desactive la fila y cree una nueva.', 1;
-           INSERT INTO sgspi.aud_activo_documental_idioma (
-               ado_codigo,
-               idi_codigo,
-               aid_esta_activo,
-               per_codigo,
-               aid_operacion,
-               aid_usuario_bd,
-               aid_fecha_cambio
-           )
-           SELECT d.ado_codigo,
-                  d.idi_codigo,
-                  d.adi_esta_activo,
-                  @per_actor,
-                  'U',
-                  ORIGINAL_LOGIN(),
-                  SYSDATETIMEOFFSET()
-           FROM   deleted AS d
-                  INNER JOIN
-                  inserted AS i
-                  ON i.ado_codigo = d.ado_codigo
-                     AND i.idi_codigo = d.idi_codigo
-           WHERE  EXISTS (SELECT i.adi_esta_activo
-                          EXCEPT
-                          SELECT d.adi_esta_activo);
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [afd] La auditoría no se edita ni se borra
-CREATE OR ALTER TRIGGER sgspi.TR_afd_inmutabilidad
-    ON sgspi.aud_activo_documental_formato_archivo
-    INSTEAD OF UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_formato_archivo] es inmutable y no admite modificaciones ni borrados.', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [adf] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_formato_archivo] las altas ('I') y la versión anterior de cada fila modificada ('U')
-CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
-    ON sgspi.activo_documental_formato_archivo
-    AFTER INSERT, UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF EXISTS (SELECT 1
-                      FROM   deleted)
-              AND NOT EXISTS (SELECT 1
-                              FROM   inserted)
-               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_formato_archivo].', 1;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
-           IF NOT EXISTS (SELECT 1
-                          FROM   deleted)
-               BEGIN
-                   INSERT INTO sgspi.aud_activo_documental_formato_archivo (
-                       ado_codigo,
-                       fac_codigo,
-                       afd_esta_activo,
-                       per_codigo,
-                       afd_operacion,
-                       afd_usuario_bd,
-                       afd_fecha_cambio
-                   )
-                   SELECT i.ado_codigo,
-                          i.fac_codigo,
-                          i.adf_esta_activo,
-                          @per_actor,
-                          'I',
-                          ORIGINAL_LOGIN(),
-                          SYSDATETIMEOFFSET()
-                   FROM   inserted AS i;
-                   RETURN;
-               END
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo
-                                                AND i.fac_codigo = d.fac_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_formato_archivo]; desactive la fila y cree una nueva.', 1;
-           INSERT INTO sgspi.aud_activo_documental_formato_archivo (
-               ado_codigo,
-               fac_codigo,
-               afd_esta_activo,
-               per_codigo,
-               afd_operacion,
-               afd_usuario_bd,
-               afd_fecha_cambio
-           )
-           SELECT d.ado_codigo,
-                  d.fac_codigo,
-                  d.adf_esta_activo,
-                  @per_actor,
-                  'U',
-                  ORIGINAL_LOGIN(),
-                  SYSDATETIMEOFFSET()
-           FROM   deleted AS d
-                  INNER JOIN
-                  inserted AS i
-                  ON i.ado_codigo = d.ado_codigo
-                     AND i.fac_codigo = d.fac_codigo
-           WHERE  EXISTS (SELECT i.adf_esta_activo
-                          EXCEPT
-                          SELECT d.adf_esta_activo);
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [aau] La auditoría no se edita ni se borra
-CREATE OR ALTER TRIGGER sgspi.TR_aau_inmutabilidad
-    ON sgspi.aud_activo_documental_unidad_productora
-    INSTEAD OF UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_unidad_productora] es inmutable y no admite modificaciones ni borrados.', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [adu] Bloquea el borrado físico y archiva en [sgspi].[aud_activo_documental_unidad_productora] las altas ('I') y la versión anterior de cada fila modificada ('U')
-CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
-    ON sgspi.activo_documental_unidad_productora
-    AFTER INSERT, UPDATE, DELETE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF EXISTS (SELECT 1
-                      FROM   deleted)
-              AND NOT EXISTS (SELECT 1
-                              FROM   inserted)
-               THROW 50010, N'Operación denegada: No se permite eliminar físicamente registros de [sgspi].[activo_documental_unidad_productora].', 1;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
@@ -11484,7 +11240,8 @@ IF @@TRANCOUNT = 0
 
 GO
 -- [AP-19] Un lote que no compila (error de nivel 15) no revierte la transacción: antes del COMMIT se exige el esquema completo.
--- shortcut: compara cantidades, no nombres; actualizar los cuatro números al agregar o quitar objetos.
+DECLARE @fallos AS NVARCHAR (2000) = N'';
+
 IF (SELECT COUNT(*)
     FROM   sys.tables
     WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 98
@@ -11501,11 +11258,108 @@ IF (SELECT COUNT(*)
        FROM   sys.objects
        WHERE  schema_id = SCHEMA_ID(N'sgspi')
               AND type = N'IF') <> 3
+    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 109 triggers, 7 vistas, 3 funciones).';
+
+DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST(v.nombre AS NVARCHAR (MAX)), N', ')
+                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'),
+                                                                     (N'sgspi.transicion_estado_flujo', N'U'),
+                                                                     (N'sgspi.analisis_contexto_factor', N'U'),
+                                                                     (N'sgspi.requisito_parte_interesada', N'U'),
+                                                                     (N'sgspi.activo_informacion', N'U'),
+                                                                     (N'sgspi.activo_documental', N'U'),
+                                                                     (N'sgspi.evento_incertidumbre_activo', N'U'),
+                                                                     (N'sgspi.plan_tratamiento', N'U'),
+                                                                     (N'sgspi.actividad_tratamiento', N'U'),
+                                                                     (N'sgspi.seguimiento_actividad', N'U'),
+                                                                     (N'sgspi.evaluacion_aplicabilidad_control', N'U'),
+                                                                     (N'sgspi.ufn_persona_sesion', N'IF'),
+                                                                     (N'sgspi.ufn_proceso_en_alcance', N'IF'),
+                                                                     (N'sgspi.ufn_activo_en_alcance', N'IF'),
+                                                                     (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'),
+                                                                     (N'sgspi.vw_consolidado_dofa', N'V'),
+                                                                     (N'sgspi.vw_resumen_activos_criticidad', N'V'),
+                                                                     (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'),
+                                                                     (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'),
+                                                                     (N'sgspi.vw_inventario_activo_documental_mr04', N'V'),
+                                                                     (N'sgspi.vw_controles_atributos_iso27002', N'V'),
+                                                                     (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'),
+                                                                     (N'sgspi.TR_sga_inmutabilidad', N'TR'),
+                                                                     (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
+                                                      WHERE  OBJECT_ID(v.nombre, v.tipo) IS NULL), 1000);
+
+IF @objetos_faltantes IS NOT NULL
+    SET @fallos += N' Faltan objetos clave: ' + @objetos_faltantes + N'.';
+
+DECLARE @roles_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.rol, N', ')
+                                              FROM   (VALUES (N'sgspi_rol_base'),
+                                                             (N'sgspi_rol_custodio_operador'),
+                                                             (N'sgspi_rol_lider_propietario'),
+                                                             (N'sgspi_rol_gestor_documental'),
+                                                             (N'sgspi_rol_oficial_seguridad_privacidad'),
+                                                             (N'sgspi_rol_comite_direccion'),
+                                                             (N'sgspi_rol_auditor_control'),
+                                                             (N'sgspi_rol_consulta')) AS v(rol)
+                                              WHERE  DATABASE_PRINCIPAL_ID(v.rol) IS NULL);
+
+IF @roles_faltantes IS NOT NULL
+    SET @fallos += N' Faltan roles: ' + @roles_faltantes + N'.';
+
+DECLARE @aud_rotas AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST(t.name AS NVARCHAR (MAX)), N', ')
+                                              FROM   sys.tables AS t
+                                              WHERE  t.schema_id = SCHEMA_ID(N'sgspi')
+                                                     AND ((t.name LIKE N'aud[_]%'
+                                                           AND NOT EXISTS (SELECT 1
+                                                                           FROM   sys.triggers AS tr
+                                                                           WHERE  tr.parent_id = t.object_id
+                                                                                  AND tr.is_instead_of_trigger = 1))
+                                                          OR (t.name NOT LIKE N'aud[_]%'
+                                                              AND (OBJECT_ID(N'sgspi.aud_' + t.name, N'U') IS NULL
+                                                                   OR NOT EXISTS (SELECT 1
+                                                                                  FROM   sys.triggers AS tr
+                                                                                         INNER JOIN
+                                                                                         sys.sql_expression_dependencies AS d
+                                                                                         ON d.referencing_id = tr.object_id
+                                                                                  WHERE  tr.parent_id = t.object_id
+                                                                                         AND d.referenced_id = OBJECT_ID(N'sgspi.aud_' + t.name)))))), 1000);
+
+IF @aud_rotas IS NOT NULL
+    SET @fallos += N' Tablas sin paridad de auditoría/trigger: ' + @aud_rotas + N'.';
+
+IF LEN(@fallos) > 0
     BEGIN
         ROLLBACK TRANSACTION;
-        RAISERROR (N'DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS: faltan objetos del esquema (un lote no compiló; ver mensajes anteriores).', 16, 1);
+        RAISERROR (N'DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS:%s', 16, 1, @fallos);
         SET NOEXEC ON;
     END
+ELSE
+    BEGIN TRY
+        EXECUTE sys.sp_refreshview N'sgspi.vw_usuario_rol_alcance_sgspi';
+        EXECUTE sys.sp_refreshview N'sgspi.vw_consolidado_dofa';
+        EXECUTE sys.sp_refreshview N'sgspi.vw_resumen_activos_criticidad';
+        EXECUTE sys.sp_refreshview N'sgspi.vw_matriz_tratamiento_riesgos';
+        EXECUTE sys.sp_refreshview N'sgspi.vw_desglose_ccd_trd_mr04';
+        EXECUTE sys.sp_refreshview N'sgspi.vw_inventario_activo_documental_mr04';
+        EXECUTE sys.sp_refreshview N'sgspi.vw_controles_atributos_iso27002';
+    END TRY
+    BEGIN CATCH
+        DECLARE @err_vista AS NVARCHAR (1500) = ERROR_MESSAGE();
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+        RAISERROR (N'DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS: error al compilar vista (%s).', 16, 1, @err_vista);
+        SET NOEXEC ON;
+    END CATCH
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
 
 
 GO

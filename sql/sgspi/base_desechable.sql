@@ -21,7 +21,7 @@ CREATE TABLE dbo.espacio (esp_codigo INT IDENTITY(1,1) NOT FOR REPLICATION NOT N
 CREATE TABLE dbo.sub_sede (sus_codigo INT IDENTITY(1,1) NOT FOR REPLICATION NOT NULL CONSTRAINT PK_sub_sede_1 PRIMARY KEY NONCLUSTERED, sus_nombre VARCHAR(50) NOT NULL, sed_codigo INT NOT NULL);
 CREATE TABLE dbo.grupo (gru_codigo INT IDENTITY(1,1) NOT FOR REPLICATION NOT NULL CONSTRAINT PK_grupo PRIMARY KEY NONCLUSTERED, gru_nombre VARCHAR(100) NOT NULL, gru_estado INT NULL CONSTRAINT DF_grupo_gru_estado DEFAULT 1);
 CREATE TABLE dbo.usuario_grupo (usg_codigo INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_usuario_grupo PRIMARY KEY CLUSTERED, usg_usuario INT NULL, usg_grupo INT NULL, usg_uaa INT NULL, usg_estado TINYINT NULL CONSTRAINT DF_usuario_grupo_usg_estado_1 DEFAULT 1);
-CREATE TABLE dbo.usuario_general (uid INT IDENTITY(1,1) NOT NULL PRIMARY KEY, up INT NULL, us VARCHAR(100) NOT NULL);
+CREATE TABLE dbo.usuario_general (uid INT IDENTITY(1,1) NOT NULL PRIMARY KEY, up INT NULL, us VARCHAR(100) NOT NULL, state TINYINT NOT NULL CONSTRAINT DF_usuario_general_state DEFAULT 1);
 CREATE INDEX IX_usuario_general_us ON dbo.usuario_general (us);
 CREATE INDEX IX_usuario_grupo_usg_usuario ON dbo.usuario_grupo (usg_usuario);
 GO
