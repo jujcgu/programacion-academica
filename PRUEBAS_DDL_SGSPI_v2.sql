@@ -90,7 +90,7 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
     THROW 51000, N''hay tablas sin auditoría o con columnas distintas'', 1;', 0;
 
 -- T1: cada tabla tiene un trigger que escribe en su aud_* y cada aud_* su trigger INSTEAD OF de inmutabilidad.
--- Si un reemplazo masivo trunca uno de los 109 triggers (como en d0df220 y 17d5b8b), esta prueba lo nombra.
+-- Si un reemplazo masivo trunca uno de los 99 triggers (como en d0df220 y 17d5b8b), esta prueba lo nombra.
 EXECUTE #espera N'T1 cada tabla tiene su trigger de auditoría y cada aud_* su trigger de inmutabilidad', N'
 IF EXISTS (SELECT 1 FROM sys.tables AS t
            WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
@@ -1094,6 +1094,155 @@ UPDATE dbo.uaa SET uaa_estado = 0 WHERE uaa_codigo = 1;
 IF EXISTS (SELECT 1 FROM sgspi.vw_usuario_rol_alcance_sgspi WHERE uaa_codigo = 1)
     THROW 51000, N''uaa con uaa_estado=0 siguió en vw_usuario_rol_alcance_sgspi'', 1;
 ROLLBACK;', 0;
+
+
+GO
+-- ======================= 10. Pruebas Fase 3 (consolidación de triggers, ROWVERSION, sga, vistas, RCSI) =======================
+EXECUTE #sesion_como 1;
+
+EXECUTE #espera N'Fase 3 triggers: 99 triggers en [sgspi] y 0 triggers TR_*_bloquear_padre_no_editable', N'
+IF (SELECT COUNT(*) FROM sys.triggers AS tr INNER JOIN sys.tables AS t ON t.object_id = tr.parent_id WHERE t.schema_id = SCHEMA_ID(N''sgspi'')) <> 99
+   OR EXISTS (SELECT 1 FROM sys.triggers AS tr INNER JOIN sys.tables AS t ON t.object_id = tr.parent_id WHERE t.schema_id = SCHEMA_ID(N''sgspi'') AND tr.name LIKE N''TR[_]%[_]bloquear[_]padre[_]no[_]editable'')
+    THROW 51000, N''conteo de triggers inesperado o quedan triggers bloquear_padre_no_editable'', 1;', 0;
+
+EXECUTE #espera N'Fase 3 single UPDATE: sin doble UPDATE interno ni doble bump de ROWVERSION en TR_acf, TR_rpi, TR_aci, TR_eia y TR_plt', N'
+-- Verifica que cada trigger combine fecha + firmas en 1 solo UPDATE sobre su tabla en la rama UPDATE
+IF EXISTS (SELECT 1
+           FROM   (VALUES (N''sgspi.TR_acf_integridad_y_actualizacion'', 1),
+                          (N''sgspi.TR_rpi_integridad_y_actualizacion'', 1),
+                          (N''sgspi.TR_aci_integridad_y_actualizacion'', 1),
+                          (N''sgspi.TR_eia_integridad_y_actualizacion'', 1),
+                          (N''sgspi.TR_plt_integridad_y_actualizacion'', 2)) AS v(nombre, max_updates) -- TR_plt: 1 en rama UPDATE + 1 en rama INSERT
+           WHERE  (LEN(OBJECT_DEFINITION(OBJECT_ID(v.nombre, N''TR'')))
+                   - LEN(REPLACE(OBJECT_DEFINITION(OBJECT_ID(v.nombre, N''TR'')), N''UPDATE t'', N''''))) / LEN(N''UPDATE t'') > v.max_updates)
+    THROW 51000, N''algún trigger mantiene doble UPDATE sobre su propia tabla'', 1;
+-- Verifica en ejecución que fecha + firma/dictamen se actualizan juntas en una sola escritura interna
+BEGIN TRAN;
+UPDATE sgspi.analisis_contexto_factor SET acf_estado_registro = N''EN_REVISION_SGSPI'' WHERE acf_numero_factor = 1;
+IF (SELECT per_codigo_aprobador FROM sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1) IS NOT NULL
+    THROW 51000, N''TR_acf no limpió per_codigo_aprobador'', 1;
+UPDATE sgspi.requisito_parte_interesada SET rpi_estado_registro = N''EN_REVISION_SGSPI'' WHERE rpi_codigo = 1;
+IF (SELECT per_codigo_aprobador FROM sgspi.requisito_parte_interesada WHERE rpi_codigo = 1) IS NOT NULL
+    THROW 51000, N''TR_rpi no limpió per_codigo_aprobador'', 1;
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''EN_REVISION_SGSPI'' WHERE aci_codigo_inventario = N''INV-5'';
+IF (SELECT per_codigo_aprobador FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-5'') IS NOT NULL
+    THROW 51000, N''TR_aci no limpió per_codigo_aprobador'', 1;
+INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_numero_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
+VALUES (1, 99, N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Single UPDATE'', 1, 1, 1);
+DECLARE @eia INT = SCOPE_IDENTITY();
+INSERT sgspi.plan_tratamiento (eia_codigo, plt_naturaleza_evento, etc_codigo, plt_justificacion_estrategia, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_fecha_inicio, plt_fecha_fin, plt_recursos_humanos_tecnicos, plt_recursos_economicos_desc, plt_nombre_indicador_kpi, plt_meta_indicador_kpi)
+VALUES (@eia, N''RIESGO'', 1, N''j'', 1, 1, ''2026-01-01'', ''2026-12-31'', N''r'', N''r'', N''k'', 100);
+DECLARE @plt INT = SCOPE_IDENTITY();
+INSERT sgspi.actividad_tratamiento (plt_codigo, act_numero_orden, act_descripcion_actividad, car_codigo, uaa_codigo, act_fecha_compromiso)
+VALUES (@plt, 1, N''Act 1'', 1, 1, ''2026-06-30'');
+DECLARE @act INT = SCOPE_IDENTITY();
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES (@act, 1, 100, N''Completada'');
+UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''EN_CURSO'' WHERE act_codigo = @act;
+UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''COMPLETADA'' WHERE act_codigo = @act;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_VALIDACION_LIDER'' WHERE eia_codigo = @eia;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_fecha_actualizacion = ''2000-01-01T00:00:00+00:00'' WHERE eia_codigo = @eia;
+UPDATE dbo.usuario_general SET up = 2 WHERE us = ORIGINAL_LOGIN();
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_REVISION_SGSPI'' WHERE eia_codigo = @eia;
+IF NOT EXISTS (SELECT 1 FROM sgspi.evento_incertidumbre_activo WHERE eia_codigo = @eia AND per_codigo_validador_lider = 2 AND eia_fecha_actualizacion > ''2000-01-01T00:00:00+00:00'')
+    THROW 51000, N''TR_eia no actualizó firma y fecha juntas'', 1;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''APROBADO_PLANIFICADO'' WHERE eia_codigo = @eia;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EJECUCION'' WHERE eia_codigo = @eia;
+UPDATE sgspi.evento_incertidumbre_activo SET eia_estado_registro = N''EN_EVALUACION_EFICACIA'' WHERE eia_codigo = @eia;
+UPDATE sgspi.plan_tratamiento SET plt_fecha_actualizacion = ''2000-01-01T00:00:00+00:00'' WHERE plt_codigo = @plt;
+UPDATE dbo.usuario_general SET up = 3 WHERE us = ORIGINAL_LOGIN();
+UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'', per_codigo_evaluador = 3, plt_fecha_evaluacion_eficacia = ''2020-01-01T00:00:00+00:00'' WHERE plt_codigo = @plt;
+IF NOT EXISTS (SELECT 1 FROM sgspi.plan_tratamiento WHERE plt_codigo = @plt AND plt_fecha_actualizacion > ''2000-01-01T00:00:00+00:00'' AND plt_fecha_evaluacion_eficacia > ''2020-01-01T00:00:00+00:00'')
+    THROW 51000, N''TR_plt no actualizó fecha_actualizacion y fecha_evaluacion_eficacia juntas'', 1;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Fase 3 TR_sga: seguimiento inactivo (sga_esta_activo=0) no sobrescribe act_porcentaje_avance y converge al mayor sga_codigo activo', N'
+BEGIN TRAN;
+INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_numero_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
+VALUES (1, 99, N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Avance sga'', 1, 1, 1);
+DECLARE @eia INT = SCOPE_IDENTITY();
+INSERT sgspi.plan_tratamiento (eia_codigo, plt_naturaleza_evento, etc_codigo, plt_justificacion_estrategia, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_fecha_inicio, plt_fecha_fin, plt_recursos_humanos_tecnicos, plt_recursos_economicos_desc, plt_nombre_indicador_kpi, plt_meta_indicador_kpi)
+VALUES (@eia, N''RIESGO'', 1, N''j'', 1, 1, ''2026-01-01'', ''2026-12-31'', N''r'', N''r'', N''k'', 100);
+DECLARE @plt INT = SCOPE_IDENTITY();
+INSERT sgspi.actividad_tratamiento (plt_codigo, act_numero_orden, act_descripcion_actividad, car_codigo, uaa_codigo, act_fecha_compromiso)
+VALUES (@plt, 1, N''Act sga'', 1, 1, ''2026-06-30'');
+DECLARE @act INT = SCOPE_IDENTITY();
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES (@act, 1, 60, N''Avance 60'');
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_esta_activo) VALUES (@act, 1, 10, N''Inactivo 10'', 0);
+IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = @act) <> 60
+    THROW 51000, N''seguimiento inactivo alteró act_porcentaje_avance'', 1;
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES (@act, 1, 90, N''Avance 90'');
+DECLARE @sga90 INT = SCOPE_IDENTITY();
+IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = @act) <> 90
+    THROW 51000, N''avance no subió a 90'', 1;
+UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_codigo = @sga90;
+IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = @act) <> 60
+    THROW 51000, N''al desactivar sga 90 no volvió a 60'', 1;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Fase 3 STRING_AGG NVARCHAR(MAX): soporta > 4500 caracteres (> 8000 bytes) en vistas sin Error 9829', N'
+BEGIN TRAN;
+DECLARE @n INT = 1;
+WHILE @n <= 120
+    BEGIN
+        INSERT sgspi.atributo_control_catalogo (aac_tipo_atributo, aac_valor)
+        VALUES (N''TIPO_CONTROL'', CONCAT(N''ATRIBUTO_LARGO_PRUEBA_9829_'', RIGHT(CONCAT(N''000'', @n), 3), N''_XXXXXXXXXXXXXXX''));
+        INSERT sgspi.control_referencia_normativa_atributo (crn_codigo, aac_codigo) VALUES (1, SCOPE_IDENTITY());
+        SET @n += 1;
+    END
+IF (SELECT LEN(tipo_control) FROM sgspi.vw_controles_atributos_iso27002 WHERE crn_codigo = 1) <= 4500
+    THROW 51000, N''vw_controles_atributos_iso27002 no superó 4500 caracteres'', 1;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Fase 3 vistas AP-22: excluyen inactivos en vw_usuario_rol_alcance_sgspi (pr), vw_controles_atributos_iso27002 (aac/crn/enc) y vw_desglose_ccd_trd_mr04 (ado/upc/sdo/sbd)', N'
+BEGIN TRAN;
+-- 1) vw_usuario_rol_alcance_sgspi (pr.pri_esta_activo = 0 => pri_codigo NULL, UAA intacta)
+UPDATE sgspi.proceso_institucional SET pri_esta_activo = 0 WHERE pri_codigo = 1;
+IF EXISTS (SELECT 1 FROM sgspi.vw_usuario_rol_alcance_sgspi WHERE pri_codigo = 1)
+   OR NOT EXISTS (SELECT 1 FROM sgspi.vw_usuario_rol_alcance_sgspi WHERE per_codigo = 1 AND uaa_codigo = 1 AND pri_codigo IS NULL)
+    THROW 51000, N''vw_usuario_rol_alcance_sgspi no filtró pr.pri_esta_activo'', 1;
+UPDATE sgspi.proceso_institucional SET pri_esta_activo = 1 WHERE pri_codigo = 1;
+-- 2) vw_controles_atributos_iso27002 (aac, crn, enc)
+INSERT sgspi.atributo_control_catalogo (aac_tipo_atributo, aac_valor, aac_esta_activo) VALUES (N''TIPO_CONTROL'', N''INACTIVO_F3'', 0);
+INSERT sgspi.control_referencia_normativa_atributo (crn_codigo, aac_codigo) VALUES (1, SCOPE_IDENTITY());
+IF EXISTS (SELECT 1 FROM sgspi.vw_controles_atributos_iso27002 WHERE crn_codigo = 1 AND tipo_control LIKE N''%INACTIVO_F3%'')
+    THROW 51000, N''vw_controles_atributos_iso27002 incluyó aac inactivo'', 1;
+UPDATE sgspi.control_referencia_normativa SET crn_esta_activo = 0 WHERE crn_codigo = 1;
+IF EXISTS (SELECT 1 FROM sgspi.vw_controles_atributos_iso27002 WHERE crn_codigo = 1)
+    THROW 51000, N''vw_controles_atributos_iso27002 incluyó crn inactivo'', 1;
+UPDATE sgspi.control_referencia_normativa SET crn_esta_activo = 1 WHERE crn_codigo = 1;
+UPDATE sgspi.estandar_normativo_catalogo SET enc_esta_activo = 0 WHERE enc_codigo = (SELECT enc_codigo FROM sgspi.control_referencia_normativa WHERE crn_codigo = 1);
+IF EXISTS (SELECT 1 FROM sgspi.vw_controles_atributos_iso27002 WHERE crn_codigo = 1)
+    THROW 51000, N''vw_controles_atributos_iso27002 incluyó enc inactivo'', 1;
+-- 3) vw_desglose_ccd_trd_mr04 (sbd, sdo, upc, ado)
+INSERT sgspi.activo_informacion (aci_codigo_inventario, aci_nombre_activo, tac_codigo, uaa_codigo, aci_clasificacion_transparencia, aci_valor_confidencialidad, aci_valor_integridad, aci_valor_disponibilidad, per_codigo_creador)
+VALUES (N''INV-F3DOC'', N''Doc F3'', 3, 1, N''PUBLICA'', 1, 1, 1, 1);
+DECLARE @ado INT = SCOPE_IDENTITY();
+INSERT sgspi.activo_documental (ado_codigo, pev_codigo, sdo_codigo, sbd_codigo, pdc_codigo, epc_codigo, ado_lugar_consulta_ubicacion)
+VALUES (@ado, 1, 1, 1, 1, 1, N''Archivo'');
+DECLARE @upc INT = (SELECT TOP (1) upc_codigo FROM sgspi.unidad_productora_cuadro_clasificacion_documental WHERE upc_esta_activa = 1 ORDER BY upc_codigo);
+INSERT sgspi.activo_documental_unidad_productora (ado_codigo, upc_codigo) VALUES (@ado, @upc);
+IF NOT EXISTS (SELECT 1 FROM sgspi.vw_desglose_ccd_trd_mr04 WHERE ado_codigo = @ado AND sbd_nombre_subserie IS NOT NULL)
+    THROW 51000, N''precondición vw_desglose_ccd_trd_mr04 vacía'', 1;
+UPDATE sgspi.subserie_documental_catalogo SET sbd_esta_activa = 0 WHERE sbd_codigo = 1;
+IF NOT EXISTS (SELECT 1 FROM sgspi.vw_desglose_ccd_trd_mr04 WHERE ado_codigo = @ado AND sbd_nombre_subserie IS NULL)
+    THROW 51000, N''vw_desglose_ccd_trd_mr04 no ocultó sbd inactiva'', 1;
+UPDATE sgspi.subserie_documental_catalogo SET sbd_esta_activa = 1 WHERE sbd_codigo = 1;
+UPDATE sgspi.serie_documental_catalogo SET sdo_esta_activa = 0 WHERE sdo_codigo = 1;
+IF EXISTS (SELECT 1 FROM sgspi.vw_desglose_ccd_trd_mr04 WHERE ado_codigo = @ado)
+    THROW 51000, N''vw_desglose_ccd_trd_mr04 incluyó sdo inactiva'', 1;
+UPDATE sgspi.serie_documental_catalogo SET sdo_esta_activa = 1 WHERE sdo_codigo = 1;
+UPDATE sgspi.unidad_productora_cuadro_clasificacion_documental SET upc_esta_activa = 0 WHERE upc_codigo = @upc;
+IF EXISTS (SELECT 1 FROM sgspi.vw_desglose_ccd_trd_mr04 WHERE ado_codigo = @ado)
+    THROW 51000, N''vw_desglose_ccd_trd_mr04 incluyó upc inactiva'', 1;
+UPDATE sgspi.unidad_productora_cuadro_clasificacion_documental SET upc_esta_activa = 1 WHERE upc_codigo = @upc;
+UPDATE sgspi.activo_documental SET ado_esta_activo = 0 WHERE ado_codigo = @ado;
+IF EXISTS (SELECT 1 FROM sgspi.vw_desglose_ccd_trd_mr04 WHERE ado_codigo = @ado)
+    THROW 51000, N''vw_desglose_ccd_trd_mr04 incluyó ado inactivo'', 1;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Fase 3 RCSI: base desechable tiene READ_COMMITTED_SNAPSHOT ON', N'
+IF (SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id = DB_ID()) <> 1
+    THROW 51000, N''READ_COMMITTED_SNAPSHOT no está habilitado'', 1;', 0;
 
 
 GO

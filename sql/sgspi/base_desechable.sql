@@ -10,6 +10,7 @@ BEGIN
 END
 CREATE DATABASE sgspi_desechable COLLATE Modern_Spanish_CI_AS;
 ALTER DATABASE sgspi_desechable SET COMPATIBILITY_LEVEL = 150;
+ALTER DATABASE sgspi_desechable SET READ_COMMITTED_SNAPSHOT ON;
 GO
 USE sgspi_desechable;
 GO

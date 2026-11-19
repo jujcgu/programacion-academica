@@ -143,8 +143,10 @@ AP-23  Plazo legal de la reserva (Ley 1712 de 2014, art. 22): la información RE
 indefinida ni de más de 15 años.
 AP-24  Concurrencia: (a) control optimista con <acr>_version ROWVERSION NOT NULL en acf, rpi, aci, ado, eia, plt, act y
 eac (la aplicación actualiza con WHERE <acr>_codigo = @id AND <acr>_version = @v y vuelve a leer tras guardar, porque el
-UPDATE del trigger incrementa la versión); (b) TR_ado, TR_plt, TR_act y los 10 triggers puente leen el padre con
-WITH (UPDLOCK) (la aplicación reintenta ante deadlock, error 1205); (c) patrón único de consecutivos (acf_numero_factor y
+UPDATE único del trigger —sin doble incremento de ROWVERSION— actualiza fecha y firmas en una sola escritura); (b) los
+triggers de las familias [aci] y [eia] serializan por raíz con sp_getapplock ('sgspi:aci:<id>', 'sgspi:eia:<id>', orden
+ascendente) sin UPDLOCK cruzado entre tablas (requiere READ_COMMITTED_SNAPSHOT ON, auditado en sección 7, para evitar
+deadlocks AB-BA), y TR_sga_* toma UPDLOCK en [act] antes de recalcular act_porcentaje_avance; (c) patrón único de consecutivos (acf_numero_factor y
 eia_numero_evento por vigencia y naturaleza, act_numero_orden por plan), con reintento en la aplicación ante los errores
 2601/2627; en eia el identificador RA-nn/OA-nn se calcula desde el número:
     INSERT sgspi.analisis_contexto_factor (..., acf_numero_factor, ...)
@@ -3055,7 +3057,7 @@ SELECT p.per_codigo,
        g.gru_nombre AS gru_rol_seguridad,
        u.uaa_codigo,
        u.uaa_nombre AS uaa_dependencia,
-       piu.pri_codigo AS pri_codigo,
+       pr.pri_codigo AS pri_codigo,
        pr.pri_nombre AS pri_nombre_proceso
 FROM   dbo.usuario_grupo AS ug
        INNER JOIN
@@ -3077,6 +3079,7 @@ FROM   dbo.usuario_grupo AS ug
        LEFT OUTER JOIN
        sgspi.proceso_institucional AS pr
        ON pr.pri_codigo = piu.pri_codigo
+          AND pr.pri_esta_activo = 1 -- [AP-22]
 WHERE  ug.usg_estado = 1
        AND g.gru_estado = 1
        AND ugen.state = 1
@@ -3507,29 +3510,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                          d.per_codigo_aprobador,
                                          d.acf_fecha_actualizacion,
                                          d.acf_esta_activo);
-                   IF NOT UPDATE (acf_fecha_actualizacion)
-                      AND EXISTS (SELECT 1
-                                  FROM   @cambiadas)
+                   DECLARE @actualizar_fecha AS BIT = CASE WHEN UPDATE (acf_fecha_actualizacion) THEN 0 ELSE 1 END;
+                   IF EXISTS (SELECT 1
+                              FROM   @cambiadas)
                        UPDATE t
-                       SET    t.acf_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       SET    t.acf_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.acf_fecha_actualizacion END, -- [AP-12]
+                              t.per_codigo_aprobador    = CASE WHEN d.acf_estado_registro <> i.acf_estado_registro
+                                                                    AND i.acf_estado_registro = N'VIGENTE' THEN @per_actor
+                                                               WHEN d.acf_estado_registro <> i.acf_estado_registro
+                                                                    AND ((d.acf_estado_registro = N'VIGENTE'
+                                                                          AND i.acf_estado_registro <> N'HISTORICO')
+                                                                         OR i.acf_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL
+                                                               ELSE t.per_codigo_aprobador END
                        FROM   sgspi.analisis_contexto_factor AS t
                               INNER JOIN
                               @cambiadas AS c
-                              ON c.acf_codigo = t.acf_codigo;
-                   UPDATE t
-                   SET    t.per_codigo_aprobador = CASE WHEN i.acf_estado_registro = N'VIGENTE' THEN @per_actor ELSE NULL END
-                   FROM   sgspi.analisis_contexto_factor AS t
-                          INNER JOIN
-                          inserted AS i
-                          ON i.acf_codigo = t.acf_codigo
-                          INNER JOIN
-                          deleted AS d
-                          ON d.acf_codigo = i.acf_codigo
-                   WHERE  d.acf_estado_registro <> i.acf_estado_registro
-                          AND (i.acf_estado_registro = N'VIGENTE'
-                               OR (d.acf_estado_registro = N'VIGENTE'
-                                   AND i.acf_estado_registro <> N'HISTORICO')
-                               OR i.acf_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
+                              ON c.acf_codigo = t.acf_codigo
+                              INNER JOIN
+                              inserted AS i
+                              ON i.acf_codigo = t.acf_codigo
+                              INNER JOIN
+                              deleted AS d
+                              ON d.acf_codigo = i.acf_codigo
+                       WHERE  @actualizar_fecha = 1
+                              OR (d.acf_estado_registro <> i.acf_estado_registro
+                                  AND (i.acf_estado_registro = N'VIGENTE'
+                                       OR (d.acf_estado_registro = N'VIGENTE'
+                                           AND i.acf_estado_registro <> N'HISTORICO')
+                                       OR i.acf_estado_registro IN (N'OBSERVADO', N'BORRADOR')));
                END
            ELSE
                INSERT INTO sgspi.aud_analisis_contexto_factor (
@@ -3796,29 +3804,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                          d.per_codigo_aprobador,
                                          d.rpi_fecha_actualizacion,
                                          d.rpi_esta_activo);
-                   IF NOT UPDATE (rpi_fecha_actualizacion)
-                      AND EXISTS (SELECT 1
-                                  FROM   @cambiadas)
+                   DECLARE @actualizar_fecha AS BIT = CASE WHEN UPDATE (rpi_fecha_actualizacion) THEN 0 ELSE 1 END;
+                   IF EXISTS (SELECT 1
+                              FROM   @cambiadas)
                        UPDATE t
-                       SET    t.rpi_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       SET    t.rpi_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.rpi_fecha_actualizacion END, -- [AP-12]
+                              t.per_codigo_aprobador    = CASE WHEN d.rpi_estado_registro <> i.rpi_estado_registro
+                                                                    AND i.rpi_estado_registro = N'VIGENTE' THEN @per_actor
+                                                               WHEN d.rpi_estado_registro <> i.rpi_estado_registro
+                                                                    AND ((d.rpi_estado_registro = N'VIGENTE'
+                                                                          AND i.rpi_estado_registro <> N'HISTORICO')
+                                                                         OR i.rpi_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL
+                                                               ELSE t.per_codigo_aprobador END
                        FROM   sgspi.requisito_parte_interesada AS t
                               INNER JOIN
                               @cambiadas AS c
-                              ON c.rpi_codigo = t.rpi_codigo;
-                   UPDATE t
-                   SET    t.per_codigo_aprobador = CASE WHEN i.rpi_estado_registro = N'VIGENTE' THEN @per_actor ELSE NULL END
-                   FROM   sgspi.requisito_parte_interesada AS t
-                          INNER JOIN
-                          inserted AS i
-                          ON i.rpi_codigo = t.rpi_codigo
-                          INNER JOIN
-                          deleted AS d
-                          ON d.rpi_codigo = i.rpi_codigo
-                   WHERE  d.rpi_estado_registro <> i.rpi_estado_registro
-                          AND (i.rpi_estado_registro = N'VIGENTE'
-                               OR (d.rpi_estado_registro = N'VIGENTE'
-                                   AND i.rpi_estado_registro <> N'HISTORICO')
-                               OR i.rpi_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
+                              ON c.rpi_codigo = t.rpi_codigo
+                              INNER JOIN
+                              inserted AS i
+                              ON i.rpi_codigo = t.rpi_codigo
+                              INNER JOIN
+                              deleted AS d
+                              ON d.rpi_codigo = i.rpi_codigo
+                       WHERE  @actualizar_fecha = 1
+                              OR (d.rpi_estado_registro <> i.rpi_estado_registro
+                                  AND (i.rpi_estado_registro = N'VIGENTE'
+                                       OR (d.rpi_estado_registro = N'VIGENTE'
+                                           AND i.rpi_estado_registro <> N'HISTORICO')
+                                       OR i.rpi_estado_registro IN (N'OBSERVADO', N'BORRADOR')));
                END
            ELSE
                INSERT INTO sgspi.aud_requisito_parte_interesada (
@@ -3883,6 +3896,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion].', 1;
+                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+               END
            -- [AP-04] En INSERT el estado debe ser el inicial del dominio
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -4051,7 +4076,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                               WHERE  i.aci_estado_registro = N'VIGENTE'
                                      AND d.aci_estado_registro <> N'VIGENTE'
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.activo_informacion_responsable AS air WITH (UPDLOCK)
+                                                     FROM   sgspi.activo_informacion_responsable AS air
                                                      WHERE  air.aci_codigo = i.aci_codigo
                                                             AND air.air_tipo_responsabilidad = N'PROPIETARIO'
                                                             AND air.air_esta_activo = 1))
@@ -4065,12 +4090,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                               WHERE  i.aci_estado_registro = N'VIGENTE'
                                      AND d.aci_estado_registro <> N'VIGENTE'
                                      AND (EXISTS (SELECT 1
-                                                  FROM   sgspi.activo_documental AS ado WITH (UPDLOCK)
+                                                  FROM   sgspi.activo_documental AS ado
                                                   WHERE  ado.ado_codigo = i.aci_codigo
                                                          AND ado.ado_esta_activo = 1
                                                          AND ado.per_codigo_revisor_archivo IS NULL)
                                           OR NOT EXISTS (SELECT 1
-                                                         FROM   sgspi.activo_informacion_responsable AS air WITH (UPDLOCK)
+                                                         FROM   sgspi.activo_informacion_responsable AS air
                                                          WHERE  air.aci_codigo = i.aci_codigo
                                                                 AND air.air_esta_activo = 1
                                                                 AND air.air_tipo_responsabilidad = N'CUSTODIO')))
@@ -4223,45 +4248,59 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                          d.per_codigo_aprobador,
                                          d.aci_fecha_actualizacion,
                                          d.aci_esta_activo);
-                   IF NOT UPDATE (aci_fecha_actualizacion)
-                      AND EXISTS (SELECT 1
-                                  FROM   @cambiadas)
+                   DECLARE @actualizar_fecha AS BIT = CASE WHEN UPDATE (aci_fecha_actualizacion) THEN 0 ELSE 1 END;
+                   IF EXISTS (SELECT 1
+                              FROM   @cambiadas)
                        UPDATE t
-                       SET    t.aci_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       SET    t.aci_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.aci_fecha_actualizacion END, -- [AP-12]
+                              t.per_codigo_aprobador    = CASE WHEN d.aci_estado_registro <> i.aci_estado_registro
+                                                                    AND i.aci_estado_registro = N'VIGENTE' THEN @per_actor
+                                                               WHEN d.aci_estado_registro <> i.aci_estado_registro
+                                                                    AND ((d.aci_estado_registro = N'VIGENTE'
+                                                                          AND i.aci_estado_registro <> N'HISTORICO')
+                                                                         OR i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL
+                                                               ELSE t.per_codigo_aprobador END
                        FROM   sgspi.activo_informacion AS t
                               INNER JOIN
                               @cambiadas AS c
-                              ON c.aci_codigo = t.aci_codigo;
-                   UPDATE t
-                   SET    t.per_codigo_aprobador = CASE WHEN i.aci_estado_registro = N'VIGENTE' THEN @per_actor ELSE NULL END
-                   FROM   sgspi.activo_informacion AS t
-                          INNER JOIN
-                          inserted AS i
-                          ON i.aci_codigo = t.aci_codigo
-                          INNER JOIN
-                          deleted AS d
-                          ON d.aci_codigo = i.aci_codigo
-                   WHERE  d.aci_estado_registro <> i.aci_estado_registro
-                          AND (i.aci_estado_registro = N'VIGENTE'
-                               OR (d.aci_estado_registro = N'VIGENTE'
-                                   AND i.aci_estado_registro <> N'HISTORICO')
-                               OR i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
+                              ON c.aci_codigo = t.aci_codigo
+                              INNER JOIN
+                              inserted AS i
+                              ON i.aci_codigo = t.aci_codigo
+                              INNER JOIN
+                              deleted AS d
+                              ON d.aci_codigo = i.aci_codigo
+                       WHERE  @actualizar_fecha = 1
+                              OR (d.aci_estado_registro <> i.aci_estado_registro
+                                  AND (i.aci_estado_registro = N'VIGENTE'
+                                       OR (d.aci_estado_registro = N'VIGENTE'
+                                           AND i.aci_estado_registro <> N'HISTORICO')
+                                       OR i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR')));
                    -- Firma de Archivo: se registra en EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI y se limpia al observar/reabrir a borrador o revisión de Archivo
-                   UPDATE ado
-                   SET    ado.per_codigo_revisor_archivo = CASE WHEN d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
-                                                                     AND i.aci_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE NULL END
-                   FROM   sgspi.activo_documental AS ado
-                          INNER JOIN
-                          inserted AS i
-                          ON i.aci_codigo = ado.ado_codigo
-                          INNER JOIN
-                          deleted AS d
-                          ON d.aci_codigo = i.aci_codigo
-                   WHERE  (d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
-                           AND i.aci_estado_registro = N'EN_REVISION_SGSPI')
-                          OR (d.aci_estado_registro <> i.aci_estado_registro
-                              AND i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR', N'EN_REVISION_ARCHIVO')
-                              AND ado.per_codigo_revisor_archivo IS NOT NULL);
+                   IF EXISTS (SELECT 1
+                              FROM   inserted AS i
+                                     INNER JOIN
+                                     deleted AS d
+                                     ON d.aci_codigo = i.aci_codigo
+                              WHERE  (d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+                                      AND i.aci_estado_registro = N'EN_REVISION_SGSPI')
+                                     OR (d.aci_estado_registro <> i.aci_estado_registro
+                                         AND i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR', N'EN_REVISION_ARCHIVO')))
+                       UPDATE ado
+                       SET    ado.per_codigo_revisor_archivo = CASE WHEN d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+                                                                         AND i.aci_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE NULL END
+                       FROM   sgspi.activo_documental AS ado
+                              INNER JOIN
+                              inserted AS i
+                              ON i.aci_codigo = ado.ado_codigo
+                              INNER JOIN
+                              deleted AS d
+                              ON d.aci_codigo = i.aci_codigo
+                       WHERE  (d.aci_estado_registro = N'EN_REVISION_ARCHIVO'
+                               AND i.aci_estado_registro = N'EN_REVISION_SGSPI')
+                              OR (d.aci_estado_registro <> i.aci_estado_registro
+                                  AND i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR', N'EN_REVISION_ARCHIVO')
+                                  AND ado.per_codigo_revisor_archivo IS NOT NULL);
                END
            ELSE
                INSERT INTO sgspi.aud_activo_informacion (
@@ -4366,6 +4405,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental].', 1;
+                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+               END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
                               FROM   inserted
@@ -4373,7 +4424,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                               SELECT ado_codigo
                               FROM   deleted) AS x
                              INNER JOIN
-                             sgspi.activo_informacion AS aci WITH (UPDLOCK)
+                             sgspi.activo_informacion AS aci
                              ON aci.aci_codigo = x.ado_codigo
                              INNER JOIN
                              sgspi.estado_flujo_catalogo AS efc
@@ -4603,6 +4654,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[evento_incertidumbre_activo].', 1;
+                   SET @lock_id = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l WHERE l.eia_codigo > @lock_id);
+               END
            -- [AP-04] En INSERT el estado debe ser el inicial del dominio
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -4784,7 +4847,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               WHERE  i.eia_estado_registro = N'APROBADO_PLANIFICADO'
                                      AND d.eia_estado_registro <> N'APROBADO_PLANIFICADO'
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                     FROM   sgspi.plan_tratamiento AS plt
                                                      WHERE  plt.eia_codigo = i.eia_codigo
                                                             AND plt.plt_esta_activo = 1))
                        THROW 50020, N'Transición incompleta: APROBADO_PLANIFICADO exige un plan de tratamiento activo en [sgspi].[evento_incertidumbre_activo].', 1;
@@ -4801,7 +4864,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                         AND ((mvr.epr_codigo = i.epr_codigo_inherente
                                                               AND mvr.eim_codigo = i.eim_codigo_inherente)
                                                              OR EXISTS (SELECT 1
-                                                                        FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                                        FROM   sgspi.plan_tratamiento AS plt
                                                                         WHERE  plt.eia_codigo = i.eia_codigo
                                                                                AND plt.plt_esta_activo = 1
                                                                                AND plt.epr_codigo_residual_meta = mvr.epr_codigo
@@ -4814,7 +4877,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                      deleted AS d
                                      ON d.eia_codigo = i.eia_codigo
                                      INNER JOIN
-                                     sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                     sgspi.plan_tratamiento AS plt
                                      ON plt.eia_codigo = i.eia_codigo
                                         AND plt.plt_esta_activo = 1
                               WHERE  i.eia_estado_registro = N'APROBADO_PLANIFICADO'
@@ -4836,9 +4899,9 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                      AND d.eia_estado_registro <> N'APROBADO_PLANIFICADO'
                                      AND aci.aci_contiene_datos_personales = 1
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                     FROM   sgspi.plan_tratamiento AS plt
                                                             INNER JOIN
-                                                            sgspi.plan_tratamiento_control_referencia_normativa AS ptc WITH (UPDLOCK)
+                                                            sgspi.plan_tratamiento_control_referencia_normativa AS ptc
                                                             ON ptc.plt_codigo = plt.plt_codigo
                                                             INNER JOIN
                                                             sgspi.control_referencia_normativa AS crn
@@ -4860,17 +4923,17 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               WHERE  i.eia_estado_registro = N'EN_EVALUACION_EFICACIA'
                                      AND d.eia_estado_registro <> N'EN_EVALUACION_EFICACIA'
                                      AND (NOT EXISTS (SELECT 1
-                                                      FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                      FROM   sgspi.plan_tratamiento AS plt
                                                              INNER JOIN
-                                                             sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
+                                                             sgspi.actividad_tratamiento AS act
                                                              ON act.plt_codigo = plt.plt_codigo
                                                       WHERE  plt.eia_codigo = i.eia_codigo
                                                              AND plt.plt_esta_activo = 1
                                                              AND act.act_esta_activa = 1)
                                           OR EXISTS (SELECT 1
-                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                     FROM   sgspi.plan_tratamiento AS plt
                                                             INNER JOIN
-                                                            sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
+                                                            sgspi.actividad_tratamiento AS act
                                                             ON act.plt_codigo = plt.plt_codigo
                                                      WHERE  plt.eia_codigo = i.eia_codigo
                                                             AND plt.plt_esta_activo = 1
@@ -4885,7 +4948,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                               WHERE  i.eia_estado_registro = N'CERRADO_EFICAZ'
                                      AND d.eia_estado_registro <> N'CERRADO_EFICAZ'
                                      AND NOT EXISTS (SELECT 1
-                                                     FROM   sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                                                     FROM   sgspi.plan_tratamiento AS plt
                                                      WHERE  plt.eia_codigo = i.eia_codigo
                                                             AND plt.plt_esta_activo = 1
                                                             AND plt.plt_es_tratamiento_eficaz = 1))
@@ -4994,37 +5057,45 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                          d.per_codigo_aprobador_comite,
                                          d.eia_fecha_actualizacion,
                                          d.eia_esta_activo);
-                   IF NOT UPDATE (eia_fecha_actualizacion)
-                      AND EXISTS (SELECT 1
-                                  FROM   @cambiadas)
+                   DECLARE @actualizar_fecha AS BIT = CASE WHEN UPDATE (eia_fecha_actualizacion) THEN 0 ELSE 1 END;
+                   IF EXISTS (SELECT 1
+                              FROM   @cambiadas)
                        UPDATE t
-                       SET    t.eia_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-11] [AP-12]
+                       SET    t.eia_fecha_actualizacion     = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.eia_fecha_actualizacion END, -- [AP-11] [AP-12]
+                              t.per_codigo_validador_lider  = CASE WHEN d.eia_estado_registro <> i.eia_estado_registro
+                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL
+                                                                   WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
+                                                                        AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor
+                                                                   ELSE t.per_codigo_validador_lider END,
+                              t.per_codigo_revisor_sgspi    = CASE WHEN d.eia_estado_registro <> i.eia_estado_registro
+                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL
+                                                                   WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                                                                        AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor
+                                                                   ELSE t.per_codigo_revisor_sgspi END,
+                              t.per_codigo_aprobador_comite = CASE WHEN d.eia_estado_registro <> i.eia_estado_registro
+                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL
+                                                                   WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
+                                                                        AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor
+                                                                   ELSE t.per_codigo_aprobador_comite END
                        FROM   sgspi.evento_incertidumbre_activo AS t
                               INNER JOIN
                               @cambiadas AS c
-                              ON c.eia_codigo = t.eia_codigo;
-                   UPDATE t
-                   SET    t.per_codigo_validador_lider  = CASE WHEN i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
-                                                                     AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
-                          t.per_codigo_revisor_sgspi    = CASE WHEN i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
-                                                                     AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
-                          t.per_codigo_aprobador_comite = CASE WHEN i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                                                                     AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
-                   FROM   sgspi.evento_incertidumbre_activo AS t
-                          INNER JOIN
-                          inserted AS i
-                          ON i.eia_codigo = t.eia_codigo
-                          INNER JOIN
-                          deleted AS d
-                          ON d.eia_codigo = i.eia_codigo
-                   WHERE  (d.eia_estado_registro = N'EN_VALIDACION_LIDER'
-                           AND i.eia_estado_registro = N'EN_REVISION_SGSPI')
-                          OR (d.eia_estado_registro = N'EN_REVISION_SGSPI'
-                              AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'))
-                          OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                              AND i.eia_estado_registro = N'APROBADO_PLANIFICADO')
-                          OR (d.eia_estado_registro <> i.eia_estado_registro
-                              AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
+                              ON c.eia_codigo = t.eia_codigo
+                              INNER JOIN
+                              inserted AS i
+                              ON i.eia_codigo = t.eia_codigo
+                              INNER JOIN
+                              deleted AS d
+                              ON d.eia_codigo = i.eia_codigo
+                       WHERE  @actualizar_fecha = 1
+                              OR (d.eia_estado_registro = N'EN_VALIDACION_LIDER'
+                                  AND i.eia_estado_registro = N'EN_REVISION_SGSPI')
+                              OR (d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                                  AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'))
+                              OR (d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
+                                  AND i.eia_estado_registro = N'APROBADO_PLANIFICADO')
+                              OR (d.eia_estado_registro <> i.eia_estado_registro
+                                  AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR'));
                END
            ELSE
                INSERT INTO sgspi.aud_evento_incertidumbre_activo (
@@ -5107,6 +5178,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[plan_tratamiento].', 1;
+                   SET @lock_id = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l WHERE l.eia_codigo > @lock_id);
+               END
            IF EXISTS (SELECT 1
                       FROM   (SELECT eia_codigo
                               FROM   inserted
@@ -5114,7 +5197,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                               SELECT eia_codigo
                               FROM   deleted) AS x
                              INNER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia WITH (UPDLOCK)
+                             sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = x.eia_codigo
                              INNER JOIN
                              sgspi.estado_flujo_catalogo AS efc
@@ -5200,13 +5283,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                                           OR @per_actor = eia.per_codigo_validador_lider
                                           OR @per_actor = eia.per_codigo_revisor_sgspi))
                        THROW 50019, N'Segregación de funciones: el evaluador de eficacia no puede ser creador, validador líder ni revisor SGSPI del evento en [sgspi].[plan_tratamiento].', 1;
-                   UPDATE t
-                   SET    t.plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() -- [AP-12]
-                   FROM   sgspi.plan_tratamiento AS t
-                          INNER JOIN
-                          @dictamen AS x
-                          ON x.plt_codigo = t.plt_codigo
-                   WHERE  x.per_codigo_evaluador IS NOT NULL;
                END
            IF EXISTS (SELECT 1
                       FROM   deleted)
@@ -5319,18 +5395,35 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                                          d.plt_fecha_evaluacion_eficacia,
                                          d.plt_fecha_actualizacion,
                                          d.plt_esta_activo);
-                   IF NOT UPDATE (plt_fecha_actualizacion)
-                      AND EXISTS (SELECT 1
-                                  FROM   @cambiadas)
+                   DECLARE @actualizar_fecha AS BIT = CASE WHEN UPDATE (plt_fecha_actualizacion) THEN 0 ELSE 1 END;
+                   IF EXISTS (SELECT 1
+                              FROM   @cambiadas)
                        UPDATE t
-                       SET    t.plt_fecha_actualizacion = SYSDATETIMEOFFSET() -- [AP-12]
+                       SET    t.plt_fecha_actualizacion       = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.plt_fecha_actualizacion END, -- [AP-12]
+                              t.plt_fecha_evaluacion_eficacia = CASE WHEN x.per_codigo_evaluador IS NOT NULL THEN SYSDATETIMEOFFSET() ELSE t.plt_fecha_evaluacion_eficacia END
                        FROM   sgspi.plan_tratamiento AS t
                               INNER JOIN
                               @cambiadas AS c
-                              ON c.plt_codigo = t.plt_codigo;
+                              ON c.plt_codigo = t.plt_codigo
+                              LEFT OUTER JOIN
+                              @dictamen AS x
+                              ON x.plt_codigo = t.plt_codigo
+                       WHERE  @actualizar_fecha = 1
+                              OR x.per_codigo_evaluador IS NOT NULL;
                END
            ELSE
-               INSERT INTO sgspi.aud_plan_tratamiento (
+               BEGIN
+                   IF EXISTS (SELECT 1
+                              FROM   @dictamen
+                              WHERE  per_codigo_evaluador IS NOT NULL)
+                       UPDATE t
+                       SET    t.plt_fecha_evaluacion_eficacia = SYSDATETIMEOFFSET() -- [AP-12]
+                       FROM   sgspi.plan_tratamiento AS t
+                              INNER JOIN
+                              @dictamen AS x
+                              ON x.plt_codigo = t.plt_codigo
+                       WHERE  x.per_codigo_evaluador IS NOT NULL;
+                   INSERT INTO sgspi.aud_plan_tratamiento (
                    plt_codigo,
                    eia_codigo,
                    apt_naturaleza_evento,
@@ -5387,6 +5480,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                       ORIGINAL_LOGIN(),
                       SYSDATETIMEOFFSET()
                FROM   inserted AS i;
+               END
        END
 
 
@@ -5412,6 +5506,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (eia_codigo)
+           SELECT DISTINCT plt.eia_codigo
+           FROM   (SELECT plt_codigo FROM inserted UNION SELECT plt_codigo FROM deleted) AS x
+                  INNER JOIN
+                  sgspi.plan_tratamiento AS plt
+                  ON plt.plt_codigo = x.plt_codigo;
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[actividad_tratamiento].', 1;
+                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+               END
            -- [AP-04] En INSERT el estado debe ser el inicial del dominio
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -5433,10 +5546,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                               SELECT plt_codigo
                               FROM   deleted) AS x
                              INNER JOIN
-                             sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
+                             sgspi.plan_tratamiento AS plt
                              ON plt.plt_codigo = x.plt_codigo
                              INNER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia WITH (UPDLOCK)
+                             sgspi.evento_incertidumbre_activo AS eia
                              ON eia.eia_codigo = plt.eia_codigo
                              INNER JOIN
                              sgspi.estado_flujo_catalogo AS efc
@@ -5856,6 +5969,26 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Orden act (UPDLOCK) -> applock(eia): cierra carrera en act_porcentaje_avance sin ciclo con TR_act
+           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (eia_codigo)
+           SELECT DISTINCT plt.eia_codigo
+           FROM   sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
+                  INNER JOIN
+                  sgspi.plan_tratamiento AS plt
+                  ON plt.plt_codigo = act.plt_codigo
+           WHERE  act.act_codigo IN (SELECT act_codigo FROM inserted);
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[seguimiento_actividad].', 1;
+                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+               END
            -- [AP-03] Persona de la sesión: queda en la auditoría
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
@@ -5933,7 +6066,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
            -- [AP-09] Al desactivar o reactivar un seguimiento, recalcula el avance con el último seguimiento activo (0 si no queda ninguno)
            UPDATE act
            SET    act.act_porcentaje_avance = ISNULL(u.sga_porcentaje_reportado, 0)
-           FROM   sgspi.actividad_tratamiento AS act
+           FROM   sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
                   INNER JOIN
                   (SELECT DISTINCT i.act_codigo
                    FROM   inserted AS i
@@ -5967,6 +6100,26 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Orden act (UPDLOCK) -> applock(eia): cierra carrera en act_porcentaje_avance sin ciclo con TR_act
+           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (eia_codigo)
+           SELECT DISTINCT plt.eia_codigo
+           FROM   sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
+                  INNER JOIN
+                  sgspi.plan_tratamiento AS plt
+                  ON plt.plt_codigo = act.plt_codigo
+           WHERE  act.act_codigo IN (SELECT act_codigo FROM inserted);
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[seguimiento_actividad].', 1;
+                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+               END
            -- [AP-03] [AP-15] El seguimiento lo registra la persona de la sesión
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
@@ -5991,18 +6144,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                              OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
                       WHERE  a.permitido IS NULL)
                THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
-           -- Si hay varias filas de la misma actividad en el lote, prevalece la de mayor sga_codigo
+           -- Recalcula desde el último seguimiento activo por sga_codigo (serializado por UPDLOCK en act + applock en eia)
            UPDATE act
-           SET    act.act_porcentaje_avance = x.sga_porcentaje_reportado
-           FROM   sgspi.actividad_tratamiento AS act
+           SET    act.act_porcentaje_avance = ISNULL(u.sga_porcentaje_reportado, 0)
+           FROM   sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
                   INNER JOIN
-                  (SELECT i.act_codigo,
-                          i.sga_porcentaje_reportado,
-                          ROW_NUMBER() OVER (PARTITION BY i.act_codigo ORDER BY i.sga_codigo DESC) AS rn
+                  (SELECT DISTINCT i.act_codigo
                    FROM   inserted AS i) AS x
                   ON x.act_codigo = act.act_codigo
-                     AND x.rn = 1
-           WHERE  act.act_porcentaje_avance <> x.sga_porcentaje_reportado;
+                  OUTER APPLY (SELECT   TOP (1) s.sga_porcentaje_reportado
+                               FROM     sgspi.seguimiento_actividad AS s
+                               WHERE    s.act_codigo = act.act_codigo
+                                        AND s.sga_esta_activo = 1
+                               ORDER BY s.sga_codigo DESC) AS u
+           WHERE  act.act_porcentaje_avance <> ISNULL(u.sga_porcentaje_reportado, 0);
            INSERT INTO sgspi.aud_seguimiento_actividad (
                sga_codigo,
                act_codigo,
@@ -6043,469 +6198,10 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- 5.10.9b Triggers sobre tablas puente: bloquean INSERT/UPDATE cuando el padre tiene efc_permite_edicion = 0 [AP-24: WITH (UPDLOCK)]
-CREATE OR ALTER TRIGGER sgspi.TR_rpp_bloquear_padre_no_editable
-    ON sgspi.requisito_parte_interesada_proceso_institucional
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT rpi_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT rpi_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.requisito_parte_interesada AS p WITH (UPDLOCK)
-                             ON p.rpi_codigo = x.rpi_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'RPI'
-                                AND efc.efc_identificador = p.rpi_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[requisito_parte_interesada_proceso_institucional] cuando el padre no es editable.', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_aip_bloquear_padre_no_editable
-    ON sgspi.activo_informacion_proceso_institucional
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.aci_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_proceso_institucional] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio asocian a sus procesos solo activos de sus UAA (la asociación nueva no da alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo,
-                                     pri_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo,
-                                     pri_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS ap
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo, @per_actor) AS aa
-                      WHERE  ap.permitido IS NULL
-                             OR aa.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo o el proceso no son de las UAA del usuario en [sgspi].[activo_informacion_proceso_institucional].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_ais_bloquear_padre_no_editable
-    ON sgspi.activo_informacion_sede
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.aci_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_sede] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_sede].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_air_bloquear_padre_no_editable
-    ON sgspi.activo_informacion_responsable
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.aci_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_responsable] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_responsable].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_ads_bloquear_padre_no_editable
-    ON sgspi.activo_documental_soporte_registro
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.ado_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_soporte_registro] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_soporte_registro].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_adm_bloquear_padre_no_editable
-    ON sgspi.activo_documental_medio_conservacion
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.ado_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_medio_conservacion] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_medio_conservacion].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_adi_bloquear_padre_no_editable
-    ON sgspi.activo_documental_idioma
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.ado_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_idioma] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_idioma].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_adf_bloquear_padre_no_editable
-    ON sgspi.activo_documental_formato_archivo
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.ado_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_formato_archivo] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_formato_archivo].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_adu_bloquear_padre_no_editable
-    ON sgspi.activo_documental_unidad_productora
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.activo_informacion AS p WITH (UPDLOCK)
-                             ON p.aci_codigo = x.ado_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'ACI'
-                                AND efc.efc_identificador = p.aci_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_unidad_productora] cuando el padre no es editable.', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER TRIGGER sgspi.TR_ptc_bloquear_padre_no_editable
-    ON sgspi.plan_tratamiento_control_referencia_normativa
-    AFTER INSERT, UPDATE
-    AS BEGIN
-           SET NOCOUNT ON;
-           IF NOT EXISTS (SELECT 1
-                          FROM   inserted)
-               RETURN;
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT plt_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT plt_codigo
-                              FROM   deleted) AS x
-                             INNER JOIN
-                             sgspi.plan_tratamiento AS plt WITH (UPDLOCK)
-                             ON plt.plt_codigo = x.plt_codigo
-                             INNER JOIN
-                             sgspi.evento_incertidumbre_activo AS p WITH (UPDLOCK)
-                             ON p.eia_codigo = plt.eia_codigo
-                             INNER JOIN
-                             sgspi.estado_flujo_catalogo AS efc
-                             ON efc.efc_dominio = N'EIA'
-                                AND efc.efc_identificador = p.eia_estado_registro
-                      WHERE  efc.efc_permite_edicion = 0
-                             OR efc.efc_esta_activo = 0)
-               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[plan_tratamiento_control_referencia_normativa] cuando el padre no es editable.', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance; LEFT JOIN evita bypass por RLS)
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT plt_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT plt_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.plan_tratamiento AS plt
-                             ON plt.plt_codigo = x.plt_codigo
-                             LEFT OUTER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia
-                             ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- 5.10.9c Triggers de auditoría [AP-01]: inmutabilidad de las 49 tablas aud_* y archivo de altas ('I') y versiones anteriores ('U')
--- en las 40 tablas cuyo trigger no se actualiza a sí mismo (las otras 9 lo hacen dentro de su trigger, ver 5.9)
+-- 5.10.9b Triggers de auditoría [AP-01]: inmutabilidad de las 49 tablas aud_* y archivo de altas ('I') y versiones anteriores ('U')
+-- en las 40 tablas cuyo trigger no se actualiza a sí mismo (las otras 9 lo hacen dentro de su trigger, ver 5.9).
+-- En las 10 tablas puente (rpp, aip, ais, air, ads, adm, adi, adf, adu, ptc) y en sif/msi, el mismo trigger valida
+-- primero bloqueo de padre/alcance (con serialización por raíz sp_getapplock en familias aci/eia) y luego audita.
 -- [apv] La auditoría no se edita ni se borra
 CREATE OR ALTER TRIGGER sgspi.TR_apv_inmutabilidad
     ON sgspi.aud_periodo_vigencia
@@ -7414,6 +7110,22 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT rpi_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT rpi_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.requisito_parte_interesada AS p WITH (UPDLOCK)
+                             ON p.rpi_codigo = x.rpi_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'RPI'
+                                AND efc.efc_identificador = p.rpi_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[requisito_parte_interesada_proceso_institucional] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
@@ -7748,10 +7460,55 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion_proceso_institucional].', 1;
+                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT aci_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT aci_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.aci_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_proceso_institucional] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio asocian a sus procesos solo activos de sus UAA (la asociación nueva no da alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT aci_codigo,
+                                     pri_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT aci_codigo,
+                                     pri_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.aci_codigo
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS ap
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo, @per_actor) AS aa
+                      WHERE  ap.permitido IS NULL
+                             OR aa.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo o el proceso no son de las UAA del usuario en [sgspi].[activo_informacion_proceso_institucional].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7844,10 +7601,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion_sede].', 1;
+                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT aci_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT aci_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.aci_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_sede] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT aci_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT aci_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.aci_codigo
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_sede].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7940,10 +7738,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion_responsable].', 1;
+                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT aci_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT aci_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.aci_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_responsable] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT aci_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT aci_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.aci_codigo
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_responsable].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8048,6 +7887,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted WHERE aci_codigo IS NOT NULL UNION SELECT aci_codigo FROM deleted WHERE aci_codigo IS NOT NULL) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[sistema_informacion_ficha].', 1;
+                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted WHERE aci_codigo IS NOT NULL UNION SELECT aci_codigo FROM deleted WHERE aci_codigo IS NOT NULL) AS l WHERE l.aci_codigo > @lock_id);
+               END
            -- Bloquea INSERT/UPDATE cuando el activo de información asociado (anterior o nuevo) no es editable
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo
@@ -8058,7 +7909,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                               FROM   deleted
                               WHERE  aci_codigo IS NOT NULL) AS x
                              INNER JOIN
-                             sgspi.activo_informacion AS aci WITH (UPDLOCK)
+                             sgspi.activo_informacion AS aci
                              ON aci.aci_codigo = x.aci_codigo
                              INNER JOIN
                              sgspi.estado_flujo_catalogo AS efc
@@ -8194,6 +8045,26 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @raices_aci TABLE (aci_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_aci (aci_codigo)
+           SELECT DISTINCT sif.aci_codigo
+           FROM   (SELECT sif_codigo FROM inserted UNION SELECT sif_codigo FROM deleted) AS x
+                  INNER JOIN
+                  sgspi.sistema_informacion_ficha AS sif
+                  ON sif.sif_codigo = x.sif_codigo
+           WHERE  sif.aci_codigo IS NOT NULL;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM @raices_aci),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[modulo_sistema_informacion].', 1;
+                   SET @lock_id = (SELECT MIN(aci_codigo) FROM @raices_aci WHERE aci_codigo > @lock_id);
+               END
            -- Bloquea INSERT/UPDATE cuando el activo de información del sistema padre no es editable
            IF EXISTS (SELECT 1
                       FROM   (SELECT sif_codigo
@@ -8202,10 +8073,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                               SELECT sif_codigo
                               FROM   deleted) AS x
                              INNER JOIN
-                             sgspi.sistema_informacion_ficha AS sif WITH (UPDLOCK)
+                             sgspi.sistema_informacion_ficha AS sif
                              ON sif.sif_codigo = x.sif_codigo
                              INNER JOIN
-                             sgspi.activo_informacion AS aci WITH (UPDLOCK)
+                             sgspi.activo_informacion AS aci
                              ON aci.aci_codigo = sif.aci_codigo
                              INNER JOIN
                              sgspi.estado_flujo_catalogo AS efc
@@ -9212,10 +9083,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_soporte_registro].', 1;
+                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_soporte_registro] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_soporte_registro].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9308,10 +9220,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_medio_conservacion].', 1;
+                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_medio_conservacion] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_medio_conservacion].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9404,10 +9357,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_idioma].', 1;
+                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_idioma] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_idioma].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9500,10 +9494,51 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_formato_archivo].', 1;
+                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_formato_archivo] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_formato_archivo].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9596,6 +9631,34 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_unidad_productora].', 1;
+                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT ado_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT ado_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.activo_informacion AS p
+                             ON p.aci_codigo = x.ado_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'ACI'
+                                AND efc.efc_identificador = p.aci_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_unidad_productora] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
@@ -10728,10 +10791,64 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
+           -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
+           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (eia_codigo)
+           SELECT DISTINCT plt.eia_codigo
+           FROM   (SELECT plt_codigo FROM inserted UNION SELECT plt_codigo FROM deleted) AS x
+                  INNER JOIN
+                  sgspi.plan_tratamiento AS plt
+                  ON plt.plt_codigo = x.plt_codigo;
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
+                   @lock_res AS NVARCHAR (60),
+                   @lock_rc AS INT;
+           WHILE @lock_id IS NOT NULL
+               BEGIN
+                   SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
+                   EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                   IF @lock_rc < 0
+                       THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
+                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+               END
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT plt_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT plt_codigo
+                              FROM   deleted) AS x
+                             INNER JOIN
+                             sgspi.plan_tratamiento AS plt
+                             ON plt.plt_codigo = x.plt_codigo
+                             INNER JOIN
+                             sgspi.evento_incertidumbre_activo AS p
+                             ON p.eia_codigo = plt.eia_codigo
+                             INNER JOIN
+                             sgspi.estado_flujo_catalogo AS efc
+                             ON efc.efc_dominio = N'EIA'
+                                AND efc.efc_identificador = p.eia_estado_registro
+                      WHERE  efc.efc_permite_edicion = 0
+                             OR efc.efc_esta_activo = 0)
+               THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[plan_tratamiento_control_referencia_normativa] cuando el padre no es editable.', 1;
            DECLARE @per_actor AS INT = (SELECT per_codigo
                                         FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
+           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance; LEFT JOIN evita bypass por RLS)
+           IF EXISTS (SELECT 1
+                      FROM   (SELECT plt_codigo
+                              FROM   inserted
+                              UNION
+                              SELECT plt_codigo
+                              FROM   deleted) AS x
+                             LEFT OUTER JOIN
+                             sgspi.plan_tratamiento AS plt
+                             ON plt.plt_codigo = x.plt_codigo
+                             LEFT OUTER JOIN
+                             sgspi.evento_incertidumbre_activo AS eia
+                             ON eia.eia_codigo = plt.eia_codigo
+                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
+                      WHERE  a.permitido IS NULL)
+               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11569,7 +11686,7 @@ CREATE OR ALTER VIEW sgspi.vw_matriz_tratamiento_riesgos
 AS
 WITH   cte_controles_27001
 AS     (SELECT   ptc.plt_codigo,
-                 STRING_AGG(crn.crn_identificador_control, N', ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27001
+                 STRING_AGG(CAST(crn.crn_identificador_control AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27001
         FROM     sgspi.plan_tratamiento_control_referencia_normativa AS ptc
                  INNER JOIN
                  sgspi.control_referencia_normativa AS crn
@@ -11582,7 +11699,7 @@ AS     (SELECT   ptc.plt_codigo,
         GROUP BY ptc.plt_codigo),
        cte_controles_27701
 AS     (SELECT   ptc.plt_codigo,
-                 STRING_AGG(CONCAT_WS(N': ', crn.crn_rol_privacidad_pii, crn.crn_identificador_control), N' | ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27701
+                 STRING_AGG(CAST(CONCAT_WS(N': ', crn.crn_rol_privacidad_pii, crn.crn_identificador_control) AS NVARCHAR (MAX)), N' | ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27701
         FROM     sgspi.plan_tratamiento_control_referencia_normativa AS ptc
                  INNER JOIN
                  sgspi.control_referencia_normativa AS crn
@@ -11685,15 +11802,18 @@ AS     (SELECT   u.upc_codigo,
                  u.upc_nombre_unidad,
                  raiz.upc_prefijo_archivistico AS upc_cod_seccion_raiz,
                  raiz.upc_nombre_unidad AS upc_nombre_seccion_raiz,
-                 STRING_AGG(anc.upc_prefijo_archivistico, N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_prefijos_ccd,
-                 STRING_AGG(anc.upc_nombre_unidad, N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_jerarquica_unidad
+                 STRING_AGG(CAST(anc.upc_prefijo_archivistico AS NVARCHAR (MAX)), N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_prefijos_ccd,
+                 STRING_AGG(CAST(anc.upc_nombre_unidad AS NVARCHAR (MAX)), N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_jerarquica_unidad
         FROM     sgspi.unidad_productora_cuadro_clasificacion_documental AS u
                  INNER JOIN
                  sgspi.unidad_productora_cuadro_clasificacion_documental AS anc
                  ON u.upc_nodo_jerarquico.IsDescendantOf(anc.upc_nodo_jerarquico) = 1
+                    AND anc.upc_esta_activa = 1
                  INNER JOIN
                  sgspi.unidad_productora_cuadro_clasificacion_documental AS raiz
                  ON raiz.upc_nodo_jerarquico = u.upc_nodo_jerarquico.GetAncestor(u.upc_nodo_jerarquico.GetLevel() - 1)
+                    AND raiz.upc_esta_activa = 1
+        WHERE    u.upc_esta_activa = 1 -- [AP-22]
         GROUP BY u.upc_codigo, u.upc_nodo_jerarquico, u.upc_nivel_jerarquico, u.upc_prefijo_archivistico, u.upc_nombre_unidad, raiz.upc_prefijo_archivistico, raiz.upc_nombre_unidad)
 SELECT adu.ado_codigo AS ado_codigo,
        adu.upc_codigo AS upc_codigo,
@@ -11726,7 +11846,10 @@ FROM   sgspi.activo_documental_unidad_productora AS adu
        sgspi.subserie_documental_catalogo AS sbd
        ON sbd.sdo_codigo = ado.sdo_codigo
           AND sbd.sbd_codigo = ado.sbd_codigo
-WHERE  adu.adu_esta_activo = 1;
+          AND sbd.sbd_esta_activa = 1 -- [AP-22]
+WHERE  adu.adu_esta_activo = 1
+       AND ado.ado_esta_activo = 1
+       AND sdo.sdo_esta_activa = 1; -- [AP-22]
 
 
 GO
@@ -11740,13 +11863,13 @@ CREATE OR ALTER VIEW sgspi.vw_inventario_activo_documental_mr04
 AS
 WITH   cte_trd_agregado
 AS     (SELECT   v.ado_codigo,
-                 STRING_AGG(v.adu_codigo_serie_trd_calculado, N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_serie_documental_trd,
-                 STRING_AGG(v.adu_codigo_subserie_trd_calculado, N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_subserie_documental_trd
+                 STRING_AGG(CAST(v.adu_codigo_serie_trd_calculado AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_serie_documental_trd,
+                 STRING_AGG(CAST(v.adu_codigo_subserie_trd_calculado AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_subserie_documental_trd
         FROM     sgspi.vw_desglose_ccd_trd_mr04 AS v
         GROUP BY v.ado_codigo),
        cte_procesos_doc
 AS     (SELECT   aip.aci_codigo,
-                 STRING_AGG(pr.pri_nombre, N', ') WITHIN GROUP (ORDER BY pr.pri_codigo) AS ado_procesos_asociados
+                 STRING_AGG(CAST(pr.pri_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY pr.pri_codigo) AS ado_procesos_asociados
         FROM     sgspi.activo_informacion_proceso_institucional AS aip
                  INNER JOIN
                  sgspi.proceso_institucional AS pr
@@ -11755,7 +11878,7 @@ AS     (SELECT   aip.aci_codigo,
         GROUP BY aip.aci_codigo),
        cte_dependencias_doc
 AS     (SELECT   x.aci_codigo,
-                 STRING_AGG(CONVERT (NVARCHAR (200), x.uaa_nombre), N', ') WITHIN GROUP (ORDER BY x.uaa_nombre) AS ado_dependencias_oficinas
+                 STRING_AGG(CAST(x.uaa_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY x.uaa_nombre) AS ado_dependencias_oficinas
         FROM     (SELECT DISTINCT air.aci_codigo,
                                   u.uaa_nombre
                   FROM   sgspi.activo_informacion_responsable AS air
@@ -11766,7 +11889,7 @@ AS     (SELECT   x.aci_codigo,
         GROUP BY x.aci_codigo),
        cte_propietarios_doc
 AS     (SELECT   air.aci_codigo,
-                 STRING_AGG(CONVERT (NVARCHAR (100), c.car_nombre), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_propietarios_activo
+                 STRING_AGG(CAST(c.car_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_propietarios_activo
         FROM     sgspi.activo_informacion_responsable AS air
                  INNER JOIN
                  dbo.cargo AS c
@@ -11776,7 +11899,7 @@ AS     (SELECT   air.aci_codigo,
         GROUP BY air.aci_codigo),
        cte_custodios_doc
 AS     (SELECT   air.aci_codigo,
-                 STRING_AGG(CONVERT (NVARCHAR (100), c.car_nombre), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_custodios_activo
+                 STRING_AGG(CAST(c.car_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_custodios_activo
         FROM     sgspi.activo_informacion_responsable AS air
                  INNER JOIN
                  dbo.cargo AS c
@@ -11786,7 +11909,7 @@ AS     (SELECT   air.aci_codigo,
         GROUP BY air.aci_codigo),
        cte_soportes_doc
 AS     (SELECT   ads.ado_codigo,
-                 STRING_AGG(src.src_nombre, N'/') WITHIN GROUP (ORDER BY src.src_nombre DESC) AS ado_soporte_registro
+                 STRING_AGG(CAST(src.src_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY src.src_nombre DESC) AS ado_soporte_registro
         FROM     sgspi.activo_documental_soporte_registro AS ads
                  INNER JOIN
                  sgspi.soporte_registro_catalogo AS src
@@ -11795,7 +11918,7 @@ AS     (SELECT   ads.ado_codigo,
         GROUP BY ads.ado_codigo),
        cte_medios_doc
 AS     (SELECT   adm.ado_codigo,
-                 STRING_AGG(mcc.mcc_nombre, N'/') WITHIN GROUP (ORDER BY mcc.mcc_nombre DESC) AS ado_medio_conservacion
+                 STRING_AGG(CAST(mcc.mcc_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY mcc.mcc_nombre DESC) AS ado_medio_conservacion
         FROM     sgspi.activo_documental_medio_conservacion AS adm
                  INNER JOIN
                  sgspi.medio_conservacion_catalogo AS mcc
@@ -11804,7 +11927,7 @@ AS     (SELECT   adm.ado_codigo,
         GROUP BY adm.ado_codigo),
        cte_idiomas_doc
 AS     (SELECT   adi.ado_codigo,
-                 STRING_AGG(idi.idi_nombre, N'/') WITHIN GROUP (ORDER BY idi.idi_nombre) AS ado_idioma
+                 STRING_AGG(CAST(idi.idi_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY idi.idi_nombre) AS ado_idioma
         FROM     sgspi.activo_documental_idioma AS adi
                  INNER JOIN
                  sgspi.idioma_catalogo AS idi
@@ -11814,7 +11937,7 @@ AS     (SELECT   adi.ado_codigo,
 -- [AP-08] El formato documental ahora es multivaluado normalizado ([adf] + [fac])
        cte_formatos_doc
 AS     (SELECT   adf.ado_codigo,
-                 STRING_AGG(fac.fac_nombre, N'/') WITHIN GROUP (ORDER BY fac.fac_nombre) AS ado_formato_documental
+                 STRING_AGG(CAST(fac.fac_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY fac.fac_nombre) AS ado_formato_documental
         FROM     sgspi.activo_documental_formato_archivo AS adf
                  INNER JOIN
                  sgspi.formato_archivo_catalogo AS fac
@@ -11940,11 +12063,11 @@ SELECT   crn.crn_codigo,
          enc.enc_identificador,
          crn.crn_identificador_control,
          crn.crn_nombre_control,
-         STRING_AGG(CASE WHEN aac.aac_tipo_atributo = N'TIPO_CONTROL' THEN aac.aac_valor END, N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS tipo_control,
-         STRING_AGG(CASE WHEN aac.aac_tipo_atributo = N'PROPIEDAD_SEGURIDAD' THEN aac.aac_valor END, N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS propiedades_seguridad,
-         STRING_AGG(CASE WHEN aac.aac_tipo_atributo = N'CONCEPTO_CIBERSEGURIDAD' THEN aac.aac_valor END, N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS conceptos_ciberseguridad,
-         STRING_AGG(CASE WHEN aac.aac_tipo_atributo = N'CAPACIDAD_OPERACIONAL' THEN aac.aac_valor END, N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS capacidades_operacionales,
-         STRING_AGG(CASE WHEN aac.aac_tipo_atributo = N'DOMINIO_SEGURIDAD' THEN aac.aac_valor END, N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS dominios_seguridad
+         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'TIPO_CONTROL' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS tipo_control,
+         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'PROPIEDAD_SEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS propiedades_seguridad,
+         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'CONCEPTO_CIBERSEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS conceptos_ciberseguridad,
+         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'CAPACIDAD_OPERACIONAL' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS capacidades_operacionales,
+         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'DOMINIO_SEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS dominios_seguridad
 FROM     sgspi.control_referencia_normativa AS crn
          INNER JOIN
          sgspi.estandar_normativo_catalogo AS enc
@@ -11956,6 +12079,9 @@ FROM     sgspi.control_referencia_normativa AS crn
          LEFT OUTER JOIN
          sgspi.atributo_control_catalogo AS aac
          ON aac.aac_codigo = cra.aac_codigo
+            AND aac.aac_esta_activo = 1 -- [AP-22]
+WHERE    crn.crn_esta_activo = 1
+         AND enc.enc_esta_activo = 1 -- [AP-22]
 GROUP BY crn.crn_codigo, enc.enc_identificador, crn.crn_identificador_control, crn.crn_nombre_control;
 
 
@@ -12007,7 +12133,7 @@ IF (SELECT COUNT(*)
               INNER JOIN
               sys.tables AS t
               ON t.object_id = tr.parent_id
-       WHERE  t.schema_id = SCHEMA_ID(N'sgspi')) <> 109
+       WHERE  t.schema_id = SCHEMA_ID(N'sgspi')) <> 99
    OR (SELECT COUNT(*)
        FROM   sys.views
        WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 7
@@ -12023,7 +12149,7 @@ IF (SELECT COUNT(*)
                          AND (SELECT COUNT(*)
                               FROM   sys.security_predicates AS pr
                               WHERE  pr.object_id = sp.object_id) = 20)
-    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 109 triggers, 7 vistas, 5 funciones, política RLS spol_alcance_lectura activa con 20 predicados).';
+    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 7 vistas, 5 funciones, política RLS spol_alcance_lectura activa con 20 predicados).';
 
 DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST(v.nombre AS NVARCHAR (MAX)), N', ')
                                                       FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'),
@@ -12142,8 +12268,8 @@ login del usuario de BD (SUSER_SNAME de su sid), que es lo que los triggers busc
 login no está en [dbo].[usuario_general].[us]; (c) usuarios de BD en más de un rol SGSPI (incluyendo sgspi_rol_consulta); (d) usuarios de un rol de
 actor o de sgspi_rol_consulta que también son miembros directos de db_owner, db_datareader, db_datawriter, db_ddladmin o db_securityadmin, que anulan los
 GRANT; (e) logins de un rol de actor con varias personas en [dbo].[usuario_general] (TOP (1) elegiría una de ellas);
-(f) base sin TDE (sys.databases.is_encrypted = 0); (g) tablas de [dbo] sin índice en la columna de búsqueda del SGSPI
-(dbo.usuario_general.us, dbo.usuario_grupo.usg_usuario).
+(f) base sin TDE (sys.databases.is_encrypted = 0); (g) base sin RCSI (sys.databases.is_read_committed_snapshot_on = 0, recomendar ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON en ventana de mantenimiento);
+(h) tablas de [dbo] sin índice en la columna de búsqueda del SGSPI (dbo.usuario_general.us, dbo.usuario_grupo.usg_usuario).
 ==================================================================================================*/
 WITH     cte_mapa_roles
 AS       (SELECT v.gru_nombre,
@@ -12249,6 +12375,13 @@ SELECT   N'Base sin TDE' AS hallazgo,
 FROM     sys.databases
 WHERE    database_id = DB_ID()
          AND is_encrypted = 0
+UNION ALL
+SELECT   N'Base sin RCSI (ejecutar ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON en ventana de mantenimiento)' AS hallazgo,
+         DB_NAME() AS usuario,
+         N'sys.databases.is_read_committed_snapshot_on = 0' AS detalle
+FROM     sys.databases
+WHERE    database_id = DB_ID()
+         AND is_read_committed_snapshot_on = 0
 UNION ALL
 SELECT   N'Tabla de [dbo] sin índice en la columna de búsqueda del SGSPI' AS hallazgo,
          v.tabla AS usuario,
