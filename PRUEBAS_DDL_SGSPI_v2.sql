@@ -177,7 +177,8 @@ IF (SELECT COUNT(*) FROM sgspi.aud_analisis_contexto_factor WHERE acf_codigo = @
 
 EXECUTE #espera N'AP-05 editar VIGENTE sin cambiar estado', N'UPDATE sgspi.analisis_contexto_factor SET acf_descripcion_situacion = N''cambio'' WHERE acf_numero_factor = 1;', 50011;
 
-EXECUTE #espera N'Borrado físico bloqueado', N'DELETE sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1;', 50010;
+-- Toda fila tiene su alta 'I' en aud_*: la FK de la auditoría rechaza el DELETE (547) antes que el trigger (50010)
+EXECUTE #espera N'Borrado físico bloqueado', N'DELETE sgspi.analisis_contexto_factor WHERE acf_numero_factor = 1;', 547;
 
 
 GO
@@ -312,7 +313,7 @@ EXECUTE #espera N'AP-15 el seguimiento lo registra la persona de la sesión', N'
 
 EXECUTE #espera N'AP-16 seguimiento es append-only', N'UPDATE sgspi.seguimiento_actividad SET sga_porcentaje_reportado = 90 WHERE sga_porcentaje_reportado = 40;', 50016;
 
-EXECUTE #espera N'AP-22 seguimiento no se borra físicamente', N'DELETE sgspi.seguimiento_actividad WHERE sga_porcentaje_reportado = 40;', 50016;
+EXECUTE #espera N'AP-22 seguimiento no se borra físicamente (FK de su aud_*)', N'DELETE sgspi.seguimiento_actividad WHERE sga_porcentaje_reportado = 40;', 547;
 
 EXECUTE #espera N'AP-22 seguimiento admite borrado lógico y recalcula avance', N'
 UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 40;
@@ -725,7 +726,7 @@ UPDATE sgspi.activo_informacion SET aci_estado_registro = N''HISTORICO'' WHERE a
 
 EXECUTE #espera N'ado UPDATE con padre HISTORICO bloqueado', N'UPDATE sgspi.activo_documental SET ado_lugar_consulta_ubicacion = N''Otro'' WHERE ado_codigo = 1;', 50011;
 
-EXECUTE #espera N'AP-01 tampoco se borran físicamente los catálogos', N'DELETE sgspi.idioma_catalogo WHERE idi_codigo_iso = N''en'';', 50010;
+EXECUTE #espera N'AP-01 tampoco se borran físicamente los catálogos (FK de su aud_*)', N'DELETE sgspi.idioma_catalogo WHERE idi_codigo_iso = N''en'';', 547;
 
 EXECUTE #espera N'C4 alta en vigencia CERRADA bloqueada (D7)', N'
 BEGIN TRAN;

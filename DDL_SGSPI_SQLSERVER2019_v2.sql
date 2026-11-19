@@ -77,7 +77,8 @@ AP-01  Auditoría por tabla (reemplaza la bitácora [bas] y las tablas temporale
 sgspi.aud_<tabla> (sección 5.9) con las altas (<aud>_operacion = 'I', con los valores iniciales de la fila creada)
 y la versión anterior de cada fila modificada (<aud>_operacion = 'U'), quién ejecutó la operación (per_codigo de
 ORIGINAL_LOGIN(), error 50017 si no hay persona; también para un DBA) y cuándo. Las tablas aud_* son inmutables
-(error 50016) y el borrado físico de cualquier tabla queda bloqueado por trigger (50010). La auditoría del servidor
+(error 50016) y el borrado físico de cualquier tabla lo rechaza la FK de su aud_* (547, también a dbo; el trigger, 50010,
+queda como segunda barrera). La auditoría del servidor
 (DISABLE TRIGGER, roles y permisos) se configura fuera de la transacción en sql/sgspi/auditoria_servidor.sql.
 AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
 columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
@@ -127,7 +128,8 @@ append-only con recálculo de avance al desactivar y requisitos de transición (
 AP-17  Todos los DEFAULT con nombre DF_<columna>.
 AP-18  Índices redundantes eliminados, INCLUDE de claves clustered retirados, índice para FK compuesta.
 AP-19  Verificación previa: el script se detiene sin cambios si [sgspi] ya tiene tablas o faltan
-dependencias de [dbo]. El despliegue corre en una sola transacción (todo o nada).
+dependencias de [dbo]. El despliegue corre en una sola transacción (todo o nada) y, antes del COMMIT, se revierte si falta
+algún objeto (un lote que no compiló).
 AP-20  GROUPING() en lugar de ISNULL para rotular subtotales.
 AP-21  RETIRADO (funciones de contexto de auditoría y de hash, eliminadas con AP-01 y AP-03).
 AP-22  Borrado lógico: ningún registro se elimina. Toda tabla (salvo las aud_*, de solo inserción) tiene <acr>_esta_activo/<acr>_esta_activa BIT
@@ -170,7 +172,8 @@ Si pasa, todo el despliegue corre en UNA transacción: ante un error, XACT_ABORT
 de modo que nunca queda un despliegue a medias. El script termina con COMMIT y SET NOEXEC OFF.
 La transacción retiene bloqueos de esquema sobre las tablas de [dbo] referenciadas hasta el COMMIT:
 desplegar en ventana de baja carga.
-shortcut: un error de sintaxis en un lote no revierte la transacción, ejecutar con "sqlcmd -b" si se edita el script.
+Un error de sintaxis (nivel 15) no revierte la transacción, ni siquiera con XACT_ABORT: la guarda previa al COMMIT cuenta
+tablas, triggers, vistas y funciones y, si falta alguno, revierte todo (DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS), con o sin "sqlcmd -b".
 ==================================================================================================*/
 DECLARE @errores AS NVARCHAR (2000) = N'';
 
@@ -3036,7 +3039,7 @@ GO
 /*==================================================================================================
                                                                     5.10 TRIGGERS DE INTEGRIDAD: MÁQUINA DE ESTADOS DIRIGIDA POR DATOS, BORRADO LÓGICO, FECHA DE
                                                                     ACTUALIZACIÓN Y SEGUIMIENTO APPEND-ONLY
-                                                                    Cada TR_<acr>_integridad_y_actualizacion: (a) impide el borrado físico (error 50010); (b) en las tablas
+                                                                    Cada TR_<acr>_integridad_y_actualizacion: (a) impide el borrado físico (error 50010, si antes no lo rechaza la FK de su aud_* con 547); (b) en las tablas
                                                                     con flujo exige el estado inicial en INSERT (50014) y solo admite las transiciones de [tef] y la
                                                                     edición en estados con efc_permite_edicion = 1 (50011); (c) mantiene <acr>_fecha_actualizacion.
                                                                     (d) en acf, rpi, aci y eia exigen la persona de la sesión (50017), que sea el creador de lo nuevo (50019) y firman con ella (AP-03);
@@ -8940,6 +8943,58 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                    FROM   inserted AS i;
                    RETURN;
                END
+           IF EXISTS (SELECT 1
+                      FROM   deleted AS d
+                      WHERE  NOT EXISTS (SELECT 1
+                                         FROM   inserted AS i
+                                         WHERE  i.ado_codigo = d.ado_codigo
+                                                AND i.mcc_codigo = d.mcc_codigo))
+               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_medio_conservacion]; desactive la fila y cree una nueva.', 1;
+           INSERT INTO sgspi.aud_activo_documental_medio_conservacion (
+               ado_codigo,
+               mcc_codigo,
+               aam_esta_activo,
+               per_codigo,
+               aam_operacion,
+               aam_usuario_bd,
+               aam_fecha_cambio
+           )
+           SELECT d.ado_codigo,
+                  d.mcc_codigo,
+                  d.adm_esta_activo,
+                  @per_actor,
+                  'U',
+                  ORIGINAL_LOGIN(),
+                  SYSDATETIMEOFFSET()
+           FROM   deleted AS d
+                  INNER JOIN
+                  inserted AS i
+                  ON i.ado_codigo = d.ado_codigo
+                     AND i.mcc_codigo = d.mcc_codigo
+           WHERE  EXISTS (SELECT i.adm_esta_activo
+                          EXCEPT
+                          SELECT d.adm_esta_activo);
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [aid] La auditoría no se edita ni se borra
+CREATE OR ALTER TRIGGER sgspi.TR_aid_inmutabilidad
+    ON sgspi.aud_activo_documental_idioma
+    INSTEAD OF UPDATE, DELETE
+    AS BEGIN
+           SET NOCOUNT ON;
+           THROW 50016, N'Operación denegada: la tabla de auditoría [sgspi].[aud_activo_documental_idioma] es inmutable y no admite modificaciones ni borrados.', 1;
+       END
+
+
+GO
+IF @@TRANCOUNT = 0
     SET NOEXEC ON; -- [AP-19]
 
 
@@ -11389,6 +11444,32 @@ GRANT SELECT
 GO
 IF @@TRANCOUNT = 0
     SET NOEXEC ON; -- [AP-19]
+
+
+GO
+-- [AP-19] Un lote que no compila (error de nivel 15) no revierte la transacción: antes del COMMIT se exige el esquema completo.
+-- shortcut: compara cantidades, no nombres; actualizar los cuatro números al agregar o quitar objetos.
+IF (SELECT COUNT(*)
+    FROM   sys.tables
+    WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 100
+   OR (SELECT COUNT(*)
+       FROM   sys.triggers AS tr
+              INNER JOIN
+              sys.tables AS t
+              ON t.object_id = tr.parent_id
+       WHERE  t.schema_id = SCHEMA_ID(N'sgspi')) <> 112
+   OR (SELECT COUNT(*)
+       FROM   sys.views
+       WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 7
+   OR (SELECT COUNT(*)
+       FROM   sys.objects
+       WHERE  schema_id = SCHEMA_ID(N'sgspi')
+              AND type = N'IF') <> 3
+    BEGIN
+        ROLLBACK TRANSACTION;
+        RAISERROR (N'DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS: faltan objetos del esquema (un lote no compiló; ver mensajes anteriores).', 16, 1);
+        SET NOEXEC ON;
+    END
 
 
 GO
