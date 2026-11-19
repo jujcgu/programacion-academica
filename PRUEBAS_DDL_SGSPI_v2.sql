@@ -1,3 +1,7 @@
+SET ANSI_NULLS ON;
+
+SET QUOTED_IDENTIFIER ON;
+
 SET NOCOUNT ON;
 
 SET XACT_ABORT OFF;
@@ -109,6 +113,12 @@ IF EXISTS (SELECT v.id
                           (N''EN_EVALUACION_EFICACIA''), (N''CERRADO_EFICAZ''), (N''PENDIENTE''), (N''COMPLETADA'')) AS v(id)
            WHERE  NOT EXISTS (SELECT 1 FROM sgspi.estado_flujo_catalogo AS efc WHERE efc.efc_identificador = v.id))
     THROW 51000, N''falta un estado requerido por el código'', 1;', 0;
+
+EXECUTE #espera N'Versión 2.1 registrada y ufn_persona_sesion resuelve la sesión', N'
+IF NOT EXISTS (SELECT 1 FROM sys.extended_properties WHERE class = 3 AND major_id = SCHEMA_ID(N''sgspi'') AND name = N''sgspi_version'' AND CONVERT(NVARCHAR(20), value) = N''2.1'')
+    THROW 51000, N''falta propiedad sgspi_version 2.1'', 1;
+IF (SELECT per_codigo FROM sgspi.ufn_persona_sesion()) IS NULL
+    THROW 51000, N''ufn_persona_sesion no devolvió persona'', 1;', 0;
 
 -- [AP-02] D5: el alcance sale de dbo.usuario_grupo (grupos SGSPI_*) y de proceso_institucional_uaa. El login de prueba
 -- queda en un grupo SGSPI en la UAA 1, que más abajo se liga al proceso 1.
@@ -252,6 +262,8 @@ EXECUTE #espera N'AP-06 identificador RA-ABC rechazado', N'INSERT sgspi.evento_i
 
 EXECUTE #espera N'C1 identificador RA-001 rechazado', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-001'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''s'', 5, 5, 1);', 547;
 
+EXECUTE #espera N'eia activo soporte igual al primario rechazado (CK_eia_activos_distintos)', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-07'', N''RIESGO'', 1, 1, 1, 1, N''f'', N''v'', N''e'', N''Mismo activo'', 5, 5, 1);', 547;
+
 EXECUTE #espera N'Evento de riesgo RA-01 en BORRADOR', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-01'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Fuga de actas'', 5, 5, 1);', 0;
 
 EXECUTE #espera N'AP-15 el creador debe ser la persona de la sesión (eia)', N'INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_identificador_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador) VALUES (1, N''RA-09'', N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Suplantación'', 5, 5, 2);', 50019;
@@ -266,15 +278,31 @@ EXECUTE #espera N'AP-06 plan declarando naturaleza distinta a la del evento', N'
 
 EXECUTE #espera N'Plan de tratamiento coherente', N'INSERT sgspi.plan_tratamiento (eia_codigo, plt_naturaleza_evento, etc_codigo, plt_justificacion_estrategia, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_fecha_inicio, plt_fecha_fin, plt_recursos_humanos_tecnicos, plt_recursos_economicos_desc, plt_nombre_indicador_kpi, plt_meta_indicador_kpi) VALUES ((SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''), N''RIESGO'', 1, N''j'', 1, 1, ''2026-01-01'', ''2026-12-31'', N''r'', N''r'', N''k'', 100);', 0;
 
+EXECUTE #espera N'AP-22 plan inactivo permite crear nuevo plan activo (UX_plt_evento_activo)', N'
+BEGIN TRAN;
+DECLARE @eia INT = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');
+UPDATE sgspi.plan_tratamiento SET plt_esta_activo = 0 WHERE eia_codigo = @eia;
+INSERT sgspi.plan_tratamiento (eia_codigo, plt_naturaleza_evento, etc_codigo, plt_justificacion_estrategia, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_fecha_inicio, plt_fecha_fin, plt_recursos_humanos_tecnicos, plt_recursos_economicos_desc, plt_nombre_indicador_kpi, plt_meta_indicador_kpi) VALUES (@eia, N''RIESGO'', 1, N''Plan corregido'', 1, 1, ''2026-01-01'', ''2026-12-31'', N''r'', N''r'', N''k'', 100);
+ROLLBACK;', 0;
+
+EXECUTE #espera N'AP-22 dos planes activos para el mismo evento rechazado (UX_plt_evento_activo)', N'INSERT sgspi.plan_tratamiento (eia_codigo, plt_naturaleza_evento, etc_codigo, plt_justificacion_estrategia, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_fecha_inicio, plt_fecha_fin, plt_recursos_humanos_tecnicos, plt_recursos_economicos_desc, plt_nombre_indicador_kpi, plt_meta_indicador_kpi) VALUES ((SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''), N''RIESGO'', 1, N''Segundo activo'', 1, 1, ''2026-01-01'', ''2026-12-31'', N''r'', N''r'', N''k'', 100);', 2601;
+
 EXECUTE #espera N'AP-16 eficacia sin dictamen ni evaluador', N'UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');', 547;
 
-EXECUTE #espera N'AP-16 KPI 500 veces la meta ya no desborda', N'UPDATE sgspi.plan_tratamiento SET plt_meta_indicador_kpi = 0.01, plt_valor_alcanzado_kpi = 5 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''); DECLARE @p DECIMAL(9,2) = (SELECT plt_porcentaje_cumplimiento_kpi FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''));', 0;
+EXECUTE #espera N'AP-16 KPI extremo cabe en DECIMAL(15,2) sin desbordar', N'UPDATE sgspi.plan_tratamiento SET plt_meta_indicador_kpi = 1, plt_valor_alcanzado_kpi = 100000 WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01''); DECLARE @p DECIMAL(15,2) = (SELECT plt_porcentaje_cumplimiento_kpi FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')); IF @p <> 10000000.00 THROW 51000, N''porcentaje KPI inesperado'', 1;', 0;
 
 EXECUTE #espera N'Actividad en PENDIENTE', N'INSERT sgspi.actividad_tratamiento (plt_codigo, act_numero_orden, act_descripcion_actividad, act_fecha_compromiso) VALUES ((SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')), 1, N''Cifrar repositorio'', ''2026-06-30'');', 0;
 
 EXECUTE #espera N'AP-14 número de orden duplicado en el plan', N'INSERT sgspi.actividad_tratamiento (plt_codigo, act_numero_orden, act_descripcion_actividad, act_fecha_compromiso) VALUES ((SELECT plt_codigo FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')), 1, N''Dup'', ''2026-06-30'');', 2627;
 
 EXECUTE #espera N'AP-16 evidencia incompleta (nombre sin hash)', N'INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 40, N''Avance'', N''acta.pdf'');', 547;
+
+EXECUTE #espera N'AP-16 hash SHA-256 en mayúsculas rechazado (CK_sga_hash_formato)', N'INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''https://sgspi/acta.pdf'', REPLICATE(''A'', 64));', 547;
+
+EXECUTE #espera N'AP-16 hash SHA-256 en minúsculas aceptado (CK_sga_hash_formato)', N'
+BEGIN TRAN;
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''https://sgspi/acta.pdf'', REPLICATE(''a'', 64));
+ROLLBACK;', 0;
 
 EXECUTE #espera N'AP-09 seguimiento sincroniza el avance de la actividad', N'
 INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 40, N''Avance parcial'');
@@ -286,7 +314,11 @@ EXECUTE #espera N'AP-16 seguimiento es append-only', N'UPDATE sgspi.seguimiento_
 
 EXECUTE #espera N'AP-22 seguimiento no se borra físicamente', N'DELETE sgspi.seguimiento_actividad WHERE sga_porcentaje_reportado = 40;', 50016;
 
-EXECUTE #espera N'AP-22 seguimiento admite borrado lógico', N'UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 40; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 1 WHERE sga_porcentaje_reportado = 40;', 0;
+EXECUTE #espera N'AP-22 seguimiento admite borrado lógico y recalcula avance', N'
+UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 40;
+IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 0 THROW 51000, N''avance no volvió a 0'', 1;
+UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 1 WHERE sga_porcentaje_reportado = 40;
+IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 40 THROW 51000, N''avance no volvió a 40'', 1;', 0;
 
 EXECUTE #espera N'Actividad fuera de PENDIENTE exige cargo y UAA responsables', N'UPDATE sgspi.actividad_tratamiento SET act_estado_actividad = N''EN_CURSO'' WHERE act_codigo = 1;', 547;
 
@@ -414,7 +446,7 @@ UPDATE sgspi.activo_informacion_proceso_institucional SET aip_esta_activo = 0 WH
 
 EXECUTE #espera N'AP-22 custodio no borra tablas puente', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; DELETE sgspi.activo_informacion_proceso_institucional WHERE 1 = 0;', 229;
 
-EXECUTE #espera N'AP-22 custodio desactiva un seguimiento', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 60;', 0;
+EXECUTE #espera N'AP-22 custodio desactiva seguimiento y recalcula avance de la actividad', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.seguimiento_actividad SET sga_esta_activo = 0 WHERE sga_porcentaje_reportado = 60; IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 40 THROW 51000, N''avance no recalculado al desactivar'', 1;', 0;
 
 EXECUTE #espera N'AP-02 auditor registra el dictamen de eficacia; la fecha la pone el servidor', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_es_tratamiento_eficaz = 1, plt_dictamen_eficacia = N''Eficaz'', per_codigo_evaluador = 1, plt_fecha_evaluacion_eficacia = ''2000-01-01T00:00:00+00:00'' WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');
 IF (SELECT YEAR(plt_fecha_evaluacion_eficacia) FROM sgspi.plan_tratamiento WHERE eia_codigo = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')) = 2000 THROW 51000, N''la fecha del dictamen no la puso el servidor'', 1;', 0;

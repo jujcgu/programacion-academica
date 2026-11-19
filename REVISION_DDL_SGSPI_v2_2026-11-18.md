@@ -253,6 +253,8 @@ Queda una inconsistencia de la especificación que no se tocó: el diagrama ACI 
 
 ## 4. Mejoras menores (dimensiones con 4), cada una S
 
+**Estado:** aplicada el 2026-11-18 en el DDL, `sql/sgspi/aud_periodo_vigencia.sql`, las pruebas y la especificación, sin ejecutar contra SQL Server.
+
 - `plt_porcentaje_cumplimiento_kpi`: `DECIMAL (9, 2)` → `DECIMAL (15, 2)` (L1326). Es un error real de disponibilidad: una fila extrema tumba la vista.
 - `TR_sga_inmutabilidad`: al desactivar un seguimiento, recalcular `act_porcentaje_avance` con el último seguimiento activo.
 - Hash en minúsculas: en `CK_sga_hash_formato`, `sga_hash_sha256_evidencia COLLATE Latin1_General_BIN2 NOT LIKE '%[^0-9a-f]%'`, o pasar a `BINARY(32)`.

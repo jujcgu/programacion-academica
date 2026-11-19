@@ -1,3 +1,9 @@
+SET ANSI_NULLS ON;
+
+SET QUOTED_IDENTIFIER ON;
+
+
+GO
 -- 1. Tabla de auditoría (acrónimo [apv]): guarda las altas ('I') y la versión anterior ('U') con quién ejecutó la operación
 CREATE TABLE sgspi.aud_periodo_vigencia (
     apv_codigo          INT                IDENTITY (1, 1) NOT NULL,
@@ -50,10 +56,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1

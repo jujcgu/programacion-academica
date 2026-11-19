@@ -89,9 +89,9 @@ vw_resumen_activos_criticidad, vw_desglose_ccd_trd_mr04, vw_inventario_activo_do
 vw_controles_atributos_iso27002), sin acceso a eia, plt, act, sga ni aud_*. Los roles transversales
 van en lista explícita (oficial, comité y auditor; el gestor documental solo en activos, D9): sin rol de actor no hay
 alcance. D2: el dictamen de eficacia solo lo escribe el auditor (DENY de sus columnas al líder y al oficial).
-AP-03  Identidad sin procedimiento de contexto de sesión: los triggers de acf, rpi, aci, eia, plt y sga resuelven la
-persona con ORIGINAL_LOGIN() -> [dbo].[usuario_general] (error 50017 si no la hay), firman con ella las aprobaciones
-y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor de seguimiento distinto.
+AP-03  Identidad sin procedimiento de contexto de sesión: sgspi.ufn_persona_sesion() resuelve la persona desde
+ORIGINAL_LOGIN() -> [dbo].[usuario_general]; los triggers la exigen (error 50017 si falta), firman con ella las
+aprobaciones y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor distinto.
 AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
 VIGENTE (error 50014). Tampoco se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en
 acf, rpi, ado, eia y eac (error 50022, D7). Carga histórica: con la auditoría del servidor encendida
@@ -122,13 +122,8 @@ AP-14  Claves naturales con UNIQUE (pri, cet, msi, act).
 AP-15  Segregación de funciones: aprobador/firmantes distintos del creador; aprobador obligatorio en
 estados aprobados; rpi gana creador y aprobador. El creador debe ser la persona de la sesión (50019, AP-03):
 sin eso, declarar a otra persona como creadora anularía los CHECK de segregación.
-AP-16  Coherencia de eficacia del plan, KPI sin desborde, evidencia con formato y seguimiento append-only.
-Requisitos de transición (50020): en aci, VIGENTE exige propietario único activo (D3), aval de Archivo en activos
-documentales activos (RN-DOC-06) y custodio activo (RN-ACT-05); en eia, APROBADO_PLANIFICADO exige plan activo,
-paso por el comité si la celda inherente o la residual meta lo exige (mvr_requiere_aprobacion_comite), meta residual
-no superior a la inherente en RIESGO (RN-RSG-04) y control activo ISO27701 si el activo primario contiene datos
-personales (RN-RSG-05); EN_EVALUACION_EFICACIA exige plan activo con al menos una actividad activa y todas en
-COMPLETADA; CERRADO_EFICAZ exige plan dictaminado eficaz (D2: dictamen y cierre del auditor).
+AP-16  Coherencia de eficacia del plan, KPI sin desborde (DECIMAL(15,2)), evidencia con formato hex minúscula, seguimiento
+append-only con recálculo de avance al desactivar y requisitos de transición (50020) en aci (propietario D3, aval de Archivo RN-DOC-06 y custodio RN-ACT-05) y en eia (plan, comité, meta residual <= inherente RN-RSG-04, control ISO27701 RN-RSG-05, actividades completadas en paso 11 y eficacia en cierre, D2).
 AP-17  Todos los DEFAULT con nombre DF_<columna>.
 AP-18  Índices redundantes eliminados, INCLUDE de claves clustered retirados, índice para FK compuesta.
 AP-19  Verificación previa: el script se detiene sin cambios si [sgspi] ya tiene tablas o faltan
@@ -154,6 +149,9 @@ con WITH (UPDLOCK, HOLDLOCK)):
     FROM sgspi.analisis_contexto_factor WITH (UPDLOCK, HOLDLOCK)
     WHERE pev_codigo = @pev AND acf_naturaleza_factor = @naturaleza;
 ==================================================================================================*/
+-- Opciones SET obligatorias para toda sesión, script o job del Agente SQL que ejecute DML sobre [sgspi]
+-- (sqlcmd requiere -I para QUOTED_IDENTIFIER ON): los índices filtrados (UX_*) y las columnas calculadas
+-- indexadas (upc, mvr, eia) fallan con el error 1934 si alguna de estas opciones está en OFF.
 SET ANSI_NULLS ON;
 
 SET QUOTED_IDENTIFIER ON;
@@ -241,6 +239,8 @@ IF NOT EXISTS (SELECT 1
     BEGIN
         EXECUTE (N'CREATE SCHEMA sgspi AUTHORIZATION dbo;');
     END
+
+EXECUTE sys.sp_addextendedproperty N'sgspi_version', N'2.1', N'SCHEMA', N'sgspi';
 
 
 GO
@@ -1281,7 +1281,8 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
                                         AND (per_codigo_revisor_sgspi IS NULL
                                              OR per_codigo_revisor_sgspi <> per_codigo_creador)
                                         AND (per_codigo_aprobador_comite IS NULL
-                                             OR per_codigo_aprobador_comite <> per_codigo_creador))
+                                             OR per_codigo_aprobador_comite <> per_codigo_creador)),
+    CONSTRAINT CK_eia_activos_distintos CHECK (aci_codigo_soporte <> aci_codigo_primario)
 );
 
 CREATE NONCLUSTERED INDEX IX_eia_pri_codigo
@@ -1344,9 +1345,9 @@ CREATE TABLE sgspi.plan_tratamiento (
     plt_unidad_medida_kpi           NVARCHAR (30)      CONSTRAINT DF_plt_unidad_medida_kpi DEFAULT N'PORCENTAJE' NOT NULL, -- [AP-17] Ej: 'PORCENTAJE', 'CANTIDAD', 'DIAS', 'HORAS'
     plt_meta_indicador_kpi          DECIMAL (10, 2)    NOT NULL,
     plt_valor_alcanzado_kpi         DECIMAL (10, 2)    NULL,
-    -- [AP-16] DECIMAL (9, 2) (antes (6, 2), desbordaba con valores alcanzados muy superiores a la meta)
+    -- [AP-16] DECIMAL (15, 2) evita desborde (8115) con metas pequeñas y valores alcanzados altos
     plt_porcentaje_cumplimiento_kpi AS                 (CASE WHEN plt_meta_indicador_kpi > 0
-                                                                  AND plt_valor_alcanzado_kpi IS NOT NULL THEN CAST (ROUND((plt_valor_alcanzado_kpi / plt_meta_indicador_kpi) * 100.0, 2) AS DECIMAL (9, 2)) ELSE NULL END),
+                                                                  AND plt_valor_alcanzado_kpi IS NOT NULL THEN CAST (ROUND((plt_valor_alcanzado_kpi / plt_meta_indicador_kpi) * 100.0, 2) AS DECIMAL (15, 2)) ELSE NULL END),
     plt_es_tratamiento_eficaz       BIT                NULL,
     plt_dictamen_eficacia           NVARCHAR (1000)    NULL,
     per_codigo_evaluador            INT                NULL, -- FK a [dbo].[persona]([per_codigo])
@@ -1356,7 +1357,6 @@ CREATE TABLE sgspi.plan_tratamiento (
     plt_esta_activo                 BIT                CONSTRAINT DF_plt_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     plt_version                     ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_plt_plan_tratamiento PRIMARY KEY CLUSTERED (plt_codigo),
-    CONSTRAINT UQ_plt_evento UNIQUE (eia_codigo),
     -- [AP-06] FK compuestas: la naturaleza del plan coincide con la del evento y con la de la estrategia
     CONSTRAINT FK_plt_evento_incertidumbre FOREIGN KEY (eia_codigo, plt_naturaleza_evento) REFERENCES sgspi.evento_incertidumbre_activo (eia_codigo, eia_naturaleza_evento),
     CONSTRAINT FK_plt_estrategia_tratamiento FOREIGN KEY (etc_codigo, plt_naturaleza_evento) REFERENCES sgspi.estrategia_tratamiento_catalogo (etc_codigo, etc_naturaleza_aplicable),
@@ -1380,6 +1380,10 @@ CREATE TABLE sgspi.plan_tratamiento (
                                                      AND per_codigo_evaluador IS NOT NULL
                                                      AND plt_fecha_evaluacion_eficacia IS NOT NULL))
 );
+
+-- [AP-22] Un solo plan activo por evento: permite crear el plan correcto tras anular uno por error (plt_esta_activo = 0)
+CREATE UNIQUE NONCLUSTERED INDEX UX_plt_evento_activo
+    ON sgspi.plan_tratamiento(eia_codigo) WHERE plt_esta_activo = 1;
 
 CREATE NONCLUSTERED INDEX IX_plt_etc_codigo
     ON sgspi.plan_tratamiento(etc_codigo, plt_naturaleza_evento); -- [AP-18] cubre la FK compuesta a etc
@@ -1452,10 +1456,10 @@ CREATE TABLE sgspi.seguimiento_actividad (
                                                 OR (sga_nombre_archivo_evidencia IS NOT NULL
                                                     AND sga_uri_almacenamiento_evidencia IS NOT NULL
                                                     AND sga_hash_sha256_evidencia IS NOT NULL)),
-    -- [AP-16] Formato del hash SHA-256: 64 caracteres hexadecimales
+    -- [AP-16] Formato del hash SHA-256: 64 caracteres hexadecimales en minúsculas
     CONSTRAINT CK_sga_hash_formato CHECK (sga_hash_sha256_evidencia IS NULL
                                           OR (LEN(sga_hash_sha256_evidencia) = 64
-                                              AND sga_hash_sha256_evidencia NOT LIKE '%[^0-9A-Fa-f]%'))
+                                              AND sga_hash_sha256_evidencia COLLATE Latin1_General_BIN2 NOT LIKE '%[^0-9a-f]%'))
 );
 
 CREATE NONCLUSTERED INDEX IX_sga_act_codigo
@@ -2955,6 +2959,24 @@ IF @@TRANCOUNT = 0
 
 
 GO
+-- [AP-03] Persona de la sesión (ORIGINAL_LOGIN() -> dbo.usuario_general): un solo punto de resolución para alcance y auditoría.
+CREATE OR ALTER FUNCTION sgspi.ufn_persona_sesion
+()
+RETURNS TABLE 
+AS
+RETURN 
+    SELECT   TOP (1) u.up AS per_codigo
+    FROM     dbo.usuario_general AS u
+    WHERE    u.us = ORIGINAL_LOGIN()
+    ORDER BY u.uid
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
 -- Una fila si la sesión puede escribir en el proceso. Con @pri_codigo NULL solo hay fila si la sesión es transversal.
 -- Los roles transversales van en lista explícita: un rol nuevo o un usuario sin rol de actor no lo es por omisión.
 CREATE OR ALTER FUNCTION sgspi.ufn_proceso_en_alcance
@@ -2969,10 +2991,8 @@ RETURN
            OR ISNULL(IS_MEMBER(N'sgspi_rol_auditor_control'), 0) = 1
            OR EXISTS (SELECT 1
                       FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
-                      WHERE  v.per_codigo = (SELECT   TOP (1) u.up
-                                             FROM     dbo.usuario_general AS u
-                                             WHERE    u.us = ORIGINAL_LOGIN()
-                                             ORDER BY u.uid)
+                      WHERE  v.per_codigo = (SELECT per_codigo
+                                             FROM   sgspi.ufn_persona_sesion())
                              AND v.pri_codigo = @pri_codigo)
 
 
@@ -2996,10 +3016,8 @@ RETURN
            OR ISNULL(IS_MEMBER(N'sgspi_rol_gestor_documental'), 0) = 1 -- D9: avala y completa todos los activos documentales
            OR EXISTS (SELECT 1
                       FROM   sgspi.vw_usuario_rol_alcance_sgspi AS v
-                      WHERE  v.per_codigo = (SELECT   TOP (1) u.up
-                                             FROM     dbo.usuario_general AS u
-                                             WHERE    u.us = ORIGINAL_LOGIN()
-                                             ORDER BY u.uid)
+                      WHERE  v.per_codigo = (SELECT per_codigo
+                                             FROM   sgspi.ufn_persona_sesion())
                              AND (v.uaa_codigo = @uaa_codigo
                                   OR EXISTS (SELECT 1
                                              FROM   sgspi.activo_informacion_proceso_institucional AS aip
@@ -3055,10 +3073,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[analisis_contexto_factor] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-15] Un creador ajeno anularía CK_acf_sod_aprobador
@@ -3340,10 +3356,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[requisito_parte_interesada] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-15] Un creador ajeno anularía CK_rpi_sod_aprobador
@@ -3599,10 +3613,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[activo_informacion] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones y la revisión de Archivo
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-15] Un creador ajeno anularía CK_aci_sod_aprobador
@@ -4083,10 +4095,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                                                 AND sbd.sbd_esta_activa = 1))
                THROW 50015, N'Subserie requerida: la serie documental seleccionada tiene subseries y [sbd_codigo] no puede ser NULL en [sgspi].[activo_documental].', 1;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance)
@@ -4267,10 +4277,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                     AND efc.efc_es_inicial = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[evento_incertidumbre_activo] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las validaciones y aprobaciones
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-15] Un creador ajeno anularía CK_eia_sod_firmas
@@ -4734,10 +4742,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                       WHERE  efc.efc_permite_edicion = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar el plan de tratamiento de un evento no editable en [sgspi].[plan_tratamiento].', 1;
            -- [AP-03] Persona de la sesión: firma el dictamen y queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance)
@@ -5029,10 +5035,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                       WHERE  efc.efc_permite_edicion = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar actividades de un evento no editable en [sgspi].[actividad_tratamiento].', 1;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance)
@@ -5247,10 +5251,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
@@ -5427,10 +5429,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                           FROM   inserted)
                RETURN;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            -- [AP-02] D5: los roles líder y custodio solo desactivan seguimientos de procesos de su alcance
@@ -5502,6 +5502,24 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                                  d.sga_uri_almacenamiento_evidencia,
                                  d.sga_hash_sha256_evidencia,
                                  d.sga_esta_activo);
+           -- [AP-09] Al desactivar o reactivar un seguimiento, recalcula el avance con el último seguimiento activo (0 si no queda ninguno)
+           UPDATE act
+           SET    act.act_porcentaje_avance = ISNULL(u.sga_porcentaje_reportado, 0)
+           FROM   sgspi.actividad_tratamiento AS act
+                  INNER JOIN
+                  (SELECT DISTINCT i.act_codigo
+                   FROM   inserted AS i
+                          INNER JOIN
+                          deleted AS d
+                          ON d.sga_codigo = i.sga_codigo
+                   WHERE  i.sga_esta_activo <> d.sga_esta_activo) AS x
+                  ON x.act_codigo = act.act_codigo
+                  OUTER APPLY (SELECT   TOP (1) s.sga_porcentaje_reportado
+                               FROM     sgspi.seguimiento_actividad AS s
+                               WHERE    s.act_codigo = act.act_codigo
+                                        AND s.sga_esta_activo = 1
+                               ORDER BY s.sga_codigo DESC) AS u
+           WHERE  act.act_porcentaje_avance <> ISNULL(u.sga_porcentaje_reportado, 0);
        END
 
 
@@ -5522,10 +5540,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                           FROM   inserted)
                RETURN;
            -- [AP-03] [AP-15] El seguimiento lo registra la persona de la sesión
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF EXISTS (SELECT 1
@@ -6098,10 +6114,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6208,10 +6222,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6324,10 +6336,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6434,10 +6444,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6538,10 +6546,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6654,10 +6660,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6752,10 +6756,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6872,10 +6874,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -6992,10 +6992,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7090,10 +7088,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7194,10 +7190,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7304,10 +7298,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7430,10 +7422,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7528,10 +7518,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7626,10 +7614,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7736,10 +7722,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7852,10 +7836,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -7956,10 +7938,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_sdo_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8054,10 +8034,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8158,10 +8136,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8268,10 +8244,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_pdc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8366,10 +8340,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_epc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8464,10 +8436,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_src_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8556,10 +8526,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_mcc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8648,10 +8616,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_idi_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8746,10 +8712,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_fac_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8854,10 +8818,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8952,10 +8914,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -8980,49 +8940,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                    FROM   inserted AS i;
                    RETURN;
                END
-           IF EXISTS (SELECT 1
-                      FROM   deleted AS d
-                      WHERE  NOT EXISTS (SELECT 1
-                                         FROM   inserted AS i
-                                         WHERE  i.ado_codigo = d.ado_codigo
-                                                AND i.mcc_codigo = d.mcc_codigo))
-               THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental_medio_conservacion]; desactive la fila y cree una nueva.', 1;
-           INSERT INTO sgspi.aud_activo_documental_medio_conservacion (
-               ado_codigo,
-               mcc_codigo,
-               aam_esta_activo,
-               per_codigo,
-               aam_operacion,
-               aam_usuario_bd,
-               aam_fecha_cambio
-           )
-           SELECT d.ado_codigo,
-                  d.mcc_codigo,
-                  d.adm_esta_activo,
-                  @per_actor,
-                  'U',
-                  ORIGINAL_LOGIN(),
-                  SYSDATETIMEOFFSET()
-           FROM   deleted AS d
-                  INNER JOIN
-                  inserted AS i
-                  ON i.ado_codigo = d.ado_codigo
-                     AND i.mcc_codigo = d.mcc_codigo
-           WHERE  EXISTS (SELECT i.adm_esta_activo
-                          EXCEPT
-                          SELECT d.adm_esta_activo);
-       END
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [aid] La auditoría no se edita ni se borra
-CREATE OR ALTER TRIGGER sgspi.TR_aid_inmutabilidad
-    ON sgspi.aud_activo_documental_idioma
     SET NOEXEC ON; -- [AP-19]
 
 
@@ -9041,10 +8958,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9139,10 +9054,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9237,10 +9150,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9335,10 +9246,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_epr_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9451,10 +9360,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eim_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9567,10 +9474,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_zrc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9671,10 +9576,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9809,10 +9712,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -9961,10 +9862,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -10077,10 +9976,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -10193,10 +10090,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aac_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -10291,10 +10186,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -10389,10 +10282,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT   TOP (1) u.up
-                                        FROM     dbo.usuario_general AS u
-                                        WHERE    u.us = ORIGINAL_LOGIN()
-                                        ORDER BY u.uid);
+           DECLARE @per_actor AS INT = (SELECT per_codigo
+                                        FROM   sgspi.ufn_persona_sesion());
            IF @per_actor IS NULL
                THROW 50017, N'No se encontró una persona en [dbo].[usuario_general] para ORIGINAL_LOGIN().', 1;
            IF NOT EXISTS (SELECT 1
@@ -11513,7 +11404,8 @@ login del usuario de BD (SUSER_SNAME de su sid), que es lo que los triggers busc
 login no está en [dbo].[usuario_general].[us]; (c) usuarios de BD en más de un rol de actor; (d) usuarios de un rol de
 actor que también son miembros directos de db_owner, db_datawriter, db_ddladmin o db_securityadmin, que anulan los
 GRANT; (e) logins de un rol de actor con varias personas en [dbo].[usuario_general] (TOP (1) elegiría una de ellas);
-(f) base sin TDE (sys.databases.is_encrypted = 0).
+(f) base sin TDE (sys.databases.is_encrypted = 0); (g) tablas de [dbo] sin índice en la columna de búsqueda del SGSPI
+(dbo.usuario_general.us, dbo.usuario_grupo.usg_usuario).
 ==================================================================================================*/
 WITH     cte_mapa_roles
 AS       (SELECT v.gru_nombre,
@@ -11595,7 +11487,27 @@ SELECT   N'Base sin TDE' AS hallazgo,
          N'sys.databases.is_encrypted = 0' AS detalle
 FROM     sys.databases
 WHERE    database_id = DB_ID()
-         AND is_encrypted = 0;
+         AND is_encrypted = 0
+UNION ALL
+SELECT   N'Tabla de [dbo] sin índice en la columna de búsqueda del SGSPI' AS hallazgo,
+         v.tabla AS usuario,
+         v.columna AS detalle
+FROM     (VALUES (N'dbo.usuario_general', N'us'), (N'dbo.usuario_grupo', N'usg_usuario')) AS v(tabla, columna)
+WHERE    NOT EXISTS (SELECT 1
+                     FROM   sys.indexes AS ix
+                            INNER JOIN
+                            sys.index_columns AS ic
+                            ON ic.object_id = ix.object_id
+                               AND ic.index_id = ix.index_id
+                            INNER JOIN
+                            sys.columns AS c
+                            ON c.object_id = ic.object_id
+                               AND c.column_id = ic.column_id
+                     WHERE  ix.object_id = OBJECT_ID(v.tabla)
+                            AND ix.is_disabled = 0
+                            AND ix.has_filter = 0
+                            AND ic.key_ordinal = 1
+                            AND c.name = v.columna);
 
 
 GO
