@@ -1246,6 +1246,121 @@ IF (SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id = 
 
 
 GO
+-- ======================= 11. Pruebas Fase 4 (tipos BIGINT, PERSISTED, índices, compresión y particionamiento) =======================
+EXECUTE #sesion_como 1;
+
+EXECUTE #espera N'Fase 4 tipos: PK de las 49 tablas aud_* en BIGINT; 9 etiquetas virtuales y plt_porcentaje_cumplimiento_kpi PERSISTED', N'
+IF (SELECT COUNT(*)
+    FROM   sys.tables AS t
+           INNER JOIN sys.columns AS c ON c.object_id = t.object_id AND c.column_id = 1
+    WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+           AND t.name LIKE N''aud[_]%''
+           AND c.system_type_id = 127) <> 49 -- 127 = BIGINT
+    THROW 51000, N''no todas las 49 tablas aud_* tienen PK BIGINT'', 1;
+IF EXISTS (SELECT 1
+           FROM   sys.computed_columns AS cc
+           WHERE  cc.object_id IN (OBJECT_ID(N''sgspi.analisis_contexto_factor''), OBJECT_ID(N''sgspi.requisito_parte_interesada''), OBJECT_ID(N''sgspi.activo_informacion''))
+                  AND cc.name IN (N''acf_nivel_prioridad'', N''rpi_nivel_poder'', N''rpi_nivel_interes'', N''rpi_clasificacion_impacto'',
+                                  N''rpi_nivel_cumplimiento'', N''rpi_prioridad_accion'', N''aci_nivel_confidencialidad'', N''aci_nivel_integridad'', N''aci_nivel_disponibilidad'')
+                  AND cc.is_persisted <> 0)
+    THROW 51000, N''alguna de las 9 etiquetas de presentación sigue PERSISTED'', 1;
+IF NOT EXISTS (SELECT 1 FROM sys.computed_columns WHERE object_id = OBJECT_ID(N''sgspi.plan_tratamiento'') AND name = N''plt_porcentaje_cumplimiento_kpi'' AND is_persisted = 1)
+    THROW 51000, N''plt_porcentaje_cumplimiento_kpi no es PERSISTED'', 1;', 0;
+
+EXECUTE #espera N'Fase 4 CK_eia_numero_evento: soporta hasta 9999 (RA-1500) y rechaza 10000', N'
+BEGIN TRAN;
+INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_numero_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
+VALUES (1, 1500, N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Evento 4 dígitos'', 1, 1, 1);
+IF NOT EXISTS (SELECT 1 FROM sgspi.evento_incertidumbre_activo WHERE eia_numero_evento = 1500 AND eia_identificador_evento = N''RA-1500'')
+    THROW 51000, N''eia_identificador_evento no formateó RA-1500'', 1;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Fase 4 CK_eia_numero_evento: rechaza > 9999', N'
+INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_numero_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
+VALUES (1, 10000, N''RIESGO'', 1, 1, 2, 1, N''f'', N''v'', N''e'', N''Fuera de rango'', 1, 1, 1);', 547;
+
+EXECUTE #espera N'Fase 4 índices: creados los 18 nuevos/cubrientes y eliminados los 3 de tablas diminutas', N'
+IF EXISTS (SELECT 1
+           FROM   (VALUES (N''sgspi.plan_tratamiento'', N''IX_plt_eia_codigo_naturaleza''),
+                          (N''sgspi.sistema_informacion_ficha'', N''IX_sif_aci_codigo''),
+                          (N''sgspi.analisis_contexto_factor'', N''IX_acf_estado_activo''),
+                          (N''sgspi.requisito_parte_interesada'', N''IX_rpi_estado_activo''),
+                          (N''sgspi.activo_informacion'', N''IX_aci_estado_activo''),
+                          (N''sgspi.evento_incertidumbre_activo'', N''IX_eia_estado_activo''),
+                          (N''sgspi.actividad_tratamiento'', N''IX_act_estado_activo''),
+                          (N''sgspi.activo_informacion_responsable'', N''IX_air_aci_tipo_activo''),
+                          (N''sgspi.seguimiento_actividad'', N''IX_sga_act_codigo''),
+                          (N''sgspi.aud_analisis_contexto_factor'', N''IX_aaf_fecha_cambio''),
+                          (N''sgspi.aud_requisito_parte_interesada'', N''IX_ari_fecha_cambio''),
+                          (N''sgspi.aud_activo_informacion'', N''IX_aai_fecha_cambio''),
+                          (N''sgspi.aud_sistema_informacion_ficha'', N''IX_asf_fecha_cambio''),
+                          (N''sgspi.aud_activo_documental'', N''IX_aao_fecha_cambio''),
+                          (N''sgspi.aud_evento_incertidumbre_activo'', N''IX_aea_fecha_cambio''),
+                          (N''sgspi.aud_plan_tratamiento'', N''IX_apt_fecha_cambio''),
+                          (N''sgspi.aud_actividad_tratamiento'', N''IX_aat_fecha_cambio''),
+                          (N''sgspi.aud_seguimiento_actividad'', N''IX_asa_fecha_cambio''),
+                          (N''sgspi.aud_evaluacion_aplicabilidad_control'', N''IX_aae_fecha_cambio'')) AS v(tabla, indice)
+           WHERE  NOT EXISTS (SELECT 1 FROM sys.indexes AS ix WHERE ix.object_id = OBJECT_ID(v.tabla) AND ix.name = v.indice AND ix.is_disabled = 0))
+    THROW 51000, N''falta algún índice requerido por Fase 4'', 1;
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name IN (N''IX_mvr_eim_codigo'', N''IX_mvr_zrc_codigo'', N''IX_tef_estado_destino''))
+    THROW 51000, N''no se eliminaron los 3 índices de tablas diminutas'', 1;', 0;
+
+EXECUTE #espera N'Fase 4 compresión, filegroups y particionamiento anual + SWITCH PARTITION en las 9 aud_* transaccionales', N'
+-- 1) 49 aud_* y todos sus índices con PAGE compression
+IF EXISTS (SELECT 1
+           FROM   sys.tables AS t
+                  INNER JOIN sys.indexes AS ix ON ix.object_id = t.object_id AND ix.index_id >= 1
+                  INNER JOIN sys.partitions AS p ON p.object_id = ix.object_id AND p.index_id = ix.index_id
+           WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+                  AND t.name LIKE N''aud[_]%''
+                  AND p.data_compression_desc <> N''PAGE'')
+    THROW 51000, N''alguna tabla o índice aud_* no tiene DATA_COMPRESSION = PAGE'', 1;
+-- 2) 5 tablas OLTP anchas con ROW compression en su índice clustered
+IF (SELECT COUNT(*)
+    FROM   sys.tables AS t
+           INNER JOIN sys.partitions AS p ON p.object_id = t.object_id AND p.index_id = 1
+    WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+           AND t.name IN (N''analisis_contexto_factor'', N''activo_informacion'', N''evento_incertidumbre_activo'', N''plan_tratamiento'', N''evaluacion_aplicabilidad_control'')
+           AND p.data_compression_desc = N''ROW'') <> 5
+    THROW 51000, N''las 5 tablas OLTP anchas no tienen DATA_COMPRESSION = ROW'', 1;
+-- 3) 9 aud_* transaccionales particionadas en PS_sgspi_aud_anio
+IF (SELECT COUNT(*)
+    FROM   sys.tables AS t
+           INNER JOIN sys.indexes AS ix ON ix.object_id = t.object_id AND ix.index_id = 1
+           INNER JOIN sys.data_spaces AS ds ON ds.data_space_id = ix.data_space_id
+    WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
+           AND ds.name = N''PS_sgspi_aud_anio'') <> 9
+    THROW 51000, N''no están particionadas exactamente las 9 tablas aud_* transaccionales en PS_sgspi_aud_anio'', 1;
+-- 4) Verifica SWITCH PARTITION de partición histórica vacía sin disparar INSTEAD OF DELETE
+BEGIN TRAN;
+CREATE TABLE sgspi.aud_seguimiento_actividad_archivo_tmp (
+    asa_codigo                       BIGINT             IDENTITY (1, 1) NOT NULL,
+    sga_codigo                       INT                NOT NULL,
+    act_codigo                       INT                NOT NULL,
+    per_codigo_autor                 INT                NOT NULL,
+    asa_fecha_registro               DATETIMEOFFSET (0) NOT NULL,
+    asa_porcentaje_reportado         TINYINT            NOT NULL,
+    asa_descripcion_avance           NVARCHAR (1000)    NOT NULL,
+    asa_nombre_archivo_evidencia     NVARCHAR (255)     NULL,
+    asa_uri_almacenamiento_evidencia NVARCHAR (500)     NULL,
+    asa_hash_sha256_evidencia        CHAR (64)          NULL,
+    asa_esta_activo                  BIT                NOT NULL,
+    per_codigo                       INT                NOT NULL,
+    asa_operacion                    CHAR (1)           NOT NULL,
+    asa_usuario_bd                   SYSNAME            NOT NULL,
+    asa_fecha_cambio                 DATETIMEOFFSET (0) NOT NULL,
+    CONSTRAINT PK_asa_arch_tmp PRIMARY KEY CLUSTERED (asa_codigo, asa_fecha_cambio),
+    CONSTRAINT FK_asa_arch_tmp_sga FOREIGN KEY (sga_codigo) REFERENCES sgspi.seguimiento_actividad (sga_codigo),
+    CONSTRAINT FK_asa_arch_tmp_per FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
+    CONSTRAINT CK_asa_arch_tmp_op CHECK (asa_operacion IN (''I'', ''U''))
+)
+ON PS_sgspi_aud_anio (asa_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
+ALTER TABLE sgspi.aud_seguimiento_actividad SWITCH PARTITION 1 TO sgspi.aud_seguimiento_actividad_archivo_tmp PARTITION 1;
+ROLLBACK;', 0;
+
+
+GO
 DROP USER sgspi_prueba_consulta;
 
 DROP USER sgspi_prueba_custodio;

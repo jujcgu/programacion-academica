@@ -158,13 +158,21 @@ eia_numero_evento por vigencia y naturaleza, act_numero_orden por plan), con rei
 -- (sqlcmd requiere -I para QUOTED_IDENTIFIER ON): los índices filtrados (UX_*) y las columnas calculadas
 -- indexadas (upc, mvr, eia) fallan con el error 1934 si alguna de estas opciones no tiene este valor.
 SET ANSI_NULLS ON;
+
 SET ANSI_PADDING ON;
+
 SET ANSI_WARNINGS ON;
+
 SET ARITHABORT ON;
+
 SET CONCAT_NULL_YIELDS_NULL ON;
+
 SET QUOTED_IDENTIFIER ON;
+
 SET NUMERIC_ROUNDABORT OFF;
+
 SET NOCOUNT ON;
+
 SET XACT_ABORT ON;
 
 
@@ -237,32 +245,28 @@ IF @faltantes IS NOT NULL
     SET @errores += N' Faltan dependencias del esquema corporativo: ' + @faltantes + N'.';
 
 DECLARE @sin_clave_fk AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(v.tabla, N'(', v.columna, N')'), N', ')
-                                            FROM   (VALUES (N'dbo.uaa', N'uaa_codigo'),
-                                                           (N'dbo.cargo', N'car_codigo'),
-                                                           (N'dbo.persona', N'per_codigo'),
-                                                           (N'dbo.espacio', N'esp_codigo'),
-                                                           (N'dbo.sub_sede', N'sus_codigo')) AS v(tabla, columna)
+                                            FROM   (VALUES (N'dbo.uaa', N'uaa_codigo'), (N'dbo.cargo', N'car_codigo'), (N'dbo.persona', N'per_codigo'), (N'dbo.espacio', N'esp_codigo'), (N'dbo.sub_sede', N'sus_codigo')) AS v(tabla, columna)
                                             WHERE  COL_LENGTH(v.tabla, v.columna) IS NOT NULL
-                                                   AND NOT EXISTS (SELECT 1
-                                                                   FROM   sys.indexes AS ix
-                                                                          INNER JOIN
-                                                                          sys.index_columns AS ic
-                                                                          ON ic.object_id = ix.object_id
-                                                                             AND ic.index_id = ix.index_id
-                                                                             AND ic.is_included_column = 0
-                                                                          INNER JOIN
-                                                                          sys.columns AS c
-                                                                          ON c.object_id = ic.object_id
-                                                                             AND c.column_id = ic.column_id
-                                                                   WHERE  ix.object_id = OBJECT_ID(v.tabla)
-                                                                          AND OBJECTPROPERTY(ix.object_id, N'IsUserTable') = 1
-                                                                          AND ix.is_unique = 1
-                                                                          AND ix.is_disabled = 0
-                                                                          AND ix.has_filter = 0
-                                                                          AND ix.is_hypothetical = 0
+                                                   AND NOT EXISTS (SELECT   1
+                                                                   FROM     sys.indexes AS ix
+                                                                            INNER JOIN
+                                                                            sys.index_columns AS ic
+                                                                            ON ic.object_id = ix.object_id
+                                                                               AND ic.index_id = ix.index_id
+                                                                               AND ic.is_included_column = 0
+                                                                            INNER JOIN
+                                                                            sys.columns AS c
+                                                                            ON c.object_id = ic.object_id
+                                                                               AND c.column_id = ic.column_id
+                                                                   WHERE    ix.object_id = OBJECT_ID(v.tabla)
+                                                                            AND OBJECTPROPERTY(ix.object_id, N'IsUserTable') = 1
+                                                                            AND ix.is_unique = 1
+                                                                            AND ix.is_disabled = 0
+                                                                            AND ix.has_filter = 0
+                                                                            AND ix.is_hypothetical = 0
                                                                    GROUP BY ix.index_id
-                                                                   HAVING COUNT(*) = 1
-                                                                          AND MAX(c.name) = v.columna));
+                                                                   HAVING   COUNT(*) = 1
+                                                                            AND MAX(c.name) = v.columna));
 
 IF @sin_clave_fk IS NOT NULL
     SET @errores += N' Tablas de [dbo] sin PK/UQ activa para FK: ' + @sin_clave_fk + N'.';
@@ -336,7 +340,8 @@ CREATE TABLE sgspi.estado_flujo_catalogo (
 
 -- Un único estado inicial activo por dominio de flujo
 CREATE UNIQUE NONCLUSTERED INDEX UX_efc_estado_inicial
-    ON sgspi.estado_flujo_catalogo(efc_dominio) WHERE efc_es_inicial = 1 AND efc_esta_activo = 1;
+    ON sgspi.estado_flujo_catalogo(efc_dominio) WHERE efc_es_inicial = 1
+                                                      AND efc_esta_activo = 1;
 
 CREATE TABLE sgspi.transicion_estado_flujo (
     tef_codigo                SMALLINT      IDENTITY (1, 1) NOT NULL,
@@ -353,9 +358,6 @@ CREATE TABLE sgspi.transicion_estado_flujo (
 
 CREATE UNIQUE NONCLUSTERED INDEX UX_tef_dominio_origen_destino_rol
     ON sgspi.transicion_estado_flujo(efc_dominio, efc_identificador_origen, efc_identificador_destino, tef_rol_requerido) WHERE tef_esta_activa = 1; -- [AP-22] una fila activa por rol permitido
-
-CREATE NONCLUSTERED INDEX IX_tef_estado_destino
-    ON sgspi.transicion_estado_flujo(efc_dominio, efc_identificador_destino);
 
 
 GO
@@ -515,7 +517,7 @@ CREATE TABLE sgspi.analisis_contexto_factor (
     acf_identificador_factor    AS                 (CONVERT (NVARCHAR (15), CONCAT(LEFT(acf_naturaleza_factor, 1), acf_numero_factor))) PERSISTED, -- Identificador documental estable ('D1'..'Dn', 'F1'..'Fn', 'A1'..'An', 'O1'..'On')
     acf_descripcion_situacion   NVARCHAR (1000)    NOT NULL,
     acf_valor_prioridad         TINYINT            CONSTRAINT DF_acf_valor_prioridad DEFAULT 1 NOT NULL, -- Escala ordinal unificada: 1=BAJA, 2=MEDIA, 3=ALTA
-    acf_nivel_prioridad         AS                 (CASE acf_valor_prioridad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
+    acf_nivel_prioridad         AS                 (CASE acf_valor_prioridad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END),
     acf_impacto_sistema_gestion NVARCHAR (1000)    NULL,
     acf_accion_propuesta        NVARCHAR (1000)    NULL,
     acf_estado_registro         NVARCHAR (30)      CONSTRAINT DF_acf_estado_registro DEFAULT N'BORRADOR' NOT NULL, -- [AP-17]
@@ -545,7 +547,8 @@ CREATE TABLE sgspi.analisis_contexto_factor (
     -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador (la firma la escribe TR_acf_integridad_y_actualizacion)
     CONSTRAINT CK_acf_sod_aprobador CHECK (per_codigo_aprobador IS NULL
                                            OR per_codigo_aprobador <> per_codigo_creador)
-);
+)
+WITH (DATA_COMPRESSION = ROW);
 
 -- [AP-18] [AP-22] Índice único filtrado por activo (permite recrear tras borrado lógico) + índice no filtrado para FK_acf_periodo_vigencia
 CREATE UNIQUE NONCLUSTERED INDEX UX_acf_vigencia_naturaleza_numero
@@ -566,6 +569,9 @@ CREATE NONCLUSTERED INDEX IX_acf_per_codigo_creador
 
 CREATE NONCLUSTERED INDEX IX_acf_per_codigo_aprobador
     ON sgspi.analisis_contexto_factor(per_codigo_aprobador);
+
+CREATE NONCLUSTERED INDEX IX_acf_estado_activo
+    ON sgspi.analisis_contexto_factor(efc_dominio, acf_estado_registro, acf_esta_activo);
 
 
 GO
@@ -599,9 +605,9 @@ CREATE TABLE sgspi.requisito_parte_interesada (
     rpi_necesidad_expectativa  NVARCHAR (1000)    NOT NULL,
     rpi_valor_poder            TINYINT            CONSTRAINT DF_rpi_valor_poder DEFAULT 1 NOT NULL, -- 1=BAJA, 2=MEDIA, 3=ALTA
     rpi_valor_interes          TINYINT            CONSTRAINT DF_rpi_valor_interes DEFAULT 1 NOT NULL, -- 1=BAJA, 2=MEDIA, 3=ALTA
-    rpi_nivel_poder            AS                 (CASE rpi_valor_poder WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
-    rpi_nivel_interes          AS                 (CASE rpi_valor_interes WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
-    -- Columna calculada PERSISTED #3: Clasificación según Poder vs Interés con aritmética entera
+    rpi_nivel_poder            AS                 (CASE rpi_valor_poder WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END),
+    rpi_nivel_interes          AS                 (CASE rpi_valor_interes WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END),
+    -- Columna calculada #3: Clasificación según Poder vs Interés con aritmética entera
     rpi_clasificacion_impacto  AS                 (CASE WHEN rpi_valor_poder = 3
                                                              AND rpi_valor_interes >= 2 THEN N'CUIDADO' WHEN (rpi_valor_poder = 3
                                                                                                               AND rpi_valor_interes = 1)
@@ -609,12 +615,12 @@ CREATE TABLE sgspi.requisito_parte_interesada (
                                                                                                                  AND rpi_valor_interes >= 2) THEN N'ATENCION' WHEN (rpi_valor_poder = 2
                                                                                                                                                                     AND rpi_valor_interes = 1)
                                                                                                                                                                    OR (rpi_valor_poder = 1
-                                                                                                                                                                       AND rpi_valor_interes = 3) THEN N'MITIGANTE' ELSE N'SIN_PROBLEMA' END) PERSISTED,
+                                                                                                                                                                       AND rpi_valor_interes = 3) THEN N'MITIGANTE' ELSE N'SIN_PROBLEMA' END),
     rpi_valor_cumplimiento     TINYINT            NULL, -- 1=BAJA, 2=MEDIA, 3=ALTA (NULL cuando aún no se ha evaluado)
-    rpi_nivel_cumplimiento     AS                 (CASE rpi_valor_cumplimiento WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' WHEN 1 THEN N'BAJA' ELSE NULL END) PERSISTED,
+    rpi_nivel_cumplimiento     AS                 (CASE rpi_valor_cumplimiento WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' WHEN 1 THEN N'BAJA' ELSE NULL END),
     -- Columna calculada PERSISTED #4: Prioridad de Acción con aritmética directa (4 - cumplimiento) y etiqueta
     rpi_valor_prioridad_accion AS                 (CAST (4 - rpi_valor_cumplimiento AS TINYINT)) PERSISTED,
-    rpi_prioridad_accion       AS                 (CASE rpi_valor_cumplimiento WHEN 1 THEN N'ALTA' WHEN 2 THEN N'MEDIA' WHEN 3 THEN N'BAJA' ELSE NULL END) PERSISTED,
+    rpi_prioridad_accion       AS                 (CASE rpi_valor_cumplimiento WHEN 1 THEN N'ALTA' WHEN 2 THEN N'MEDIA' WHEN 3 THEN N'BAJA' ELSE NULL END),
     rpi_mecanismo_seguimiento  NVARCHAR (255)     NULL,
     rpi_estado_registro        NVARCHAR (30)      CONSTRAINT DF_rpi_estado_registro DEFAULT N'BORRADOR' NOT NULL, -- [AP-04] [AP-17] El INSERT solo puede nacer en el estado inicial
     efc_dominio                AS                 (CONVERT (NVARCHAR (10), N'RPI')) PERSISTED, -- [AP-05] Dominio constante para la FK al catálogo de estados
@@ -651,6 +657,9 @@ CREATE NONCLUSTERED INDEX IX_rpi_per_codigo_creador -- [AP-15] [AP-18] Índice p
 
 CREATE NONCLUSTERED INDEX IX_rpi_per_codigo_aprobador -- [AP-15] [AP-18] Índice para la FK
     ON sgspi.requisito_parte_interesada(per_codigo_aprobador);
+
+CREATE NONCLUSTERED INDEX IX_rpi_estado_activo
+    ON sgspi.requisito_parte_interesada(efc_dominio, rpi_estado_registro, rpi_esta_activo);
 
 -- 3.3 [rpp] Relación N:M Requisito de Parte Interesada <-> Proceso Institucional
 CREATE TABLE sgspi.requisito_parte_interesada_proceso_institucional (
@@ -749,10 +758,10 @@ CREATE TABLE sgspi.activo_informacion (
     aci_valor_confidencialidad          TINYINT            NOT NULL,
     aci_valor_integridad                TINYINT            NOT NULL,
     aci_valor_disponibilidad            TINYINT            NOT NULL,
-    -- Columnas calculadas PERSISTED #5: Etiquetas CID unificadas ('ALTA'/'MEDIA'/'BAJA'), Puntaje y Nivel de Criticidad
-    aci_nivel_confidencialidad          AS                 (CASE aci_valor_confidencialidad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
-    aci_nivel_integridad                AS                 (CASE aci_valor_integridad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
-    aci_nivel_disponibilidad            AS                 (CASE aci_valor_disponibilidad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
+    -- Columnas calculadas #5: Etiquetas CID unificadas ('ALTA'/'MEDIA'/'BAJA'), Puntaje y Nivel de Criticidad
+    aci_nivel_confidencialidad          AS                 (CASE aci_valor_confidencialidad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END),
+    aci_nivel_integridad                AS                 (CASE aci_valor_integridad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END),
+    aci_nivel_disponibilidad            AS                 (CASE aci_valor_disponibilidad WHEN 3 THEN N'ALTA' WHEN 2 THEN N'MEDIA' ELSE N'BAJA' END),
     aci_puntaje_criticidad              AS                 (CAST (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad AS TINYINT)) PERSISTED,
     aci_nivel_criticidad                AS                 (CASE WHEN (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad) >= 7 THEN N'ALTA' WHEN (aci_valor_confidencialidad + aci_valor_integridad + aci_valor_disponibilidad) >= 5 THEN N'MEDIA' ELSE N'BAJA' END) PERSISTED,
     -- Infraestructura Crítica Cibernética (ICC)
@@ -839,7 +848,8 @@ CREATE TABLE sgspi.activo_informacion (
     -- [AP-15] Segregación de funciones: el aprobador no puede ser el creador (la firma la escribe TR_aci_integridad_y_actualizacion)
     CONSTRAINT CK_aci_sod_aprobador CHECK (per_codigo_aprobador IS NULL
                                            OR per_codigo_aprobador <> per_codigo_creador)
-);
+)
+WITH (DATA_COMPRESSION = ROW);
 
 CREATE UNIQUE NONCLUSTERED INDEX UX_aci_codigo_inventario
     ON sgspi.activo_informacion(aci_codigo_inventario) WHERE aci_esta_activo = 1; -- [AP-22]
@@ -863,6 +873,9 @@ CREATE NONCLUSTERED INDEX IX_aci_per_codigo_creador
 CREATE NONCLUSTERED INDEX IX_aci_per_codigo_aprobador
     ON sgspi.activo_informacion(per_codigo_aprobador);
 
+CREATE NONCLUSTERED INDEX IX_aci_estado_activo
+    ON sgspi.activo_informacion(efc_dominio, aci_estado_registro, aci_esta_activo);
+
 -- 4.4 [aip], [ais], [air] Tablas Asociativas N:M Unificadas de Activos de Información (Compartidas por el Supertipo y todos sus Subtipos)
 CREATE TABLE sgspi.activo_informacion_proceso_institucional (
     aci_codigo      INT NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
@@ -877,10 +890,10 @@ CREATE NONCLUSTERED INDEX IX_aip_pri_codigo
     ON sgspi.activo_informacion_proceso_institucional(pri_codigo);
 
 CREATE TABLE sgspi.activo_informacion_sede (
-    aci_codigo      INT NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
-    sus_codigo      INT NOT NULL, -- FK a [dbo].[sub_sede]([sus_codigo]) (contiene [sed_codigo] hacia [dbo].[sede])
-    ais_esta_activo BIT CONSTRAINT DF_ais_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
-    aci_es_transversal_sedes AS (CASE WHEN ais_esta_activo = 1 THEN CONVERT (BIT, 0) END) PERSISTED, -- [AP-06] una sede activa exige un activo no transversal; inactiva = NULL, la FK no la valida
+    aci_codigo               INT NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
+    sus_codigo               INT NOT NULL, -- FK a [dbo].[sub_sede]([sus_codigo]) (contiene [sed_codigo] hacia [dbo].[sede])
+    ais_esta_activo          BIT CONSTRAINT DF_ais_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
+    aci_es_transversal_sedes AS  (CASE WHEN ais_esta_activo = 1 THEN CONVERT (BIT, 0) END) PERSISTED, -- [AP-06] una sede activa exige un activo no transversal; inactiva = NULL, la FK no la valida
     CONSTRAINT PK_ais_activo_informacion_sede PRIMARY KEY CLUSTERED (aci_codigo, sus_codigo),
     CONSTRAINT FK_ais_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo),
     CONSTRAINT FK_ais_activo_no_transversal FOREIGN KEY (aci_codigo, aci_es_transversal_sedes) REFERENCES sgspi.activo_informacion (aci_codigo, aci_es_transversal_sedes), -- [AP-06]
@@ -917,6 +930,9 @@ CREATE UNIQUE NONCLUSTERED INDEX UX_air_propietario_activo
     ON sgspi.activo_informacion_responsable(aci_codigo) WHERE air_tipo_responsabilidad = N'PROPIETARIO'
                                                               AND air_esta_activo = 1;
 
+CREATE NONCLUSTERED INDEX IX_air_aci_tipo_activo
+    ON sgspi.activo_informacion_responsable(aci_codigo, air_tipo_responsabilidad, air_esta_activo);
+
 -- 4.5 [sif] y [msi] Ficha Técnica de Sistemas de Información y sus Módulos (Los 17 Sistemas USCO)
 CREATE TABLE sgspi.sistema_informacion_ficha (
     sif_codigo               INT             IDENTITY (1, 1) NOT NULL,
@@ -936,7 +952,11 @@ CREATE UNIQUE NONCLUSTERED INDEX UX_sif_nombre_sistema
 
 -- Índice único filtrado (SQL Server 2019) para relación 1:0..1 activa sobre columna NULL sin bloquear múltiples NULL
 CREATE UNIQUE NONCLUSTERED INDEX UX_sif_aci_codigo
-    ON sgspi.sistema_informacion_ficha(aci_codigo) WHERE aci_codigo IS NOT NULL AND sif_esta_activo = 1; -- [AP-22]
+    ON sgspi.sistema_informacion_ficha(aci_codigo) WHERE aci_codigo IS NOT NULL
+                                                         AND sif_esta_activo = 1; -- [AP-22]
+
+CREATE NONCLUSTERED INDEX IX_sif_aci_codigo
+    ON sgspi.sistema_informacion_ficha(aci_codigo); -- soporte no filtrado de FK_sif_activo_informacion y RLS
 
 CREATE TABLE sgspi.modulo_sistema_informacion (
     msi_codigo            INT            IDENTITY (1, 1) NOT NULL,
@@ -1317,18 +1337,12 @@ CREATE TABLE sgspi.matriz_valoracion_riesgo (
 CREATE UNIQUE NONCLUSTERED INDEX UX_mvr_codigo_posicion
     ON sgspi.matriz_valoracion_riesgo(mvr_codigo_posicion) WHERE mvr_esta_activa = 1; -- [AP-22]
 
-CREATE NONCLUSTERED INDEX IX_mvr_eim_codigo
-    ON sgspi.matriz_valoracion_riesgo(eim_codigo);
-
-CREATE NONCLUSTERED INDEX IX_mvr_zrc_codigo -- [AP-18] soporte de la FK a zrc
-    ON sgspi.matriz_valoracion_riesgo(zrc_codigo);
-
 -- 5.2 [eia] Escenarios de Incertidumbre sobre Activos (Riesgos RA-XX y Oportunidades OA-XX)
 CREATE TABLE sgspi.evento_incertidumbre_activo (
     eia_codigo                   INT                IDENTITY (1, 1) NOT NULL,
     pev_codigo                   SMALLINT           NOT NULL, -- FK a [sgspi].[periodo_vigencia]([pev_codigo])
-    eia_numero_evento            SMALLINT           NOT NULL, -- [AP-09] Consecutivo por vigencia y naturaleza (1..999)
-    eia_identificador_evento     AS                 (CONVERT (NVARCHAR (15), CONCAT(CASE eia_naturaleza_evento WHEN N'RIESGO' THEN N'RA-' ELSE N'OA-' END, RIGHT(CONCAT(N'00', eia_numero_evento), CASE WHEN eia_numero_evento < 100 THEN 2 ELSE 3 END)))) PERSISTED, -- [AP-09] 'RA-01'..'RA-999', 'OA-01'..'OA-999': se calcula, no se digita
+    eia_numero_evento            SMALLINT           NOT NULL, -- [AP-09] Consecutivo por vigencia y naturaleza (1..9999)
+    eia_identificador_evento     AS                 (CONVERT (NVARCHAR (15), CONCAT(CASE eia_naturaleza_evento WHEN N'RIESGO' THEN N'RA-' ELSE N'OA-' END, RIGHT(CONCAT(N'000', eia_numero_evento), CASE WHEN eia_numero_evento < 100 THEN 2 WHEN eia_numero_evento < 1000 THEN 3 ELSE 4 END)))) PERSISTED, -- [AP-09] 'RA-01'..'RA-9999', 'OA-01'..'OA-9999': se calcula, no se digita
     eia_naturaleza_evento        NVARCHAR (15)      NOT NULL, -- 'RIESGO' (-), 'OPORTUNIDAD' (+)
     pri_codigo                   INT                NOT NULL, -- FK a [sgspi].[proceso_institucional]([pri_codigo])
     aci_codigo_primario          INT                NOT NULL, -- FK a [sgspi].[activo_informacion]([aci_codigo])
@@ -1371,7 +1385,7 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
     CONSTRAINT FK_eia_dbo_persona_comite FOREIGN KEY (per_codigo_aprobador_comite) REFERENCES dbo.persona (per_codigo),
     -- RN-RSG-01: Exclusión Mutua Riesgo (RA-) vs Oportunidad (OA-); el prefijo y los dígitos los calcula eia_identificador_evento [AP-09]
     CONSTRAINT CK_eia_naturaleza_evento CHECK (eia_naturaleza_evento IN (N'RIESGO', N'OPORTUNIDAD')),
-    CONSTRAINT CK_eia_numero_evento CHECK (eia_numero_evento BETWEEN 1 AND 999),
+    CONSTRAINT CK_eia_numero_evento CHECK (eia_numero_evento BETWEEN 1 AND 9999),
     -- [AP-15] Segregación de funciones ISO 27001 A.5.3: ninguna firma (validador, revisor, comité) puede ser del creador
     CONSTRAINT CK_eia_sod_firmas CHECK ((per_codigo_validador_lider IS NULL
                                          OR per_codigo_validador_lider <> per_codigo_creador)
@@ -1380,7 +1394,8 @@ CREATE TABLE sgspi.evento_incertidumbre_activo (
                                         AND (per_codigo_aprobador_comite IS NULL
                                              OR per_codigo_aprobador_comite <> per_codigo_creador)),
     CONSTRAINT CK_eia_activos_distintos CHECK (aci_codigo_soporte <> aci_codigo_primario)
-);
+)
+WITH (DATA_COMPRESSION = ROW);
 
 CREATE UNIQUE NONCLUSTERED INDEX UX_eia_vigencia_naturaleza_numero
     ON sgspi.evento_incertidumbre_activo(pev_codigo, eia_naturaleza_evento, eia_numero_evento) WHERE eia_esta_activo = 1; -- [AP-09] [AP-22]
@@ -1415,6 +1430,9 @@ CREATE NONCLUSTERED INDEX IX_eia_per_codigo_revisor_sgspi
 CREATE NONCLUSTERED INDEX IX_eia_per_codigo_aprobador_comite
     ON sgspi.evento_incertidumbre_activo(per_codigo_aprobador_comite);
 
+CREATE NONCLUSTERED INDEX IX_eia_estado_activo
+    ON sgspi.evento_incertidumbre_activo(efc_dominio, eia_estado_registro, eia_esta_activo);
+
 -- 5.3 [etc] y [plt] Catálogo Extensible de Estrategias y Plan de Tratamiento de Riesgos y Oportunidades
 CREATE TABLE sgspi.estrategia_tratamiento_catalogo (
     etc_codigo               SMALLINT       IDENTITY (1, 1) NOT NULL,
@@ -1432,35 +1450,35 @@ CREATE UNIQUE NONCLUSTERED INDEX UX_etc_nombre_estrategia
     ON sgspi.estrategia_tratamiento_catalogo(etc_nombre_estrategia) WHERE etc_esta_activa = 1; -- [AP-22]
 
 CREATE TABLE sgspi.plan_tratamiento (
-    plt_codigo                      INT                IDENTITY (1, 1) NOT NULL,
-    eia_codigo                      INT                NOT NULL, -- FK a [sgspi].[evento_incertidumbre_activo]([eia_codigo])
-    plt_naturaleza_evento           NVARCHAR (15)      NOT NULL, -- [AP-06] 'RIESGO'/'OPORTUNIDAD': debe coincidir con el evento y con la estrategia (FK compuestas)
-    etc_codigo                      SMALLINT           NOT NULL, -- FK a [sgspi].[estrategia_tratamiento_catalogo]([etc_codigo])
-    plt_justificacion_estrategia    NVARCHAR (1000)    NOT NULL,
+    plt_codigo                      INT                                                  IDENTITY (1, 1) NOT NULL,
+    eia_codigo                      INT                                                  NOT NULL, -- FK a [sgspi].[evento_incertidumbre_activo]([eia_codigo])
+    plt_naturaleza_evento           NVARCHAR (15)                                        NOT NULL, -- [AP-06] 'RIESGO'/'OPORTUNIDAD': debe coincidir con el evento y con la estrategia (FK compuestas)
+    etc_codigo                      SMALLINT                                             NOT NULL, -- FK a [sgspi].[estrategia_tratamiento_catalogo]([etc_codigo])
+    plt_justificacion_estrategia    NVARCHAR (1000)                                      NOT NULL,
     -- Valoración Residual Esperada (Meta)
-    epr_codigo_residual_meta        TINYINT            NOT NULL,
-    eim_codigo_residual_meta        TINYINT            NOT NULL,
-    plt_fecha_inicio                DATE               NOT NULL,
-    plt_fecha_fin                   DATE               NOT NULL,
-    plt_recursos_humanos_tecnicos   NVARCHAR (500)     NOT NULL,
-    plt_recursos_economicos_desc    NVARCHAR (500)     NOT NULL,
-    plt_presupuesto_estimado_cop    DECIMAL (18, 2)    MASKED WITH (FUNCTION = 'default()') NULL, -- DDM: solo roles con UNMASK ven el valor real
-    plt_restricciones_limitaciones  NVARCHAR (500)     NULL,
-    plt_nombre_indicador_kpi        NVARCHAR (255)     NOT NULL,
-    plt_unidad_medida_kpi           NVARCHAR (30)      CONSTRAINT DF_plt_unidad_medida_kpi DEFAULT N'PORCENTAJE' NOT NULL, -- [AP-17] Ej: 'PORCENTAJE', 'CANTIDAD', 'DIAS', 'HORAS'
-    plt_meta_indicador_kpi          DECIMAL (10, 2)    NOT NULL,
-    plt_valor_alcanzado_kpi         DECIMAL (10, 2)    NULL,
+    epr_codigo_residual_meta        TINYINT                                              NOT NULL,
+    eim_codigo_residual_meta        TINYINT                                              NOT NULL,
+    plt_fecha_inicio                DATE                                                 NOT NULL,
+    plt_fecha_fin                   DATE                                                 NOT NULL,
+    plt_recursos_humanos_tecnicos   NVARCHAR (500)                                       NOT NULL,
+    plt_recursos_economicos_desc    NVARCHAR (500)                                       NOT NULL,
+    plt_presupuesto_estimado_cop    DECIMAL (18, 2) MASKED WITH (FUNCTION = 'default()') NULL, -- DDM: solo roles con UNMASK ven el valor real
+    plt_restricciones_limitaciones  NVARCHAR (500)                                       NULL,
+    plt_nombre_indicador_kpi        NVARCHAR (255)                                       NOT NULL,
+    plt_unidad_medida_kpi           NVARCHAR (30)                                        CONSTRAINT DF_plt_unidad_medida_kpi DEFAULT N'PORCENTAJE' NOT NULL, -- [AP-17] Ej: 'PORCENTAJE', 'CANTIDAD', 'DIAS', 'HORAS'
+    plt_meta_indicador_kpi          DECIMAL (10, 2)                                      NOT NULL,
+    plt_valor_alcanzado_kpi         DECIMAL (10, 2)                                      NULL,
     -- [AP-16] DECIMAL (15, 2) evita desborde (8115) con metas pequeñas y valores alcanzados altos
-    plt_porcentaje_cumplimiento_kpi AS                 (CASE WHEN plt_meta_indicador_kpi > 0
-                                                                  AND plt_valor_alcanzado_kpi IS NOT NULL THEN CAST (ROUND((plt_valor_alcanzado_kpi / plt_meta_indicador_kpi) * 100.0, 2) AS DECIMAL (15, 2)) ELSE NULL END),
-    plt_es_tratamiento_eficaz       BIT                NULL,
-    plt_dictamen_eficacia           NVARCHAR (1000)    NULL,
-    per_codigo_evaluador            INT                NULL, -- FK a [dbo].[persona]([per_codigo])
-    plt_fecha_evaluacion_eficacia   DATETIMEOFFSET (0) NULL, -- [AP-12]
-    plt_fecha_creacion              DATETIMEOFFSET (0) CONSTRAINT DF_plt_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
-    plt_fecha_actualizacion         DATETIMEOFFSET (0) CONSTRAINT DF_plt_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
-    plt_esta_activo                 BIT                CONSTRAINT DF_plt_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
-    plt_version                     ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
+    plt_porcentaje_cumplimiento_kpi AS                                                   (CASE WHEN plt_meta_indicador_kpi > 0
+                                                                                                    AND plt_valor_alcanzado_kpi IS NOT NULL THEN CAST (ROUND((plt_valor_alcanzado_kpi / plt_meta_indicador_kpi) * 100.0, 2) AS DECIMAL (15, 2)) ELSE NULL END) PERSISTED,
+    plt_es_tratamiento_eficaz       BIT                                                  NULL,
+    plt_dictamen_eficacia           NVARCHAR (1000)                                      NULL,
+    per_codigo_evaluador            INT                                                  NULL, -- FK a [dbo].[persona]([per_codigo])
+    plt_fecha_evaluacion_eficacia   DATETIMEOFFSET (0)                                   NULL, -- [AP-12]
+    plt_fecha_creacion              DATETIMEOFFSET (0)                                   CONSTRAINT DF_plt_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
+    plt_fecha_actualizacion         DATETIMEOFFSET (0)                                   CONSTRAINT DF_plt_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
+    plt_esta_activo                 BIT                                                  CONSTRAINT DF_plt_esta_activo DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
+    plt_version                     ROWVERSION                                           NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_plt_plan_tratamiento PRIMARY KEY CLUSTERED (plt_codigo),
     -- [AP-06] FK compuestas: la naturaleza del plan coincide con la del evento y con la de la estrategia
     CONSTRAINT FK_plt_evento_incertidumbre FOREIGN KEY (eia_codigo, plt_naturaleza_evento) REFERENCES sgspi.evento_incertidumbre_activo (eia_codigo, eia_naturaleza_evento),
@@ -1486,11 +1504,16 @@ CREATE TABLE sgspi.plan_tratamiento (
                                                      AND LEN(TRIM(plt_dictamen_eficacia)) > 0
                                                      AND per_codigo_evaluador IS NOT NULL
                                                      AND plt_fecha_evaluacion_eficacia IS NOT NULL))
-);
+)
+WITH (DATA_COMPRESSION = ROW);
 
 -- [AP-22] Un solo plan activo por evento: permite crear el plan correcto tras anular uno por error (plt_esta_activo = 0)
 CREATE UNIQUE NONCLUSTERED INDEX UX_plt_evento_activo
     ON sgspi.plan_tratamiento(eia_codigo) WHERE plt_esta_activo = 1;
+
+CREATE NONCLUSTERED INDEX IX_plt_eia_codigo_naturaleza
+    ON sgspi.plan_tratamiento(eia_codigo, plt_naturaleza_evento)
+    INCLUDE(plt_esta_activo, epr_codigo_residual_meta, eim_codigo_residual_meta, plt_es_tratamiento_eficaz);
 
 CREATE NONCLUSTERED INDEX IX_plt_etc_codigo
     ON sgspi.plan_tratamiento(etc_codigo, plt_naturaleza_evento); -- [AP-18] cubre la FK compuesta a etc
@@ -1545,6 +1568,9 @@ CREATE NONCLUSTERED INDEX IX_act_car_codigo
 CREATE NONCLUSTERED INDEX IX_act_uaa_codigo
     ON sgspi.actividad_tratamiento(uaa_codigo);
 
+CREATE NONCLUSTERED INDEX IX_act_estado_activo
+    ON sgspi.actividad_tratamiento(efc_dominio, act_estado_actividad, act_esta_activa);
+
 CREATE TABLE sgspi.seguimiento_actividad (
     sga_codigo                       INT                IDENTITY (1, 1) NOT NULL,
     act_codigo                       INT                NOT NULL, -- FK a [sgspi].[actividad_tratamiento]([act_codigo])
@@ -1579,7 +1605,8 @@ CREATE TABLE sgspi.seguimiento_actividad (
 );
 
 CREATE NONCLUSTERED INDEX IX_sga_act_codigo
-    ON sgspi.seguimiento_actividad(act_codigo);
+    ON sgspi.seguimiento_actividad(act_codigo, sga_esta_activo, sga_codigo DESC)
+    INCLUDE(sga_porcentaje_reportado);
 
 CREATE NONCLUSTERED INDEX IX_sga_per_codigo
     ON sgspi.seguimiento_actividad(per_codigo);
@@ -1671,21 +1698,21 @@ CREATE NONCLUSTERED INDEX IX_ptc_crn_codigo
 
 -- 5.8 [eac] Declaración de Aplicabilidad (SoA) y Evaluación de Cumplimiento por Vigencia
 CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
-    eac_codigo                      INT                IDENTITY (1, 1) NOT NULL,
-    pev_codigo                      SMALLINT           NOT NULL, -- FK a [sgspi].[periodo_vigencia]([pev_codigo])
-    crn_codigo                      SMALLINT           NOT NULL, -- FK a [sgspi].[control_referencia_normativa]([crn_codigo])
-    eac_es_aplicable                BIT                CONSTRAINT DF_eac_es_aplicable DEFAULT 1 NOT NULL, -- [AP-17]
-    eac_justificacion_aplicabilidad NVARCHAR (1000)    NULL,
-    eac_documento_soporte_normativo NVARCHAR (500)     NULL,
-    car_codigo                      INT                NULL, -- FK a [dbo].[cargo]([car_codigo])
-    pdc_codigo                      SMALLINT           NULL, -- [AP-08] FK a [sgspi].[periodicidad_catalogo]([pdc_codigo]): frecuencia de revisión (NULL cuando eac_es_aplicable = 0)
-    eac_evidencia_objetiva_esperada NVARCHAR (500)     NULL,
-    eac_estado_implementacion       NVARCHAR (20)      NULL, -- 'CUMPLE', 'CUMPLE_PARCIAL', 'NO_CUMPLE' (NULL cuando eac_es_aplicable = 0)
-    eac_observaciones_auditoria     NVARCHAR (1000)    MASKED WITH (FUNCTION = 'default()') NULL, -- DDM: solo roles con UNMASK ven las observaciones reales
-    eac_fecha_creacion              DATETIMEOFFSET (0) CONSTRAINT DF_eac_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
-    eac_fecha_actualizacion         DATETIMEOFFSET (0) CONSTRAINT DF_eac_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-11] La mantiene TR_eac_integridad_y_actualizacion
-    eac_esta_activa                 BIT                CONSTRAINT DF_eac_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
-    eac_version                     ROWVERSION         NOT NULL, -- [AP-24] Control de concurrencia optimista
+    eac_codigo                      INT                                                  IDENTITY (1, 1) NOT NULL,
+    pev_codigo                      SMALLINT                                             NOT NULL, -- FK a [sgspi].[periodo_vigencia]([pev_codigo])
+    crn_codigo                      SMALLINT                                             NOT NULL, -- FK a [sgspi].[control_referencia_normativa]([crn_codigo])
+    eac_es_aplicable                BIT                                                  CONSTRAINT DF_eac_es_aplicable DEFAULT 1 NOT NULL, -- [AP-17]
+    eac_justificacion_aplicabilidad NVARCHAR (1000)                                      NULL,
+    eac_documento_soporte_normativo NVARCHAR (500)                                       NULL,
+    car_codigo                      INT                                                  NULL, -- FK a [dbo].[cargo]([car_codigo])
+    pdc_codigo                      SMALLINT                                             NULL, -- [AP-08] FK a [sgspi].[periodicidad_catalogo]([pdc_codigo]): frecuencia de revisión (NULL cuando eac_es_aplicable = 0)
+    eac_evidencia_objetiva_esperada NVARCHAR (500)                                       NULL,
+    eac_estado_implementacion       NVARCHAR (20)                                        NULL, -- 'CUMPLE', 'CUMPLE_PARCIAL', 'NO_CUMPLE' (NULL cuando eac_es_aplicable = 0)
+    eac_observaciones_auditoria     NVARCHAR (1000) MASKED WITH (FUNCTION = 'default()') NULL, -- DDM: solo roles con UNMASK ven las observaciones reales
+    eac_fecha_creacion              DATETIMEOFFSET (0)                                   CONSTRAINT DF_eac_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
+    eac_fecha_actualizacion         DATETIMEOFFSET (0)                                   CONSTRAINT DF_eac_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-11] La mantiene TR_eac_integridad_y_actualizacion
+    eac_esta_activa                 BIT                                                  CONSTRAINT DF_eac_esta_activa DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
+    eac_version                     ROWVERSION                                           NOT NULL, -- [AP-24] Control de concurrencia optimista
     CONSTRAINT PK_eac_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (eac_codigo),
     CONSTRAINT FK_eac_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_eac_control_referencia FOREIGN KEY (crn_codigo) REFERENCES sgspi.control_referencia_normativa (crn_codigo),
@@ -1709,7 +1736,8 @@ CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
                                                            AND UPPER(TRIM(ISNULL(eac_documento_soporte_normativo, N''))) <> N'PENDIENTE'
                                                            AND LEN(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) > 0
                                                            AND UPPER(TRIM(ISNULL(eac_evidencia_objetiva_esperada, N''))) <> N'PENDIENTE'))
-);
+)
+WITH (DATA_COMPRESSION = ROW);
 
 CREATE UNIQUE NONCLUSTERED INDEX UX_eac_vigencia_control
     ON sgspi.evaluacion_aplicabilidad_control(pev_codigo, crn_codigo) WHERE eac_esta_activa = 1; -- [AP-22]
@@ -1744,10 +1772,45 @@ Columnas: las de origen menos las calculadas, <acr>_version y <acr>_fecha_creaci
 las demás cambian el acrónimo de origen por el de auditoría (en aud_seguimiento_actividad, el per_codigo de origen
 es per_codigo_autor), más per_codigo, <aud>_operacion (CHAR(1) DEFAULT 'U' CHECK IN ('I', 'U')), <aud>_usuario_bd y
 <aud>_fecha_cambio. Son inmutables: TR_<aud>_inmutabilidad (error 50016) y DENY de escritura a sgspi_rol_base.
+Almacenamiento: PK BIGINT, DATA_COMPRESSION = PAGE en las 49 aud_* y sus índices, y particionamiento anual
+(PF_sgspi_aud_anio / PS_sgspi_aud_anio sobre <aud>_fecha_cambio en FG_SGSPI_AUD o PRIMARY) en las 9 aud_*
+transaccionales de alto crecimiento (aaf, ari, aai, aao, aea, apt, aat, asa, aae).
+Procedimiento de archivado anual en frío (Ley 594 / TRD):
+1) ALTER PARTITION SCHEME PS_sgspi_aud_anio NEXT USED [FG_SGSPI_AUD]; ALTER PARTITION FUNCTION PF_sgspi_aud_anio() SPLIT RANGE (@nuevo_anio);
+2) Crear tabla espejo sgspi.aud_<tabla>_archivo en PS_sgspi_aud_anio(<aud>_fecha_cambio) con misma estructura, PK, FKs, índices y DATA_COMPRESSION = PAGE;
+3) ALTER TABLE sgspi.aud_<tabla> SWITCH PARTITION @p TO sgspi.aud_<tabla>_archivo PARTITION @p; (operación de metadatos que no dispara INSTEAD OF DELETE).
 ==================================================================================================*/
+IF EXISTS (SELECT 1
+           FROM   sys.partition_schemes
+           WHERE  name = N'PS_sgspi_aud_anio')
+    DROP PARTITION SCHEME PS_sgspi_aud_anio;
+
+IF EXISTS (SELECT 1
+           FROM   sys.partition_functions
+           WHERE  name = N'PF_sgspi_aud_anio')
+    DROP PARTITION FUNCTION PF_sgspi_aud_anio;
+
+CREATE PARTITION FUNCTION PF_sgspi_aud_anio(DATETIMEOFFSET (0))
+    AS RANGE RIGHT
+    FOR VALUES (N'2025-01-01T00:00:00-05:00', N'2026-01-01T00:00:00-05:00', N'2027-01-01T00:00:00-05:00', N'2028-01-01T00:00:00-05:00', N'2029-01-01T00:00:00-05:00', N'2030-01-01T00:00:00-05:00');
+
+IF EXISTS (SELECT 1
+           FROM   sys.filegroups
+           WHERE  name = N'FG_SGSPI_AUD')
+    EXECUTE (N'CREATE PARTITION SCHEME PS_sgspi_aud_anio AS PARTITION PF_sgspi_aud_anio ALL TO ([FG_SGSPI_AUD]);');
+ELSE
+    EXECUTE (N'CREATE PARTITION SCHEME PS_sgspi_aud_anio AS PARTITION PF_sgspi_aud_anio ALL TO ([PRIMARY]);');
+
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
 -- [apv] Auditoría de [sgspi].[periodo_vigencia] ([pev])
 CREATE TABLE sgspi.aud_periodo_vigencia (
-    apv_codigo          INT                IDENTITY (1, 1) NOT NULL,
+    apv_codigo          BIGINT             IDENTITY (1, 1) NOT NULL,
     pev_codigo          SMALLINT           NOT NULL,
     apv_anio            SMALLINT           NOT NULL,
     apv_fecha_apertura  DATE               NOT NULL,
@@ -1762,17 +1825,18 @@ CREATE TABLE sgspi.aud_periodo_vigencia (
     CONSTRAINT FK_apv_periodo_vigencia FOREIGN KEY (pev_codigo) REFERENCES sgspi.periodo_vigencia (pev_codigo),
     CONSTRAINT FK_apv_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_apv_operacion CHECK (apv_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apv_pev_codigo
-    ON sgspi.aud_periodo_vigencia(pev_codigo, apv_fecha_cambio DESC);
+    ON sgspi.aud_periodo_vigencia(pev_codigo, apv_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apv_per_codigo
-    ON sgspi.aud_periodo_vigencia(per_codigo);
+    ON sgspi.aud_periodo_vigencia(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aec] Auditoría de [sgspi].[estado_flujo_catalogo] ([efc])
 CREATE TABLE sgspi.aud_estado_flujo_catalogo (
-    aec_codigo          INT                IDENTITY (1, 1) NOT NULL,
+    aec_codigo          BIGINT             IDENTITY (1, 1) NOT NULL,
     efc_codigo          SMALLINT           NOT NULL,
     aec_dominio         NVARCHAR (10)      NOT NULL,
     aec_identificador   NVARCHAR (30)      NOT NULL,
@@ -1788,17 +1852,18 @@ CREATE TABLE sgspi.aud_estado_flujo_catalogo (
     CONSTRAINT FK_aec_estado_flujo_catalogo FOREIGN KEY (efc_codigo) REFERENCES sgspi.estado_flujo_catalogo (efc_codigo),
     CONSTRAINT FK_aec_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aec_operacion CHECK (aec_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aec_efc_codigo
-    ON sgspi.aud_estado_flujo_catalogo(efc_codigo, aec_fecha_cambio DESC);
+    ON sgspi.aud_estado_flujo_catalogo(efc_codigo, aec_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aec_per_codigo
-    ON sgspi.aud_estado_flujo_catalogo(per_codigo);
+    ON sgspi.aud_estado_flujo_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [atf] Auditoría de [sgspi].[transicion_estado_flujo] ([tef])
 CREATE TABLE sgspi.aud_transicion_estado_flujo (
-    atf_codigo                INT                IDENTITY (1, 1) NOT NULL,
+    atf_codigo                BIGINT             IDENTITY (1, 1) NOT NULL,
     tef_codigo                SMALLINT           NOT NULL,
     efc_dominio               NVARCHAR (10)      NOT NULL,
     efc_identificador_origen  NVARCHAR (30)      NOT NULL,
@@ -1813,17 +1878,18 @@ CREATE TABLE sgspi.aud_transicion_estado_flujo (
     CONSTRAINT FK_atf_transicion_estado_flujo FOREIGN KEY (tef_codigo) REFERENCES sgspi.transicion_estado_flujo (tef_codigo),
     CONSTRAINT FK_atf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_atf_operacion CHECK (atf_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_atf_tef_codigo
-    ON sgspi.aud_transicion_estado_flujo(tef_codigo, atf_fecha_cambio DESC);
+    ON sgspi.aud_transicion_estado_flujo(tef_codigo, atf_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_atf_per_codigo
-    ON sgspi.aud_transicion_estado_flujo(per_codigo);
+    ON sgspi.aud_transicion_estado_flujo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [atr] Auditoría de [sgspi].[tipo_proceso_catalogo] ([tpr])
 CREATE TABLE sgspi.aud_tipo_proceso_catalogo (
-    atr_codigo        INT                IDENTITY (1, 1) NOT NULL,
+    atr_codigo        BIGINT             IDENTITY (1, 1) NOT NULL,
     tpr_codigo        TINYINT            NOT NULL,
     atr_identificador NVARCHAR (20)      NOT NULL,
     atr_nombre        NVARCHAR (50)      NOT NULL,
@@ -1837,17 +1903,18 @@ CREATE TABLE sgspi.aud_tipo_proceso_catalogo (
     CONSTRAINT FK_atr_tipo_proceso_catalogo FOREIGN KEY (tpr_codigo) REFERENCES sgspi.tipo_proceso_catalogo (tpr_codigo),
     CONSTRAINT FK_atr_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_atr_operacion CHECK (atr_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_atr_tpr_codigo
-    ON sgspi.aud_tipo_proceso_catalogo(tpr_codigo, atr_fecha_cambio DESC);
+    ON sgspi.aud_tipo_proceso_catalogo(tpr_codigo, atr_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_atr_per_codigo
-    ON sgspi.aud_tipo_proceso_catalogo(per_codigo);
+    ON sgspi.aud_tipo_proceso_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [api] Auditoría de [sgspi].[proceso_institucional] ([pri])
 CREATE TABLE sgspi.aud_proceso_institucional (
-    api_codigo        INT                IDENTITY (1, 1) NOT NULL,
+    api_codigo        BIGINT             IDENTITY (1, 1) NOT NULL,
     pri_codigo        INT                NOT NULL,
     api_identificador NVARCHAR (20)      NOT NULL,
     api_nombre        NVARCHAR (150)     NOT NULL,
@@ -1863,17 +1930,18 @@ CREATE TABLE sgspi.aud_proceso_institucional (
     CONSTRAINT FK_api_proceso_institucional FOREIGN KEY (pri_codigo) REFERENCES sgspi.proceso_institucional (pri_codigo),
     CONSTRAINT FK_api_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_api_operacion CHECK (api_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_api_pri_codigo
-    ON sgspi.aud_proceso_institucional(pri_codigo, api_fecha_cambio DESC);
+    ON sgspi.aud_proceso_institucional(pri_codigo, api_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_api_per_codigo
-    ON sgspi.aud_proceso_institucional(per_codigo);
+    ON sgspi.aud_proceso_institucional(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [apu] Auditoría de [sgspi].[proceso_institucional_uaa] ([piu])
 CREATE TABLE sgspi.aud_proceso_institucional_uaa (
-    apu_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    apu_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     pri_codigo       INT                NOT NULL,
     uaa_codigo       INT                NOT NULL,
     apu_esta_activo  BIT                NOT NULL,
@@ -1885,17 +1953,18 @@ CREATE TABLE sgspi.aud_proceso_institucional_uaa (
     CONSTRAINT FK_apu_proceso_institucional_uaa FOREIGN KEY (pri_codigo, uaa_codigo) REFERENCES sgspi.proceso_institucional_uaa (pri_codigo, uaa_codigo),
     CONSTRAINT FK_apu_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_apu_operacion CHECK (apu_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apu_pri_codigo_uaa_codigo
-    ON sgspi.aud_proceso_institucional_uaa(pri_codigo, uaa_codigo, apu_fecha_cambio DESC);
+    ON sgspi.aud_proceso_institucional_uaa(pri_codigo, uaa_codigo, apu_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apu_per_codigo
-    ON sgspi.aud_proceso_institucional_uaa(per_codigo);
+    ON sgspi.aud_proceso_institucional_uaa(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [afc] Auditoría de [sgspi].[factor_entorno_catalogo] ([fec])
 CREATE TABLE sgspi.aud_factor_entorno_catalogo (
-    afc_codigo         INT                IDENTITY (1, 1) NOT NULL,
+    afc_codigo         BIGINT             IDENTITY (1, 1) NOT NULL,
     fec_codigo         SMALLINT           NOT NULL,
     afc_nombre_factor  NVARCHAR (100)     NOT NULL,
     afc_ambito_entorno NVARCHAR (15)      NOT NULL,
@@ -1909,17 +1978,18 @@ CREATE TABLE sgspi.aud_factor_entorno_catalogo (
     CONSTRAINT FK_afc_factor_entorno_catalogo FOREIGN KEY (fec_codigo) REFERENCES sgspi.factor_entorno_catalogo (fec_codigo),
     CONSTRAINT FK_afc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_afc_operacion CHECK (afc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_afc_fec_codigo
-    ON sgspi.aud_factor_entorno_catalogo(fec_codigo, afc_fecha_cambio DESC);
+    ON sgspi.aud_factor_entorno_catalogo(fec_codigo, afc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_afc_per_codigo
-    ON sgspi.aud_factor_entorno_catalogo(per_codigo);
+    ON sgspi.aud_factor_entorno_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aaf] Auditoría de [sgspi].[analisis_contexto_factor] ([acf])
 CREATE TABLE sgspi.aud_analisis_contexto_factor (
-    aaf_codigo                  INT                IDENTITY (1, 1) NOT NULL,
+    aaf_codigo                  BIGINT             IDENTITY (1, 1) NOT NULL,
     acf_codigo                  INT                NOT NULL,
     pev_codigo                  SMALLINT           NOT NULL,
     pri_codigo                  INT                NOT NULL,
@@ -1939,21 +2009,25 @@ CREATE TABLE sgspi.aud_analisis_contexto_factor (
     aaf_operacion               CHAR (1)           CONSTRAINT DF_aaf_operacion DEFAULT 'U' NOT NULL,
     aaf_usuario_bd              SYSNAME            CONSTRAINT DF_aaf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aaf_fecha_cambio            DATETIMEOFFSET (0) CONSTRAINT DF_aaf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_aaf_aud_analisis_contexto_factor PRIMARY KEY CLUSTERED (aaf_codigo),
+    CONSTRAINT PK_aaf_aud_analisis_contexto_factor PRIMARY KEY CLUSTERED (aaf_codigo, aaf_fecha_cambio),
     CONSTRAINT FK_aaf_analisis_contexto_factor FOREIGN KEY (acf_codigo) REFERENCES sgspi.analisis_contexto_factor (acf_codigo),
     CONSTRAINT FK_aaf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aaf_operacion CHECK (aaf_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (aaf_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aaf_acf_codigo
-    ON sgspi.aud_analisis_contexto_factor(acf_codigo, aaf_fecha_cambio DESC);
+    ON sgspi.aud_analisis_contexto_factor(acf_codigo, aaf_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aaf_per_codigo
-    ON sgspi.aud_analisis_contexto_factor(per_codigo);
+    ON sgspi.aud_analisis_contexto_factor(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_aaf_fecha_cambio
+    ON sgspi.aud_analisis_contexto_factor(aaf_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [apa] Auditoría de [sgspi].[parte_interesada] ([pai])
 CREATE TABLE sgspi.aud_parte_interesada (
-    apa_codigo          INT                IDENTITY (1, 1) NOT NULL,
+    apa_codigo          BIGINT             IDENTITY (1, 1) NOT NULL,
     pai_codigo          INT                NOT NULL,
     apa_nombre          NVARCHAR (150)     NOT NULL,
     apa_origen          NVARCHAR (15)      NOT NULL,
@@ -1967,17 +2041,18 @@ CREATE TABLE sgspi.aud_parte_interesada (
     CONSTRAINT FK_apa_parte_interesada FOREIGN KEY (pai_codigo) REFERENCES sgspi.parte_interesada (pai_codigo),
     CONSTRAINT FK_apa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_apa_operacion CHECK (apa_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apa_pai_codigo
-    ON sgspi.aud_parte_interesada(pai_codigo, apa_fecha_cambio DESC);
+    ON sgspi.aud_parte_interesada(pai_codigo, apa_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apa_per_codigo
-    ON sgspi.aud_parte_interesada(per_codigo);
+    ON sgspi.aud_parte_interesada(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [ari] Auditoría de [sgspi].[requisito_parte_interesada] ([rpi])
 CREATE TABLE sgspi.aud_requisito_parte_interesada (
-    ari_codigo                INT                IDENTITY (1, 1) NOT NULL,
+    ari_codigo                BIGINT             IDENTITY (1, 1) NOT NULL,
     rpi_codigo                INT                NOT NULL,
     pev_codigo                SMALLINT           NOT NULL,
     pai_codigo                INT                NOT NULL,
@@ -1995,21 +2070,25 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada (
     ari_operacion             CHAR (1)           CONSTRAINT DF_ari_operacion DEFAULT 'U' NOT NULL,
     ari_usuario_bd            SYSNAME            CONSTRAINT DF_ari_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ari_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_ari_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_ari_aud_requisito_parte_interesada PRIMARY KEY CLUSTERED (ari_codigo),
+    CONSTRAINT PK_ari_aud_requisito_parte_interesada PRIMARY KEY CLUSTERED (ari_codigo, ari_fecha_cambio),
     CONSTRAINT FK_ari_requisito_parte_interesada FOREIGN KEY (rpi_codigo) REFERENCES sgspi.requisito_parte_interesada (rpi_codigo),
     CONSTRAINT FK_ari_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_ari_operacion CHECK (ari_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (ari_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_ari_rpi_codigo
-    ON sgspi.aud_requisito_parte_interesada(rpi_codigo, ari_fecha_cambio DESC);
+    ON sgspi.aud_requisito_parte_interesada(rpi_codigo, ari_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_ari_per_codigo
-    ON sgspi.aud_requisito_parte_interesada(per_codigo);
+    ON sgspi.aud_requisito_parte_interesada(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_ari_fecha_cambio
+    ON sgspi.aud_requisito_parte_interesada(ari_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [arp] Auditoría de [sgspi].[requisito_parte_interesada_proceso_institucional] ([rpp])
 CREATE TABLE sgspi.aud_requisito_parte_interesada_proceso_institucional (
-    arp_codigo         INT                IDENTITY (1, 1) NOT NULL,
+    arp_codigo         BIGINT             IDENTITY (1, 1) NOT NULL,
     rpi_codigo         INT                NOT NULL,
     pri_codigo         INT                NOT NULL,
     arp_fecha_registro DATETIMEOFFSET (0) NOT NULL,
@@ -2022,17 +2101,18 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada_proceso_institucional (
     CONSTRAINT FK_arp_requisito_parte_interesada_proceso_institucional FOREIGN KEY (rpi_codigo, pri_codigo) REFERENCES sgspi.requisito_parte_interesada_proceso_institucional (rpi_codigo, pri_codigo),
     CONSTRAINT FK_arp_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_arp_operacion CHECK (arp_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_arp_rpi_codigo_pri_codigo
-    ON sgspi.aud_requisito_parte_interesada_proceso_institucional(rpi_codigo, pri_codigo, arp_fecha_cambio DESC);
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional(rpi_codigo, pri_codigo, arp_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_arp_per_codigo
-    ON sgspi.aud_requisito_parte_interesada_proceso_institucional(per_codigo);
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [atc] Auditoría de [sgspi].[tipo_activo_catalogo] ([tac])
 CREATE TABLE sgspi.aud_tipo_activo_catalogo (
-    atc_codigo          INT                IDENTITY (1, 1) NOT NULL,
+    atc_codigo          BIGINT             IDENTITY (1, 1) NOT NULL,
     tac_codigo          SMALLINT           NOT NULL,
     atc_codigo_padre    SMALLINT           NULL,
     atc_nivel_taxonomia TINYINT            NOT NULL,
@@ -2047,17 +2127,18 @@ CREATE TABLE sgspi.aud_tipo_activo_catalogo (
     CONSTRAINT FK_atc_tipo_activo_catalogo FOREIGN KEY (tac_codigo) REFERENCES sgspi.tipo_activo_catalogo (tac_codigo),
     CONSTRAINT FK_atc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_atc_operacion CHECK (atc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_atc_tac_codigo
-    ON sgspi.aud_tipo_activo_catalogo(tac_codigo, atc_fecha_cambio DESC);
+    ON sgspi.aud_tipo_activo_catalogo(tac_codigo, atc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_atc_per_codigo
-    ON sgspi.aud_tipo_activo_catalogo(per_codigo);
+    ON sgspi.aud_tipo_activo_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [ace] Auditoría de [sgspi].[causal_excepcion_transparencia] ([cet])
 CREATE TABLE sgspi.aud_causal_excepcion_transparencia (
-    ace_codigo                  INT                IDENTITY (1, 1) NOT NULL,
+    ace_codigo                  BIGINT             IDENTITY (1, 1) NOT NULL,
     cet_codigo                  SMALLINT           NOT NULL,
     ace_nivel_reserva_aplicable NVARCHAR (20)      NOT NULL,
     ace_numeral_causal          NVARCHAR (10)      NOT NULL,
@@ -2072,17 +2153,18 @@ CREATE TABLE sgspi.aud_causal_excepcion_transparencia (
     CONSTRAINT FK_ace_causal_excepcion_transparencia FOREIGN KEY (cet_codigo) REFERENCES sgspi.causal_excepcion_transparencia (cet_codigo),
     CONSTRAINT FK_ace_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_ace_operacion CHECK (ace_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_ace_cet_codigo
-    ON sgspi.aud_causal_excepcion_transparencia(cet_codigo, ace_fecha_cambio DESC);
+    ON sgspi.aud_causal_excepcion_transparencia(cet_codigo, ace_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_ace_per_codigo
-    ON sgspi.aud_causal_excepcion_transparencia(per_codigo);
+    ON sgspi.aud_causal_excepcion_transparencia(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aai] Auditoría de [sgspi].[activo_informacion] ([aci])
 CREATE TABLE sgspi.aud_activo_informacion (
-    aai_codigo                          INT                IDENTITY (1, 1) NOT NULL,
+    aai_codigo                          BIGINT             IDENTITY (1, 1) NOT NULL,
     aci_codigo                          INT                NOT NULL,
     aai_codigo_inventario               NVARCHAR (30)      NOT NULL,
     aai_nombre_activo                   NVARCHAR (255)     NOT NULL,
@@ -2120,21 +2202,25 @@ CREATE TABLE sgspi.aud_activo_informacion (
     aai_operacion                       CHAR (1)           CONSTRAINT DF_aai_operacion DEFAULT 'U' NOT NULL,
     aai_usuario_bd                      SYSNAME            CONSTRAINT DF_aai_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aai_fecha_cambio                    DATETIMEOFFSET (0) CONSTRAINT DF_aai_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_aai_aud_activo_informacion PRIMARY KEY CLUSTERED (aai_codigo),
+    CONSTRAINT PK_aai_aud_activo_informacion PRIMARY KEY CLUSTERED (aai_codigo, aai_fecha_cambio),
     CONSTRAINT FK_aai_activo_informacion FOREIGN KEY (aci_codigo) REFERENCES sgspi.activo_informacion (aci_codigo),
     CONSTRAINT FK_aai_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aai_operacion CHECK (aai_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (aai_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aai_aci_codigo
-    ON sgspi.aud_activo_informacion(aci_codigo, aai_fecha_cambio DESC);
+    ON sgspi.aud_activo_informacion(aci_codigo, aai_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aai_per_codigo
-    ON sgspi.aud_activo_informacion(per_codigo);
+    ON sgspi.aud_activo_informacion(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_aai_fecha_cambio
+    ON sgspi.aud_activo_informacion(aai_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aap] Auditoría de [sgspi].[activo_informacion_proceso_institucional] ([aip])
 CREATE TABLE sgspi.aud_activo_informacion_proceso_institucional (
-    aap_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aap_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     aci_codigo       INT                NOT NULL,
     pri_codigo       INT                NOT NULL,
     aap_esta_activo  BIT                NOT NULL,
@@ -2146,17 +2232,18 @@ CREATE TABLE sgspi.aud_activo_informacion_proceso_institucional (
     CONSTRAINT FK_aap_activo_informacion_proceso_institucional FOREIGN KEY (aci_codigo, pri_codigo) REFERENCES sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo),
     CONSTRAINT FK_aap_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aap_operacion CHECK (aap_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aap_aci_codigo_pri_codigo
-    ON sgspi.aud_activo_informacion_proceso_institucional(aci_codigo, pri_codigo, aap_fecha_cambio DESC);
+    ON sgspi.aud_activo_informacion_proceso_institucional(aci_codigo, pri_codigo, aap_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aap_per_codigo
-    ON sgspi.aud_activo_informacion_proceso_institucional(per_codigo);
+    ON sgspi.aud_activo_informacion_proceso_institucional(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aas] Auditoría de [sgspi].[activo_informacion_sede] ([ais])
 CREATE TABLE sgspi.aud_activo_informacion_sede (
-    aas_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aas_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     aci_codigo       INT                NOT NULL,
     sus_codigo       INT                NOT NULL,
     aas_esta_activo  BIT                NOT NULL,
@@ -2168,17 +2255,18 @@ CREATE TABLE sgspi.aud_activo_informacion_sede (
     CONSTRAINT FK_aas_activo_informacion_sede FOREIGN KEY (aci_codigo, sus_codigo) REFERENCES sgspi.activo_informacion_sede (aci_codigo, sus_codigo),
     CONSTRAINT FK_aas_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aas_operacion CHECK (aas_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aas_aci_codigo_sus_codigo
-    ON sgspi.aud_activo_informacion_sede(aci_codigo, sus_codigo, aas_fecha_cambio DESC);
+    ON sgspi.aud_activo_informacion_sede(aci_codigo, sus_codigo, aas_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aas_per_codigo
-    ON sgspi.aud_activo_informacion_sede(per_codigo);
+    ON sgspi.aud_activo_informacion_sede(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aar] Auditoría de [sgspi].[activo_informacion_responsable] ([air])
 CREATE TABLE sgspi.aud_activo_informacion_responsable (
-    aar_codigo               INT                IDENTITY (1, 1) NOT NULL,
+    aar_codigo               BIGINT             IDENTITY (1, 1) NOT NULL,
     aci_codigo               INT                NOT NULL,
     car_codigo               INT                NOT NULL,
     uaa_codigo               INT                NOT NULL,
@@ -2192,17 +2280,18 @@ CREATE TABLE sgspi.aud_activo_informacion_responsable (
     CONSTRAINT FK_aar_activo_informacion_responsable FOREIGN KEY (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad) REFERENCES sgspi.activo_informacion_responsable (aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad),
     CONSTRAINT FK_aar_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aar_operacion CHECK (aar_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aar_aci_codigo_car_codigo_uaa_codigo_air_tipo_responsabilidad
-    ON sgspi.aud_activo_informacion_responsable(aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad, aar_fecha_cambio DESC);
+    ON sgspi.aud_activo_informacion_responsable(aci_codigo, car_codigo, uaa_codigo, air_tipo_responsabilidad, aar_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aar_per_codigo
-    ON sgspi.aud_activo_informacion_responsable(per_codigo);
+    ON sgspi.aud_activo_informacion_responsable(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [asf] Auditoría de [sgspi].[sistema_informacion_ficha] ([sif])
 CREATE TABLE sgspi.aud_sistema_informacion_ficha (
-    asf_codigo               INT                IDENTITY (1, 1) NOT NULL,
+    asf_codigo               BIGINT             IDENTITY (1, 1) NOT NULL,
     sif_codigo               INT                NOT NULL,
     aci_codigo               INT                NULL,
     asf_nombre_sistema       NVARCHAR (150)     NOT NULL,
@@ -2218,17 +2307,21 @@ CREATE TABLE sgspi.aud_sistema_informacion_ficha (
     CONSTRAINT FK_asf_sistema_informacion_ficha FOREIGN KEY (sif_codigo) REFERENCES sgspi.sistema_informacion_ficha (sif_codigo),
     CONSTRAINT FK_asf_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_asf_operacion CHECK (asf_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asf_sif_codigo
-    ON sgspi.aud_sistema_informacion_ficha(sif_codigo, asf_fecha_cambio DESC);
+    ON sgspi.aud_sistema_informacion_ficha(sif_codigo, asf_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asf_per_codigo
-    ON sgspi.aud_sistema_informacion_ficha(per_codigo);
+    ON sgspi.aud_sistema_informacion_ficha(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_asf_fecha_cambio
+    ON sgspi.aud_sistema_informacion_ficha(asf_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [ami] Auditoría de [sgspi].[modulo_sistema_informacion] ([msi])
 CREATE TABLE sgspi.aud_modulo_sistema_informacion (
-    ami_codigo            INT                IDENTITY (1, 1) NOT NULL,
+    ami_codigo            BIGINT             IDENTITY (1, 1) NOT NULL,
     msi_codigo            INT                NOT NULL,
     sif_codigo            INT                NOT NULL,
     ami_nombre_modulo     NVARCHAR (200)     NOT NULL,
@@ -2242,17 +2335,18 @@ CREATE TABLE sgspi.aud_modulo_sistema_informacion (
     CONSTRAINT FK_ami_modulo_sistema_informacion FOREIGN KEY (msi_codigo) REFERENCES sgspi.modulo_sistema_informacion (msi_codigo),
     CONSTRAINT FK_ami_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_ami_operacion CHECK (ami_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_ami_msi_codigo
-    ON sgspi.aud_modulo_sistema_informacion(msi_codigo, ami_fecha_cambio DESC);
+    ON sgspi.aud_modulo_sistema_informacion(msi_codigo, ami_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_ami_per_codigo
-    ON sgspi.aud_modulo_sistema_informacion(per_codigo);
+    ON sgspi.aud_modulo_sistema_informacion(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aso] Auditoría de [sgspi].[serie_documental_catalogo] ([sdo])
 CREATE TABLE sgspi.aud_serie_documental_catalogo (
-    aso_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aso_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     sdo_codigo       SMALLINT           NOT NULL,
     aso_numero_ccd   SMALLINT           NOT NULL,
     aso_nombre_serie NVARCHAR (150)     NOT NULL,
@@ -2265,17 +2359,18 @@ CREATE TABLE sgspi.aud_serie_documental_catalogo (
     CONSTRAINT FK_aso_serie_documental_catalogo FOREIGN KEY (sdo_codigo) REFERENCES sgspi.serie_documental_catalogo (sdo_codigo),
     CONSTRAINT FK_aso_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aso_operacion CHECK (aso_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aso_sdo_codigo
-    ON sgspi.aud_serie_documental_catalogo(sdo_codigo, aso_fecha_cambio DESC);
+    ON sgspi.aud_serie_documental_catalogo(sdo_codigo, aso_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aso_per_codigo
-    ON sgspi.aud_serie_documental_catalogo(per_codigo);
+    ON sgspi.aud_serie_documental_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [asd] Auditoría de [sgspi].[subserie_documental_catalogo] ([sbd])
 CREATE TABLE sgspi.aud_subserie_documental_catalogo (
-    asd_codigo          INT                IDENTITY (1, 1) NOT NULL,
+    asd_codigo          BIGINT             IDENTITY (1, 1) NOT NULL,
     sbd_codigo          INT                NOT NULL,
     sdo_codigo          SMALLINT           NOT NULL,
     asd_numero_ccd      SMALLINT           NOT NULL,
@@ -2289,17 +2384,18 @@ CREATE TABLE sgspi.aud_subserie_documental_catalogo (
     CONSTRAINT FK_asd_subserie_documental_catalogo FOREIGN KEY (sbd_codigo) REFERENCES sgspi.subserie_documental_catalogo (sbd_codigo),
     CONSTRAINT FK_asd_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_asd_operacion CHECK (asd_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asd_sbd_codigo
-    ON sgspi.aud_subserie_documental_catalogo(sbd_codigo, asd_fecha_cambio DESC);
+    ON sgspi.aud_subserie_documental_catalogo(sbd_codigo, asd_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asd_per_codigo
-    ON sgspi.aud_subserie_documental_catalogo(per_codigo);
+    ON sgspi.aud_subserie_documental_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [auc] Auditoría de [sgspi].[unidad_productora_cuadro_clasificacion_documental] ([upc])
 CREATE TABLE sgspi.aud_unidad_productora_cuadro_clasificacion_documental (
-    auc_codigo              INT                IDENTITY (1, 1) NOT NULL,
+    auc_codigo              BIGINT             IDENTITY (1, 1) NOT NULL,
     upc_codigo              INT                NOT NULL,
     auc_nodo_jerarquico     HIERARCHYID        NOT NULL,
     auc_codigo_archivistico NVARCHAR (50)      NULL,
@@ -2314,17 +2410,18 @@ CREATE TABLE sgspi.aud_unidad_productora_cuadro_clasificacion_documental (
     CONSTRAINT FK_auc_unidad_productora_cuadro_clasificacion_documental FOREIGN KEY (upc_codigo) REFERENCES sgspi.unidad_productora_cuadro_clasificacion_documental (upc_codigo),
     CONSTRAINT FK_auc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_auc_operacion CHECK (auc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_auc_upc_codigo
-    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental(upc_codigo, auc_fecha_cambio DESC);
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental(upc_codigo, auc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_auc_per_codigo
-    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental(per_codigo);
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [apc] Auditoría de [sgspi].[periodicidad_catalogo] ([pdc])
 CREATE TABLE sgspi.aud_periodicidad_catalogo (
-    apc_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    apc_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     pdc_codigo       SMALLINT           NOT NULL,
     apc_nombre       NVARCHAR (40)      NOT NULL,
     apc_orden        TINYINT            NOT NULL,
@@ -2337,17 +2434,18 @@ CREATE TABLE sgspi.aud_periodicidad_catalogo (
     CONSTRAINT FK_apc_periodicidad_catalogo FOREIGN KEY (pdc_codigo) REFERENCES sgspi.periodicidad_catalogo (pdc_codigo),
     CONSTRAINT FK_apc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_apc_operacion CHECK (apc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apc_pdc_codigo
-    ON sgspi.aud_periodicidad_catalogo(pdc_codigo, apc_fecha_cambio DESC);
+    ON sgspi.aud_periodicidad_catalogo(pdc_codigo, apc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apc_per_codigo
-    ON sgspi.aud_periodicidad_catalogo(per_codigo);
+    ON sgspi.aud_periodicidad_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aep] Auditoría de [sgspi].[estado_publicacion_catalogo] ([epc])
 CREATE TABLE sgspi.aud_estado_publicacion_catalogo (
-    aep_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aep_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     epc_codigo       SMALLINT           NOT NULL,
     aep_nombre       NVARCHAR (60)      NOT NULL,
     aep_descripcion  NVARCHAR (255)     NULL,
@@ -2360,17 +2458,18 @@ CREATE TABLE sgspi.aud_estado_publicacion_catalogo (
     CONSTRAINT FK_aep_estado_publicacion_catalogo FOREIGN KEY (epc_codigo) REFERENCES sgspi.estado_publicacion_catalogo (epc_codigo),
     CONSTRAINT FK_aep_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aep_operacion CHECK (aep_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aep_epc_codigo
-    ON sgspi.aud_estado_publicacion_catalogo(epc_codigo, aep_fecha_cambio DESC);
+    ON sgspi.aud_estado_publicacion_catalogo(epc_codigo, aep_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aep_per_codigo
-    ON sgspi.aud_estado_publicacion_catalogo(per_codigo);
+    ON sgspi.aud_estado_publicacion_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [asc] Auditoría de [sgspi].[soporte_registro_catalogo] ([src])
 CREATE TABLE sgspi.aud_soporte_registro_catalogo (
-    asc_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    asc_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     src_codigo       SMALLINT           NOT NULL,
     asc_nombre       NVARCHAR (30)      NOT NULL,
     asc_esta_activo  BIT                NOT NULL,
@@ -2382,17 +2481,18 @@ CREATE TABLE sgspi.aud_soporte_registro_catalogo (
     CONSTRAINT FK_asc_soporte_registro_catalogo FOREIGN KEY (src_codigo) REFERENCES sgspi.soporte_registro_catalogo (src_codigo),
     CONSTRAINT FK_asc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_asc_operacion CHECK (asc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asc_src_codigo
-    ON sgspi.aud_soporte_registro_catalogo(src_codigo, asc_fecha_cambio DESC);
+    ON sgspi.aud_soporte_registro_catalogo(src_codigo, asc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asc_per_codigo
-    ON sgspi.aud_soporte_registro_catalogo(per_codigo);
+    ON sgspi.aud_soporte_registro_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [amc] Auditoría de [sgspi].[medio_conservacion_catalogo] ([mcc])
 CREATE TABLE sgspi.aud_medio_conservacion_catalogo (
-    amc_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    amc_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     mcc_codigo       SMALLINT           NOT NULL,
     amc_nombre       NVARCHAR (30)      NOT NULL,
     amc_esta_activo  BIT                NOT NULL,
@@ -2404,17 +2504,18 @@ CREATE TABLE sgspi.aud_medio_conservacion_catalogo (
     CONSTRAINT FK_amc_medio_conservacion_catalogo FOREIGN KEY (mcc_codigo) REFERENCES sgspi.medio_conservacion_catalogo (mcc_codigo),
     CONSTRAINT FK_amc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_amc_operacion CHECK (amc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_amc_mcc_codigo
-    ON sgspi.aud_medio_conservacion_catalogo(mcc_codigo, amc_fecha_cambio DESC);
+    ON sgspi.aud_medio_conservacion_catalogo(mcc_codigo, amc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_amc_per_codigo
-    ON sgspi.aud_medio_conservacion_catalogo(per_codigo);
+    ON sgspi.aud_medio_conservacion_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aii] Auditoría de [sgspi].[idioma_catalogo] ([idi])
 CREATE TABLE sgspi.aud_idioma_catalogo (
-    aii_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aii_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     idi_codigo       SMALLINT           NOT NULL,
     aii_codigo_iso   NVARCHAR (10)      NOT NULL,
     aii_nombre       NVARCHAR (50)      NOT NULL,
@@ -2427,17 +2528,18 @@ CREATE TABLE sgspi.aud_idioma_catalogo (
     CONSTRAINT FK_aii_idioma_catalogo FOREIGN KEY (idi_codigo) REFERENCES sgspi.idioma_catalogo (idi_codigo),
     CONSTRAINT FK_aii_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aii_operacion CHECK (aii_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aii_idi_codigo
-    ON sgspi.aud_idioma_catalogo(idi_codigo, aii_fecha_cambio DESC);
+    ON sgspi.aud_idioma_catalogo(idi_codigo, aii_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aii_per_codigo
-    ON sgspi.aud_idioma_catalogo(per_codigo);
+    ON sgspi.aud_idioma_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [afa] Auditoría de [sgspi].[formato_archivo_catalogo] ([fac])
 CREATE TABLE sgspi.aud_formato_archivo_catalogo (
-    afa_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    afa_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     fac_codigo       SMALLINT           NOT NULL,
     afa_nombre       NVARCHAR (60)      NOT NULL,
     afa_esta_activo  BIT                NOT NULL,
@@ -2449,17 +2551,18 @@ CREATE TABLE sgspi.aud_formato_archivo_catalogo (
     CONSTRAINT FK_afa_formato_archivo_catalogo FOREIGN KEY (fac_codigo) REFERENCES sgspi.formato_archivo_catalogo (fac_codigo),
     CONSTRAINT FK_afa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_afa_operacion CHECK (afa_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_afa_fac_codigo
-    ON sgspi.aud_formato_archivo_catalogo(fac_codigo, afa_fecha_cambio DESC);
+    ON sgspi.aud_formato_archivo_catalogo(fac_codigo, afa_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_afa_per_codigo
-    ON sgspi.aud_formato_archivo_catalogo(per_codigo);
+    ON sgspi.aud_formato_archivo_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aao] Auditoría de [sgspi].[activo_documental] ([ado])
 CREATE TABLE sgspi.aud_activo_documental (
-    aao_codigo                        INT                IDENTITY (1, 1) NOT NULL,
+    aao_codigo                        BIGINT             IDENTITY (1, 1) NOT NULL,
     ado_codigo                        INT                NOT NULL,
     pev_codigo                        SMALLINT           NOT NULL,
     sdo_codigo                        SMALLINT           NOT NULL,
@@ -2476,21 +2579,25 @@ CREATE TABLE sgspi.aud_activo_documental (
     aao_operacion                     CHAR (1)           CONSTRAINT DF_aao_operacion DEFAULT 'U' NOT NULL,
     aao_usuario_bd                    SYSNAME            CONSTRAINT DF_aao_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aao_fecha_cambio                  DATETIMEOFFSET (0) CONSTRAINT DF_aao_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_aao_aud_activo_documental PRIMARY KEY CLUSTERED (aao_codigo),
+    CONSTRAINT PK_aao_aud_activo_documental PRIMARY KEY CLUSTERED (aao_codigo, aao_fecha_cambio),
     CONSTRAINT FK_aao_activo_documental FOREIGN KEY (ado_codigo) REFERENCES sgspi.activo_documental (ado_codigo),
     CONSTRAINT FK_aao_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aao_operacion CHECK (aao_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (aao_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aao_ado_codigo
-    ON sgspi.aud_activo_documental(ado_codigo, aao_fecha_cambio DESC);
+    ON sgspi.aud_activo_documental(ado_codigo, aao_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aao_per_codigo
-    ON sgspi.aud_activo_documental(per_codigo);
+    ON sgspi.aud_activo_documental(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_aao_fecha_cambio
+    ON sgspi.aud_activo_documental(aao_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aad] Auditoría de [sgspi].[activo_documental_soporte_registro] ([ads])
 CREATE TABLE sgspi.aud_activo_documental_soporte_registro (
-    aad_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aad_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     ado_codigo       INT                NOT NULL,
     src_codigo       SMALLINT           NOT NULL,
     aad_esta_activo  BIT                NOT NULL,
@@ -2502,17 +2609,18 @@ CREATE TABLE sgspi.aud_activo_documental_soporte_registro (
     CONSTRAINT FK_aad_activo_documental_soporte_registro FOREIGN KEY (ado_codigo, src_codigo) REFERENCES sgspi.activo_documental_soporte_registro (ado_codigo, src_codigo),
     CONSTRAINT FK_aad_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aad_operacion CHECK (aad_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aad_ado_codigo_src_codigo
-    ON sgspi.aud_activo_documental_soporte_registro(ado_codigo, src_codigo, aad_fecha_cambio DESC);
+    ON sgspi.aud_activo_documental_soporte_registro(ado_codigo, src_codigo, aad_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aad_per_codigo
-    ON sgspi.aud_activo_documental_soporte_registro(per_codigo);
+    ON sgspi.aud_activo_documental_soporte_registro(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aam] Auditoría de [sgspi].[activo_documental_medio_conservacion] ([adm])
 CREATE TABLE sgspi.aud_activo_documental_medio_conservacion (
-    aam_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aam_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     ado_codigo       INT                NOT NULL,
     mcc_codigo       SMALLINT           NOT NULL,
     aam_esta_activo  BIT                NOT NULL,
@@ -2524,17 +2632,18 @@ CREATE TABLE sgspi.aud_activo_documental_medio_conservacion (
     CONSTRAINT FK_aam_activo_documental_medio_conservacion FOREIGN KEY (ado_codigo, mcc_codigo) REFERENCES sgspi.activo_documental_medio_conservacion (ado_codigo, mcc_codigo),
     CONSTRAINT FK_aam_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aam_operacion CHECK (aam_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aam_ado_codigo_mcc_codigo
-    ON sgspi.aud_activo_documental_medio_conservacion(ado_codigo, mcc_codigo, aam_fecha_cambio DESC);
+    ON sgspi.aud_activo_documental_medio_conservacion(ado_codigo, mcc_codigo, aam_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aam_per_codigo
-    ON sgspi.aud_activo_documental_medio_conservacion(per_codigo);
+    ON sgspi.aud_activo_documental_medio_conservacion(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aid] Auditoría de [sgspi].[activo_documental_idioma] ([adi])
 CREATE TABLE sgspi.aud_activo_documental_idioma (
-    aid_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aid_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     ado_codigo       INT                NOT NULL,
     idi_codigo       SMALLINT           NOT NULL,
     aid_esta_activo  BIT                NOT NULL,
@@ -2546,17 +2655,18 @@ CREATE TABLE sgspi.aud_activo_documental_idioma (
     CONSTRAINT FK_aid_activo_documental_idioma FOREIGN KEY (ado_codigo, idi_codigo) REFERENCES sgspi.activo_documental_idioma (ado_codigo, idi_codigo),
     CONSTRAINT FK_aid_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aid_operacion CHECK (aid_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aid_ado_codigo_idi_codigo
-    ON sgspi.aud_activo_documental_idioma(ado_codigo, idi_codigo, aid_fecha_cambio DESC);
+    ON sgspi.aud_activo_documental_idioma(ado_codigo, idi_codigo, aid_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aid_per_codigo
-    ON sgspi.aud_activo_documental_idioma(per_codigo);
+    ON sgspi.aud_activo_documental_idioma(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [afd] Auditoría de [sgspi].[activo_documental_formato_archivo] ([adf])
 CREATE TABLE sgspi.aud_activo_documental_formato_archivo (
-    afd_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    afd_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     ado_codigo       INT                NOT NULL,
     fac_codigo       SMALLINT           NOT NULL,
     afd_esta_activo  BIT                NOT NULL,
@@ -2568,17 +2678,18 @@ CREATE TABLE sgspi.aud_activo_documental_formato_archivo (
     CONSTRAINT FK_afd_activo_documental_formato_archivo FOREIGN KEY (ado_codigo, fac_codigo) REFERENCES sgspi.activo_documental_formato_archivo (ado_codigo, fac_codigo),
     CONSTRAINT FK_afd_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_afd_operacion CHECK (afd_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_afd_ado_codigo_fac_codigo
-    ON sgspi.aud_activo_documental_formato_archivo(ado_codigo, fac_codigo, afd_fecha_cambio DESC);
+    ON sgspi.aud_activo_documental_formato_archivo(ado_codigo, fac_codigo, afd_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_afd_per_codigo
-    ON sgspi.aud_activo_documental_formato_archivo(per_codigo);
+    ON sgspi.aud_activo_documental_formato_archivo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aau] Auditoría de [sgspi].[activo_documental_unidad_productora] ([adu])
 CREATE TABLE sgspi.aud_activo_documental_unidad_productora (
-    aau_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aau_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     ado_codigo       INT                NOT NULL,
     upc_codigo       INT                NOT NULL,
     aau_esta_activo  BIT                NOT NULL,
@@ -2590,17 +2701,18 @@ CREATE TABLE sgspi.aud_activo_documental_unidad_productora (
     CONSTRAINT FK_aau_activo_documental_unidad_productora FOREIGN KEY (ado_codigo, upc_codigo) REFERENCES sgspi.activo_documental_unidad_productora (ado_codigo, upc_codigo),
     CONSTRAINT FK_aau_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aau_operacion CHECK (aau_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aau_ado_codigo_upc_codigo
-    ON sgspi.aud_activo_documental_unidad_productora(ado_codigo, upc_codigo, aau_fecha_cambio DESC);
+    ON sgspi.aud_activo_documental_unidad_productora(ado_codigo, upc_codigo, aau_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aau_per_codigo
-    ON sgspi.aud_activo_documental_unidad_productora(per_codigo);
+    ON sgspi.aud_activo_documental_unidad_productora(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aer] Auditoría de [sgspi].[escala_probabilidad] ([epr])
 CREATE TABLE sgspi.aud_escala_probabilidad (
-    aer_codigo                INT                IDENTITY (1, 1) NOT NULL,
+    aer_codigo                BIGINT             IDENTITY (1, 1) NOT NULL,
     epr_codigo                TINYINT            NOT NULL,
     aer_codigo_letra          CHAR (1)           NOT NULL,
     aer_nombre_nivel          NVARCHAR (30)      NOT NULL,
@@ -2615,17 +2727,18 @@ CREATE TABLE sgspi.aud_escala_probabilidad (
     CONSTRAINT FK_aer_escala_probabilidad FOREIGN KEY (epr_codigo) REFERENCES sgspi.escala_probabilidad (epr_codigo),
     CONSTRAINT FK_aer_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aer_operacion CHECK (aer_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aer_epr_codigo
-    ON sgspi.aud_escala_probabilidad(epr_codigo, aer_fecha_cambio DESC);
+    ON sgspi.aud_escala_probabilidad(epr_codigo, aer_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aer_per_codigo
-    ON sgspi.aud_escala_probabilidad(per_codigo);
+    ON sgspi.aud_escala_probabilidad(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aem] Auditoría de [sgspi].[escala_impacto] ([eim])
 CREATE TABLE sgspi.aud_escala_impacto (
-    aem_codigo                     INT                IDENTITY (1, 1) NOT NULL,
+    aem_codigo                     BIGINT             IDENTITY (1, 1) NOT NULL,
     eim_codigo                     TINYINT            NOT NULL,
     aem_nombre_impacto_negativo    NVARCHAR (30)      NOT NULL,
     aem_nombre_impacto_positivo    NVARCHAR (40)      NOT NULL,
@@ -2640,17 +2753,18 @@ CREATE TABLE sgspi.aud_escala_impacto (
     CONSTRAINT FK_aem_escala_impacto FOREIGN KEY (eim_codigo) REFERENCES sgspi.escala_impacto (eim_codigo),
     CONSTRAINT FK_aem_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aem_operacion CHECK (aem_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aem_eim_codigo
-    ON sgspi.aud_escala_impacto(eim_codigo, aem_fecha_cambio DESC);
+    ON sgspi.aud_escala_impacto(eim_codigo, aem_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aem_per_codigo
-    ON sgspi.aud_escala_impacto(per_codigo);
+    ON sgspi.aud_escala_impacto(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [azc] Auditoría de [sgspi].[zona_riesgo_catalogo] ([zrc])
 CREATE TABLE sgspi.aud_zona_riesgo_catalogo (
-    azc_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    azc_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     zrc_codigo       CHAR (1)           NOT NULL,
     azc_nombre_nivel NVARCHAR (30)      NOT NULL,
     azc_orden        TINYINT            NOT NULL,
@@ -2663,17 +2777,18 @@ CREATE TABLE sgspi.aud_zona_riesgo_catalogo (
     CONSTRAINT FK_azc_zona_riesgo_catalogo FOREIGN KEY (zrc_codigo) REFERENCES sgspi.zona_riesgo_catalogo (zrc_codigo),
     CONSTRAINT FK_azc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_azc_operacion CHECK (azc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_azc_zrc_codigo
-    ON sgspi.aud_zona_riesgo_catalogo(zrc_codigo, azc_fecha_cambio DESC);
+    ON sgspi.aud_zona_riesgo_catalogo(zrc_codigo, azc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_azc_per_codigo
-    ON sgspi.aud_zona_riesgo_catalogo(per_codigo);
+    ON sgspi.aud_zona_riesgo_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [amr] Auditoría de [sgspi].[matriz_valoracion_riesgo] ([mvr])
 CREATE TABLE sgspi.aud_matriz_valoracion_riesgo (
-    amr_codigo                            INT                IDENTITY (1, 1) NOT NULL,
+    amr_codigo                            BIGINT             IDENTITY (1, 1) NOT NULL,
     epr_codigo                            TINYINT            NOT NULL,
     eim_codigo                            TINYINT            NOT NULL,
     zrc_codigo                            CHAR (1)           NOT NULL,
@@ -2689,17 +2804,18 @@ CREATE TABLE sgspi.aud_matriz_valoracion_riesgo (
     CONSTRAINT FK_amr_matriz_valoracion_riesgo FOREIGN KEY (epr_codigo, eim_codigo) REFERENCES sgspi.matriz_valoracion_riesgo (epr_codigo, eim_codigo),
     CONSTRAINT FK_amr_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_amr_operacion CHECK (amr_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_amr_epr_codigo_eim_codigo
-    ON sgspi.aud_matriz_valoracion_riesgo(epr_codigo, eim_codigo, amr_fecha_cambio DESC);
+    ON sgspi.aud_matriz_valoracion_riesgo(epr_codigo, eim_codigo, amr_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_amr_per_codigo
-    ON sgspi.aud_matriz_valoracion_riesgo(per_codigo);
+    ON sgspi.aud_matriz_valoracion_riesgo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aea] Auditoría de [sgspi].[evento_incertidumbre_activo] ([eia])
 CREATE TABLE sgspi.aud_evento_incertidumbre_activo (
-    aea_codigo                   INT                IDENTITY (1, 1) NOT NULL,
+    aea_codigo                   BIGINT             IDENTITY (1, 1) NOT NULL,
     eia_codigo                   INT                NOT NULL,
     pev_codigo                   SMALLINT           NOT NULL,
     aea_numero_evento            SMALLINT           NOT NULL,
@@ -2726,21 +2842,25 @@ CREATE TABLE sgspi.aud_evento_incertidumbre_activo (
     aea_operacion                CHAR (1)           CONSTRAINT DF_aea_operacion DEFAULT 'U' NOT NULL,
     aea_usuario_bd               SYSNAME            CONSTRAINT DF_aea_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aea_fecha_cambio             DATETIMEOFFSET (0) CONSTRAINT DF_aea_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_aea_aud_evento_incertidumbre_activo PRIMARY KEY CLUSTERED (aea_codigo),
+    CONSTRAINT PK_aea_aud_evento_incertidumbre_activo PRIMARY KEY CLUSTERED (aea_codigo, aea_fecha_cambio),
     CONSTRAINT FK_aea_evento_incertidumbre_activo FOREIGN KEY (eia_codigo) REFERENCES sgspi.evento_incertidumbre_activo (eia_codigo),
     CONSTRAINT FK_aea_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aea_operacion CHECK (aea_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (aea_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aea_eia_codigo
-    ON sgspi.aud_evento_incertidumbre_activo(eia_codigo, aea_fecha_cambio DESC);
+    ON sgspi.aud_evento_incertidumbre_activo(eia_codigo, aea_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aea_per_codigo
-    ON sgspi.aud_evento_incertidumbre_activo(per_codigo);
+    ON sgspi.aud_evento_incertidumbre_activo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_aea_fecha_cambio
+    ON sgspi.aud_evento_incertidumbre_activo(aea_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aet] Auditoría de [sgspi].[estrategia_tratamiento_catalogo] ([etc])
 CREATE TABLE sgspi.aud_estrategia_tratamiento_catalogo (
-    aet_codigo               INT                IDENTITY (1, 1) NOT NULL,
+    aet_codigo               BIGINT             IDENTITY (1, 1) NOT NULL,
     etc_codigo               SMALLINT           NOT NULL,
     aet_nombre_estrategia    NVARCHAR (80)      NOT NULL,
     aet_naturaleza_aplicable NVARCHAR (15)      NOT NULL,
@@ -2754,17 +2874,18 @@ CREATE TABLE sgspi.aud_estrategia_tratamiento_catalogo (
     CONSTRAINT FK_aet_estrategia_tratamiento_catalogo FOREIGN KEY (etc_codigo) REFERENCES sgspi.estrategia_tratamiento_catalogo (etc_codigo),
     CONSTRAINT FK_aet_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aet_operacion CHECK (aet_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aet_etc_codigo
-    ON sgspi.aud_estrategia_tratamiento_catalogo(etc_codigo, aet_fecha_cambio DESC);
+    ON sgspi.aud_estrategia_tratamiento_catalogo(etc_codigo, aet_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aet_per_codigo
-    ON sgspi.aud_estrategia_tratamiento_catalogo(per_codigo);
+    ON sgspi.aud_estrategia_tratamiento_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [apt] Auditoría de [sgspi].[plan_tratamiento] ([plt])
 CREATE TABLE sgspi.aud_plan_tratamiento (
-    apt_codigo                     INT                IDENTITY (1, 1) NOT NULL,
+    apt_codigo                     BIGINT             IDENTITY (1, 1) NOT NULL,
     plt_codigo                     INT                NOT NULL,
     eia_codigo                     INT                NOT NULL,
     apt_naturaleza_evento          NVARCHAR (15)      NOT NULL,
@@ -2792,21 +2913,25 @@ CREATE TABLE sgspi.aud_plan_tratamiento (
     apt_operacion                  CHAR (1)           CONSTRAINT DF_apt_operacion DEFAULT 'U' NOT NULL,
     apt_usuario_bd                 SYSNAME            CONSTRAINT DF_apt_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apt_fecha_cambio               DATETIMEOFFSET (0) CONSTRAINT DF_apt_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_apt_aud_plan_tratamiento PRIMARY KEY CLUSTERED (apt_codigo),
+    CONSTRAINT PK_apt_aud_plan_tratamiento PRIMARY KEY CLUSTERED (apt_codigo, apt_fecha_cambio),
     CONSTRAINT FK_apt_plan_tratamiento FOREIGN KEY (plt_codigo) REFERENCES sgspi.plan_tratamiento (plt_codigo),
     CONSTRAINT FK_apt_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_apt_operacion CHECK (apt_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (apt_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apt_plt_codigo
-    ON sgspi.aud_plan_tratamiento(plt_codigo, apt_fecha_cambio DESC);
+    ON sgspi.aud_plan_tratamiento(plt_codigo, apt_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_apt_per_codigo
-    ON sgspi.aud_plan_tratamiento(per_codigo);
+    ON sgspi.aud_plan_tratamiento(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_apt_fecha_cambio
+    ON sgspi.aud_plan_tratamiento(apt_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aat] Auditoría de [sgspi].[actividad_tratamiento] ([act])
 CREATE TABLE sgspi.aud_actividad_tratamiento (
-    aat_codigo                INT                IDENTITY (1, 1) NOT NULL,
+    aat_codigo                BIGINT             IDENTITY (1, 1) NOT NULL,
     act_codigo                INT                NOT NULL,
     plt_codigo                INT                NOT NULL,
     aat_numero_orden          SMALLINT           NOT NULL,
@@ -2822,21 +2947,25 @@ CREATE TABLE sgspi.aud_actividad_tratamiento (
     aat_operacion             CHAR (1)           CONSTRAINT DF_aat_operacion DEFAULT 'U' NOT NULL,
     aat_usuario_bd            SYSNAME            CONSTRAINT DF_aat_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aat_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_aat_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_aat_aud_actividad_tratamiento PRIMARY KEY CLUSTERED (aat_codigo),
+    CONSTRAINT PK_aat_aud_actividad_tratamiento PRIMARY KEY CLUSTERED (aat_codigo, aat_fecha_cambio),
     CONSTRAINT FK_aat_actividad_tratamiento FOREIGN KEY (act_codigo) REFERENCES sgspi.actividad_tratamiento (act_codigo),
     CONSTRAINT FK_aat_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aat_operacion CHECK (aat_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (aat_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aat_act_codigo
-    ON sgspi.aud_actividad_tratamiento(act_codigo, aat_fecha_cambio DESC);
+    ON sgspi.aud_actividad_tratamiento(act_codigo, aat_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aat_per_codigo
-    ON sgspi.aud_actividad_tratamiento(per_codigo);
+    ON sgspi.aud_actividad_tratamiento(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_aat_fecha_cambio
+    ON sgspi.aud_actividad_tratamiento(aat_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [asa] Auditoría de [sgspi].[seguimiento_actividad] ([sga])
 CREATE TABLE sgspi.aud_seguimiento_actividad (
-    asa_codigo                       INT                IDENTITY (1, 1) NOT NULL,
+    asa_codigo                       BIGINT             IDENTITY (1, 1) NOT NULL,
     sga_codigo                       INT                NOT NULL,
     act_codigo                       INT                NOT NULL,
     per_codigo_autor                 INT                NOT NULL,
@@ -2851,21 +2980,25 @@ CREATE TABLE sgspi.aud_seguimiento_actividad (
     asa_operacion                    CHAR (1)           CONSTRAINT DF_asa_operacion DEFAULT 'U' NOT NULL,
     asa_usuario_bd                   SYSNAME            CONSTRAINT DF_asa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asa_fecha_cambio                 DATETIMEOFFSET (0) CONSTRAINT DF_asa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_asa_aud_seguimiento_actividad PRIMARY KEY CLUSTERED (asa_codigo),
+    CONSTRAINT PK_asa_aud_seguimiento_actividad PRIMARY KEY CLUSTERED (asa_codigo, asa_fecha_cambio),
     CONSTRAINT FK_asa_seguimiento_actividad FOREIGN KEY (sga_codigo) REFERENCES sgspi.seguimiento_actividad (sga_codigo),
     CONSTRAINT FK_asa_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_asa_operacion CHECK (asa_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (asa_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asa_sga_codigo
-    ON sgspi.aud_seguimiento_actividad(sga_codigo, asa_fecha_cambio DESC);
+    ON sgspi.aud_seguimiento_actividad(sga_codigo, asa_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_asa_per_codigo
-    ON sgspi.aud_seguimiento_actividad(per_codigo);
+    ON sgspi.aud_seguimiento_actividad(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_asa_fecha_cambio
+    ON sgspi.aud_seguimiento_actividad(asa_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aen] Auditoría de [sgspi].[estandar_normativo_catalogo] ([enc])
 CREATE TABLE sgspi.aud_estandar_normativo_catalogo (
-    aen_codigo        INT                IDENTITY (1, 1) NOT NULL,
+    aen_codigo        BIGINT             IDENTITY (1, 1) NOT NULL,
     enc_codigo        SMALLINT           NOT NULL,
     aen_identificador NVARCHAR (50)      NOT NULL,
     aen_familia_norma NVARCHAR (20)      NOT NULL,
@@ -2881,17 +3014,18 @@ CREATE TABLE sgspi.aud_estandar_normativo_catalogo (
     CONSTRAINT FK_aen_estandar_normativo_catalogo FOREIGN KEY (enc_codigo) REFERENCES sgspi.estandar_normativo_catalogo (enc_codigo),
     CONSTRAINT FK_aen_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aen_operacion CHECK (aen_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aen_enc_codigo
-    ON sgspi.aud_estandar_normativo_catalogo(enc_codigo, aen_fecha_cambio DESC);
+    ON sgspi.aud_estandar_normativo_catalogo(enc_codigo, aen_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aen_per_codigo
-    ON sgspi.aud_estandar_normativo_catalogo(per_codigo);
+    ON sgspi.aud_estandar_normativo_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [acn] Auditoría de [sgspi].[control_referencia_normativa] ([crn])
 CREATE TABLE sgspi.aud_control_referencia_normativa (
-    acn_codigo                INT                IDENTITY (1, 1) NOT NULL,
+    acn_codigo                BIGINT             IDENTITY (1, 1) NOT NULL,
     crn_codigo                SMALLINT           NOT NULL,
     enc_codigo                SMALLINT           NOT NULL,
     acn_rol_privacidad_pii    NVARCHAR (20)      NULL,
@@ -2907,17 +3041,18 @@ CREATE TABLE sgspi.aud_control_referencia_normativa (
     CONSTRAINT FK_acn_control_referencia_normativa FOREIGN KEY (crn_codigo) REFERENCES sgspi.control_referencia_normativa (crn_codigo),
     CONSTRAINT FK_acn_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_acn_operacion CHECK (acn_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_acn_crn_codigo
-    ON sgspi.aud_control_referencia_normativa(crn_codigo, acn_fecha_cambio DESC);
+    ON sgspi.aud_control_referencia_normativa(crn_codigo, acn_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_acn_per_codigo
-    ON sgspi.aud_control_referencia_normativa(per_codigo);
+    ON sgspi.aud_control_referencia_normativa(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [acc] Auditoría de [sgspi].[atributo_control_catalogo] ([aac])
 CREATE TABLE sgspi.aud_atributo_control_catalogo (
-    acc_codigo        INT                IDENTITY (1, 1) NOT NULL,
+    acc_codigo        BIGINT             IDENTITY (1, 1) NOT NULL,
     aac_codigo        SMALLINT           NOT NULL,
     acc_tipo_atributo NVARCHAR (30)      NOT NULL,
     acc_valor         NVARCHAR (60)      NOT NULL,
@@ -2930,17 +3065,18 @@ CREATE TABLE sgspi.aud_atributo_control_catalogo (
     CONSTRAINT FK_acc_atributo_control_catalogo FOREIGN KEY (aac_codigo) REFERENCES sgspi.atributo_control_catalogo (aac_codigo),
     CONSTRAINT FK_acc_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_acc_operacion CHECK (acc_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_acc_aac_codigo
-    ON sgspi.aud_atributo_control_catalogo(aac_codigo, acc_fecha_cambio DESC);
+    ON sgspi.aud_atributo_control_catalogo(aac_codigo, acc_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_acc_per_codigo
-    ON sgspi.aud_atributo_control_catalogo(per_codigo);
+    ON sgspi.aud_atributo_control_catalogo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aca] Auditoría de [sgspi].[control_referencia_normativa_atributo] ([cra])
 CREATE TABLE sgspi.aud_control_referencia_normativa_atributo (
-    aca_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    aca_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     crn_codigo       SMALLINT           NOT NULL,
     aac_codigo       SMALLINT           NOT NULL,
     aca_esta_activo  BIT                NOT NULL,
@@ -2952,17 +3088,18 @@ CREATE TABLE sgspi.aud_control_referencia_normativa_atributo (
     CONSTRAINT FK_aca_control_referencia_normativa_atributo FOREIGN KEY (crn_codigo, aac_codigo) REFERENCES sgspi.control_referencia_normativa_atributo (crn_codigo, aac_codigo),
     CONSTRAINT FK_aca_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aca_operacion CHECK (aca_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aca_crn_codigo_aac_codigo
-    ON sgspi.aud_control_referencia_normativa_atributo(crn_codigo, aac_codigo, aca_fecha_cambio DESC);
+    ON sgspi.aud_control_referencia_normativa_atributo(crn_codigo, aac_codigo, aca_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aca_per_codigo
-    ON sgspi.aud_control_referencia_normativa_atributo(per_codigo);
+    ON sgspi.aud_control_referencia_normativa_atributo(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [acp] Auditoría de [sgspi].[plan_tratamiento_control_referencia_normativa] ([ptc])
 CREATE TABLE sgspi.aud_plan_tratamiento_control_referencia_normativa (
-    acp_codigo       INT                IDENTITY (1, 1) NOT NULL,
+    acp_codigo       BIGINT             IDENTITY (1, 1) NOT NULL,
     plt_codigo       INT                NOT NULL,
     crn_codigo       SMALLINT           NOT NULL,
     acp_esta_activo  BIT                NOT NULL,
@@ -2974,17 +3111,18 @@ CREATE TABLE sgspi.aud_plan_tratamiento_control_referencia_normativa (
     CONSTRAINT FK_acp_plan_tratamiento_control_referencia_normativa FOREIGN KEY (plt_codigo, crn_codigo) REFERENCES sgspi.plan_tratamiento_control_referencia_normativa (plt_codigo, crn_codigo),
     CONSTRAINT FK_acp_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_acp_operacion CHECK (acp_operacion IN ('I', 'U'))
-);
+)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_acp_plt_codigo_crn_codigo
-    ON sgspi.aud_plan_tratamiento_control_referencia_normativa(plt_codigo, crn_codigo, acp_fecha_cambio DESC);
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa(plt_codigo, crn_codigo, acp_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_acp_per_codigo
-    ON sgspi.aud_plan_tratamiento_control_referencia_normativa(per_codigo);
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa(per_codigo) WITH (DATA_COMPRESSION = PAGE);
 
 -- [aae] Auditoría de [sgspi].[evaluacion_aplicabilidad_control] ([eac])
 CREATE TABLE sgspi.aud_evaluacion_aplicabilidad_control (
-    aae_codigo                      INT                IDENTITY (1, 1) NOT NULL,
+    aae_codigo                      BIGINT             IDENTITY (1, 1) NOT NULL,
     eac_codigo                      INT                NOT NULL,
     pev_codigo                      SMALLINT           NOT NULL,
     crn_codigo                      SMALLINT           NOT NULL,
@@ -3002,32 +3140,41 @@ CREATE TABLE sgspi.aud_evaluacion_aplicabilidad_control (
     aae_operacion                   CHAR (1)           CONSTRAINT DF_aae_operacion DEFAULT 'U' NOT NULL,
     aae_usuario_bd                  SYSNAME            CONSTRAINT DF_aae_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aae_fecha_cambio                DATETIMEOFFSET (0) CONSTRAINT DF_aae_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
-    CONSTRAINT PK_aae_aud_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (aae_codigo),
+    CONSTRAINT PK_aae_aud_evaluacion_aplicabilidad_control PRIMARY KEY CLUSTERED (aae_codigo, aae_fecha_cambio),
     CONSTRAINT FK_aae_evaluacion_aplicabilidad_control FOREIGN KEY (eac_codigo) REFERENCES sgspi.evaluacion_aplicabilidad_control (eac_codigo),
     CONSTRAINT FK_aae_dbo_persona FOREIGN KEY (per_codigo) REFERENCES dbo.persona (per_codigo),
     CONSTRAINT CK_aae_operacion CHECK (aae_operacion IN ('I', 'U'))
-);
+) ON PS_sgspi_aud_anio (aae_fecha_cambio)
+WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aae_eac_codigo
-    ON sgspi.aud_evaluacion_aplicabilidad_control(eac_codigo, aae_fecha_cambio DESC);
+    ON sgspi.aud_evaluacion_aplicabilidad_control(eac_codigo, aae_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 CREATE NONCLUSTERED INDEX IX_aae_per_codigo
-    ON sgspi.aud_evaluacion_aplicabilidad_control(per_codigo);
+    ON sgspi.aud_evaluacion_aplicabilidad_control(per_codigo) WITH (DATA_COMPRESSION = PAGE);
+
+CREATE NONCLUSTERED INDEX IX_aae_fecha_cambio
+    ON sgspi.aud_evaluacion_aplicabilidad_control(aae_fecha_cambio DESC) WITH (DATA_COMPRESSION = PAGE);
 
 -- Clasificación de sensibilidad (SQL Server 2019): queda en sys.sensitivity_classifications y en cada evento de SQL Server Audit
-ADD SENSITIVITY CLASSIFICATION TO sgspi.evento_incertidumbre_activo.eia_condicion_vulnerabilidad, sgspi.evento_incertidumbre_activo.eia_controles_existentes, sgspi.evento_incertidumbre_activo.eia_fuente_generadora, sgspi.evento_incertidumbre_activo.eia_efecto_consecuencia, sgspi.aud_evento_incertidumbre_activo.aea_condicion_vulnerabilidad, sgspi.aud_evento_incertidumbre_activo.aea_controles_existentes, sgspi.aud_evento_incertidumbre_activo.aea_fuente_generadora, sgspi.aud_evento_incertidumbre_activo.aea_efecto_consecuencia
+ADD SENSITIVITY CLASSIFICATION TO
+    sgspi.evento_incertidumbre_activo.eia_condicion_vulnerabilidad, sgspi.evento_incertidumbre_activo.eia_controles_existentes, sgspi.evento_incertidumbre_activo.eia_fuente_generadora, sgspi.evento_incertidumbre_activo.eia_efecto_consecuencia, sgspi.aud_evento_incertidumbre_activo.aea_condicion_vulnerabilidad, sgspi.aud_evento_incertidumbre_activo.aea_controles_existentes, sgspi.aud_evento_incertidumbre_activo.aea_fuente_generadora, sgspi.aud_evento_incertidumbre_activo.aea_efecto_consecuencia
     WITH (LABEL = 'Confidencial', INFORMATION_TYPE = 'Vulnerabilidades de seguridad', RANK = HIGH);
 
-ADD SENSITIVITY CLASSIFICATION TO sgspi.activo_informacion.aci_categoria_dato_personal, sgspi.activo_informacion.aci_finalidad_recoleccion_pii, sgspi.aud_activo_informacion.aai_categoria_dato_personal, sgspi.aud_activo_informacion.aai_finalidad_recoleccion_pii
+ADD SENSITIVITY CLASSIFICATION TO
+    sgspi.activo_informacion.aci_categoria_dato_personal, sgspi.activo_informacion.aci_finalidad_recoleccion_pii, sgspi.aud_activo_informacion.aai_categoria_dato_personal, sgspi.aud_activo_informacion.aai_finalidad_recoleccion_pii
     WITH (LABEL = 'Confidencial', INFORMATION_TYPE = 'Datos personales (Ley 1581)', RANK = HIGH);
 
-ADD SENSITIVITY CLASSIFICATION TO sgspi.plan_tratamiento.plt_presupuesto_estimado_cop, sgspi.aud_plan_tratamiento.apt_presupuesto_estimado_cop
+ADD SENSITIVITY CLASSIFICATION TO
+    sgspi.plan_tratamiento.plt_presupuesto_estimado_cop, sgspi.aud_plan_tratamiento.apt_presupuesto_estimado_cop
     WITH (LABEL = 'Confidencial', INFORMATION_TYPE = 'Financiero', RANK = MEDIUM);
 
-ADD SENSITIVITY CLASSIFICATION TO sgspi.seguimiento_actividad.sga_uri_almacenamiento_evidencia, sgspi.aud_seguimiento_actividad.asa_uri_almacenamiento_evidencia
+ADD SENSITIVITY CLASSIFICATION TO
+    sgspi.seguimiento_actividad.sga_uri_almacenamiento_evidencia, sgspi.aud_seguimiento_actividad.asa_uri_almacenamiento_evidencia
     WITH (LABEL = 'Confidencial', INFORMATION_TYPE = 'Evidencias de control', RANK = MEDIUM);
 
-ADD SENSITIVITY CLASSIFICATION TO sgspi.evaluacion_aplicabilidad_control.eac_observaciones_auditoria, sgspi.aud_evaluacion_aplicabilidad_control.aae_observaciones_auditoria
+ADD SENSITIVITY CLASSIFICATION TO
+    sgspi.evaluacion_aplicabilidad_control.eac_observaciones_auditoria, sgspi.aud_evaluacion_aplicabilidad_control.aae_observaciones_auditoria
     WITH (LABEL = 'Confidencial', INFORMATION_TYPE = 'Auditoria interna', RANK = MEDIUM);
 
 
@@ -3097,7 +3244,7 @@ IF @@TRANCOUNT = 0
 GO
 -- [AP-03] Persona de la sesión (ORIGINAL_LOGIN() -> dbo.usuario_general): un solo punto de resolución para alcance y auditoría.
 CREATE OR ALTER FUNCTION sgspi.ufn_persona_sesion
-()
+( )
 RETURNS TABLE 
 AS
 RETURN 
@@ -3107,6 +3254,7 @@ RETURN
              AND u.up IS NOT NULL
              AND u.state = 1
     ORDER BY u.uid
+
 
 
 GO
@@ -3177,9 +3325,9 @@ GO
 -- sgspi_rol_consulta solo entra si NO pertenece a sgspi_rol_base (solo lee sus 5 vistas en lista blanca; un actor en sgspi_rol_base no puede escalar).
 CREATE OR ALTER FUNCTION sgspi.ufn_rls_alcance_proceso
 (@pri_codigo INT, @rpi_codigo INT, @eia_codigo INT, @plt_codigo INT, @act_codigo INT)
-RETURNS TABLE
+RETURNS TABLE 
 AS
-RETURN
+RETURN 
     SELECT 1 AS permitido
     WHERE  EXISTS (SELECT 1
                    FROM   sgspi.ufn_proceso_en_alcance(NULL, NULL))
@@ -3226,7 +3374,8 @@ RETURN
                                   INNER JOIN
                                   sgspi.evento_incertidumbre_activo AS eia
                                   ON eia.eia_codigo = plt.eia_codigo
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a));
+                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a))
+
 
 
 GO
@@ -3237,9 +3386,9 @@ IF @@TRANCOUNT = 0
 GO
 CREATE OR ALTER FUNCTION sgspi.ufn_rls_alcance_activo
 (@aci_codigo INT, @uaa_codigo INT, @aci_codigo_padre INT, @sif_codigo INT)
-RETURNS TABLE
+RETURNS TABLE 
 AS
-RETURN
+RETURN 
     SELECT 1 AS permitido
     WHERE  EXISTS (SELECT 1
                    FROM   sgspi.ufn_activo_en_alcance(NULL, NULL, NULL))
@@ -3265,7 +3414,8 @@ RETURN
                                   INNER JOIN
                                   sgspi.activo_informacion AS aci
                                   ON aci.aci_codigo = sif.aci_codigo
-                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, ps.per_codigo) AS a));
+                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, ps.per_codigo) AS a))
+
 
 
 GO
@@ -3435,7 +3585,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                              OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[analisis_contexto_factor].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (acf_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       acf_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_analisis_contexto_factor (
                        acf_codigo,
                        pev_codigo,
@@ -3516,12 +3667,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                        UPDATE t
                        SET    t.acf_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.acf_fecha_actualizacion END, -- [AP-12]
                               t.per_codigo_aprobador    = CASE WHEN d.acf_estado_registro <> i.acf_estado_registro
-                                                                    AND i.acf_estado_registro = N'VIGENTE' THEN @per_actor
-                                                               WHEN d.acf_estado_registro <> i.acf_estado_registro
-                                                                    AND ((d.acf_estado_registro = N'VIGENTE'
-                                                                          AND i.acf_estado_registro <> N'HISTORICO')
-                                                                         OR i.acf_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL
-                                                               ELSE t.per_codigo_aprobador END
+                                                                    AND i.acf_estado_registro = N'VIGENTE' THEN @per_actor WHEN d.acf_estado_registro <> i.acf_estado_registro
+                                                                                                                                AND ((d.acf_estado_registro = N'VIGENTE'
+                                                                                                                                      AND i.acf_estado_registro <> N'HISTORICO')
+                                                                                                                                     OR i.acf_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL ELSE t.per_codigo_aprobador END
                        FROM   sgspi.analisis_contexto_factor AS t
                               INNER JOIN
                               @cambiadas AS c
@@ -3737,7 +3886,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                              OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[requisito_parte_interesada].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (rpi_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       rpi_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_requisito_parte_interesada (
                        rpi_codigo,
                        pev_codigo,
@@ -3810,12 +3960,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                        UPDATE t
                        SET    t.rpi_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.rpi_fecha_actualizacion END, -- [AP-12]
                               t.per_codigo_aprobador    = CASE WHEN d.rpi_estado_registro <> i.rpi_estado_registro
-                                                                    AND i.rpi_estado_registro = N'VIGENTE' THEN @per_actor
-                                                               WHEN d.rpi_estado_registro <> i.rpi_estado_registro
-                                                                    AND ((d.rpi_estado_registro = N'VIGENTE'
-                                                                          AND i.rpi_estado_registro <> N'HISTORICO')
-                                                                         OR i.rpi_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL
-                                                               ELSE t.per_codigo_aprobador END
+                                                                    AND i.rpi_estado_registro = N'VIGENTE' THEN @per_actor WHEN d.rpi_estado_registro <> i.rpi_estado_registro
+                                                                                                                                AND ((d.rpi_estado_registro = N'VIGENTE'
+                                                                                                                                      AND i.rpi_estado_registro <> N'HISTORICO')
+                                                                                                                                     OR i.rpi_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL ELSE t.per_codigo_aprobador END
                        FROM   sgspi.requisito_parte_interesada AS t
                               INNER JOIN
                               @cambiadas AS c
@@ -3897,16 +4045,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo)
+                                      FROM   (SELECT aci_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT aci_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion].', 1;
-                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(aci_codigo)
+                                   FROM   (SELECT aci_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT aci_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.aci_codigo > @lock_id);
                END
            -- [AP-04] En INSERT el estado debe ser el inicial del dominio
            IF EXISTS (SELECT 1
@@ -4101,7 +4258,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                                 AND air.air_tipo_responsabilidad = N'CUSTODIO')))
                        THROW 50020, N'Transición incompleta: VIGENTE exige el aval de Archivo (activo documental) y un custodio activo en [sgspi].[activo_informacion].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (aci_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       aci_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_activo_informacion (
                        aci_codigo,
                        aai_codigo_inventario,
@@ -4254,12 +4412,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                        UPDATE t
                        SET    t.aci_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.aci_fecha_actualizacion END, -- [AP-12]
                               t.per_codigo_aprobador    = CASE WHEN d.aci_estado_registro <> i.aci_estado_registro
-                                                                    AND i.aci_estado_registro = N'VIGENTE' THEN @per_actor
-                                                               WHEN d.aci_estado_registro <> i.aci_estado_registro
-                                                                    AND ((d.aci_estado_registro = N'VIGENTE'
-                                                                          AND i.aci_estado_registro <> N'HISTORICO')
-                                                                         OR i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL
-                                                               ELSE t.per_codigo_aprobador END
+                                                                    AND i.aci_estado_registro = N'VIGENTE' THEN @per_actor WHEN d.aci_estado_registro <> i.aci_estado_registro
+                                                                                                                                AND ((d.aci_estado_registro = N'VIGENTE'
+                                                                                                                                      AND i.aci_estado_registro <> N'HISTORICO')
+                                                                                                                                     OR i.aci_estado_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL ELSE t.per_codigo_aprobador END
                        FROM   sgspi.activo_informacion AS t
                               INNER JOIN
                               @cambiadas AS c
@@ -4406,16 +4562,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo)
+                                      FROM   (SELECT ado_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT ado_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental].', 1;
-                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(ado_codigo)
+                                   FROM   (SELECT ado_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT ado_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.ado_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
@@ -4490,7 +4655,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                                                  FROM   inserted AS i
                                                  WHERE  i.ado_codigo = d.ado_codigo))
                        THROW 50011, N'Operación denegada: No se permite cambiar la clave de [sgspi].[activo_documental]; desactive la fila y cree una nueva.', 1;
-                   DECLARE @cambiadas TABLE (ado_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       ado_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_activo_documental (
                        ado_codigo,
                        pev_codigo,
@@ -4655,16 +4821,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo)
+                                      FROM   (SELECT eia_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT eia_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[evento_incertidumbre_activo].', 1;
-                   SET @lock_id = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l WHERE l.eia_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(eia_codigo)
+                                   FROM   (SELECT eia_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT eia_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.eia_codigo > @lock_id);
                END
            -- [AP-04] En INSERT el estado debe ser el inicial del dominio
            IF EXISTS (SELECT 1
@@ -4954,7 +5129,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                             AND plt.plt_es_tratamiento_eficaz = 1))
                        THROW 50020, N'Transición incompleta: CERRADO_EFICAZ exige un plan de tratamiento dictaminado eficaz en [sgspi].[evento_incertidumbre_activo].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (eia_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       eia_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_evento_incertidumbre_activo (
                        eia_codigo,
                        pev_codigo,
@@ -5063,20 +5239,14 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                        UPDATE t
                        SET    t.eia_fecha_actualizacion     = CASE WHEN @actualizar_fecha = 1 THEN SYSDATETIMEOFFSET() ELSE t.eia_fecha_actualizacion END, -- [AP-11] [AP-12]
                               t.per_codigo_validador_lider  = CASE WHEN d.eia_estado_registro <> i.eia_estado_registro
-                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL
-                                                                   WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
-                                                                        AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor
-                                                                   ELSE t.per_codigo_validador_lider END,
+                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_VALIDACION_LIDER'
+                                                                                                                                                AND i.eia_estado_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
                               t.per_codigo_revisor_sgspi    = CASE WHEN d.eia_estado_registro <> i.eia_estado_registro
-                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL
-                                                                   WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
-                                                                        AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor
-                                                                   ELSE t.per_codigo_revisor_sgspi END,
+                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_REVISION_SGSPI'
+                                                                                                                                                AND i.eia_estado_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
                               t.per_codigo_aprobador_comite = CASE WHEN d.eia_estado_registro <> i.eia_estado_registro
-                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL
-                                                                   WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
-                                                                        AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor
-                                                                   ELSE t.per_codigo_aprobador_comite END
+                                                                        AND i.eia_estado_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_estado_registro = N'EN_ACEPTACION_COMITE'
+                                                                                                                                                AND i.eia_estado_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
                        FROM   sgspi.evento_incertidumbre_activo AS t
                               INNER JOIN
                               @cambiadas AS c
@@ -5179,16 +5349,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo)
+                                      FROM   (SELECT eia_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT eia_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[plan_tratamiento].', 1;
-                   SET @lock_id = (SELECT MIN(eia_codigo) FROM (SELECT eia_codigo FROM inserted UNION SELECT eia_codigo FROM deleted) AS l WHERE l.eia_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(eia_codigo)
+                                   FROM   (SELECT eia_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT eia_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.eia_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT eia_codigo
@@ -5288,7 +5467,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                       FROM   deleted)
                BEGIN
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (plt_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       plt_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_plan_tratamiento (
                        plt_codigo,
                        eia_codigo,
@@ -5424,62 +5604,62 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                               ON x.plt_codigo = t.plt_codigo
                        WHERE  x.per_codigo_evaluador IS NOT NULL;
                    INSERT INTO sgspi.aud_plan_tratamiento (
-                   plt_codigo,
-                   eia_codigo,
-                   apt_naturaleza_evento,
-                   etc_codigo,
-                   apt_justificacion_estrategia,
-                   epr_codigo_residual_meta,
-                   eim_codigo_residual_meta,
-                   apt_fecha_inicio,
-                   apt_fecha_fin,
-                   apt_recursos_humanos_tecnicos,
-                   apt_recursos_economicos_desc,
-                   apt_presupuesto_estimado_cop,
-                   apt_restricciones_limitaciones,
-                   apt_nombre_indicador_kpi,
-                   apt_unidad_medida_kpi,
-                   apt_meta_indicador_kpi,
-                   apt_valor_alcanzado_kpi,
-                   apt_es_tratamiento_eficaz,
-                   apt_dictamen_eficacia,
-                   per_codigo_evaluador,
-                   apt_fecha_evaluacion_eficacia,
-                   apt_fecha_actualizacion,
-                   apt_esta_activo,
-                   per_codigo,
-                   apt_operacion,
-                   apt_usuario_bd,
-                   apt_fecha_cambio
-               )
-               SELECT i.plt_codigo,
-                      i.eia_codigo,
-                      i.plt_naturaleza_evento,
-                      i.etc_codigo,
-                      i.plt_justificacion_estrategia,
-                      i.epr_codigo_residual_meta,
-                      i.eim_codigo_residual_meta,
-                      i.plt_fecha_inicio,
-                      i.plt_fecha_fin,
-                      i.plt_recursos_humanos_tecnicos,
-                      i.plt_recursos_economicos_desc,
-                      i.plt_presupuesto_estimado_cop,
-                      i.plt_restricciones_limitaciones,
-                      i.plt_nombre_indicador_kpi,
-                      i.plt_unidad_medida_kpi,
-                      i.plt_meta_indicador_kpi,
-                      i.plt_valor_alcanzado_kpi,
-                      i.plt_es_tratamiento_eficaz,
-                      i.plt_dictamen_eficacia,
-                      i.per_codigo_evaluador,
-                      i.plt_fecha_evaluacion_eficacia,
-                      i.plt_fecha_actualizacion,
-                      i.plt_esta_activo,
-                      @per_actor,
-                      'I',
-                      ORIGINAL_LOGIN(),
-                      SYSDATETIMEOFFSET()
-               FROM   inserted AS i;
+                       plt_codigo,
+                       eia_codigo,
+                       apt_naturaleza_evento,
+                       etc_codigo,
+                       apt_justificacion_estrategia,
+                       epr_codigo_residual_meta,
+                       eim_codigo_residual_meta,
+                       apt_fecha_inicio,
+                       apt_fecha_fin,
+                       apt_recursos_humanos_tecnicos,
+                       apt_recursos_economicos_desc,
+                       apt_presupuesto_estimado_cop,
+                       apt_restricciones_limitaciones,
+                       apt_nombre_indicador_kpi,
+                       apt_unidad_medida_kpi,
+                       apt_meta_indicador_kpi,
+                       apt_valor_alcanzado_kpi,
+                       apt_es_tratamiento_eficaz,
+                       apt_dictamen_eficacia,
+                       per_codigo_evaluador,
+                       apt_fecha_evaluacion_eficacia,
+                       apt_fecha_actualizacion,
+                       apt_esta_activo,
+                       per_codigo,
+                       apt_operacion,
+                       apt_usuario_bd,
+                       apt_fecha_cambio
+                   )
+                   SELECT i.plt_codigo,
+                          i.eia_codigo,
+                          i.plt_naturaleza_evento,
+                          i.etc_codigo,
+                          i.plt_justificacion_estrategia,
+                          i.epr_codigo_residual_meta,
+                          i.eim_codigo_residual_meta,
+                          i.plt_fecha_inicio,
+                          i.plt_fecha_fin,
+                          i.plt_recursos_humanos_tecnicos,
+                          i.plt_recursos_economicos_desc,
+                          i.plt_presupuesto_estimado_cop,
+                          i.plt_restricciones_limitaciones,
+                          i.plt_nombre_indicador_kpi,
+                          i.plt_unidad_medida_kpi,
+                          i.plt_meta_indicador_kpi,
+                          i.plt_valor_alcanzado_kpi,
+                          i.plt_es_tratamiento_eficaz,
+                          i.plt_dictamen_eficacia,
+                          i.per_codigo_evaluador,
+                          i.plt_fecha_evaluacion_eficacia,
+                          i.plt_fecha_actualizacion,
+                          i.plt_esta_activo,
+                          @per_actor,
+                          'I',
+                          ORIGINAL_LOGIN(),
+                          SYSDATETIMEOFFSET()
+                   FROM   inserted AS i;
                END
        END
 
@@ -5507,23 +5687,31 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
-           INSERT INTO @raices_eia (eia_codigo)
+           DECLARE @raices_eia TABLE (
+               eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (
+               eia_codigo
+           )
            SELECT DISTINCT plt.eia_codigo
-           FROM   (SELECT plt_codigo FROM inserted UNION SELECT plt_codigo FROM deleted) AS x
+           FROM   (SELECT plt_codigo
+                   FROM   inserted
+                   UNION
+                   SELECT plt_codigo
+                   FROM   deleted) AS x
                   INNER JOIN
                   sgspi.plan_tratamiento AS plt
                   ON plt.plt_codigo = x.plt_codigo;
-           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo)
+                                      FROM   @raices_eia), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[actividad_tratamiento].', 1;
-                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(eia_codigo)
+                                   FROM   @raices_eia
+                                   WHERE  eia_codigo > @lock_id);
                END
            -- [AP-04] En INSERT el estado debe ser el inicial del dominio
            IF EXISTS (SELECT 1
@@ -5659,7 +5847,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                                              OR efc.efc_esta_activo = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[actividad_tratamiento].', 1;
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (act_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       act_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_actividad_tratamiento (
                        act_codigo,
                        plt_codigo,
@@ -5808,7 +5997,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                       FROM   deleted)
                BEGIN
                    -- [AP-01] Archiva la versión anterior de las filas que cambian, con quién y cuándo (ver 5.9)
-                   DECLARE @cambiadas TABLE (eac_codigo INT PRIMARY KEY);
+                   DECLARE @cambiadas TABLE (
+                       eac_codigo INT PRIMARY KEY);
                    INSERT INTO sgspi.aud_evaluacion_aplicabilidad_control (
                        eac_codigo,
                        pev_codigo,
@@ -5970,24 +6160,29 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                           FROM   inserted)
                RETURN;
            -- [AP-24] Orden act (UPDLOCK) -> applock(eia): cierra carrera en act_porcentaje_avance sin ciclo con TR_act
-           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
-           INSERT INTO @raices_eia (eia_codigo)
+           DECLARE @raices_eia TABLE (
+               eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (
+               eia_codigo
+           )
            SELECT DISTINCT plt.eia_codigo
            FROM   sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
                   INNER JOIN
                   sgspi.plan_tratamiento AS plt
                   ON plt.plt_codigo = act.plt_codigo
-           WHERE  act.act_codigo IN (SELECT act_codigo FROM inserted);
-           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           WHERE  act.act_codigo IN (SELECT act_codigo
+                                     FROM   inserted);
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo)
+                                      FROM   @raices_eia), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[seguimiento_actividad].', 1;
-                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(eia_codigo)
+                                   FROM   @raices_eia
+                                   WHERE  eia_codigo > @lock_id);
                END
            -- [AP-03] Persona de la sesión: queda en la auditoría
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -6101,24 +6296,29 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                           FROM   inserted)
                RETURN;
            -- [AP-24] Orden act (UPDLOCK) -> applock(eia): cierra carrera en act_porcentaje_avance sin ciclo con TR_act
-           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
-           INSERT INTO @raices_eia (eia_codigo)
+           DECLARE @raices_eia TABLE (
+               eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (
+               eia_codigo
+           )
            SELECT DISTINCT plt.eia_codigo
            FROM   sgspi.actividad_tratamiento AS act WITH (UPDLOCK)
                   INNER JOIN
                   sgspi.plan_tratamiento AS plt
                   ON plt.plt_codigo = act.plt_codigo
-           WHERE  act.act_codigo IN (SELECT act_codigo FROM inserted);
-           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           WHERE  act.act_codigo IN (SELECT act_codigo
+                                     FROM   inserted);
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo)
+                                      FROM   @raices_eia), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[seguimiento_actividad].', 1;
-                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(eia_codigo)
+                                   FROM   @raices_eia
+                                   WHERE  eia_codigo > @lock_id);
                END
            -- [AP-03] [AP-15] El seguimiento lo registra la persona de la sesión
            DECLARE @per_actor AS INT = (SELECT per_codigo
@@ -7461,16 +7661,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo)
+                                      FROM   (SELECT aci_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT aci_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion_proceso_institucional].', 1;
-                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(aci_codigo)
+                                   FROM   (SELECT aci_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT aci_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.aci_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo
@@ -7602,16 +7811,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo)
+                                      FROM   (SELECT aci_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT aci_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion_sede].', 1;
-                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(aci_codigo)
+                                   FROM   (SELECT aci_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT aci_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.aci_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo
@@ -7739,16 +7957,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo)
+                                      FROM   (SELECT aci_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT aci_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_informacion_responsable].', 1;
-                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted UNION SELECT aci_codigo FROM deleted) AS l WHERE l.aci_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(aci_codigo)
+                                   FROM   (SELECT aci_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT aci_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.aci_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT aci_codigo
@@ -7888,16 +8115,29 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted WHERE aci_codigo IS NOT NULL UNION SELECT aci_codigo FROM deleted WHERE aci_codigo IS NOT NULL) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo)
+                                      FROM   (SELECT aci_codigo
+                                              FROM   inserted
+                                              WHERE  aci_codigo IS NOT NULL
+                                              UNION
+                                              SELECT aci_codigo
+                                              FROM   deleted
+                                              WHERE  aci_codigo IS NOT NULL) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[sistema_informacion_ficha].', 1;
-                   SET @lock_id = (SELECT MIN(aci_codigo) FROM (SELECT aci_codigo FROM inserted WHERE aci_codigo IS NOT NULL UNION SELECT aci_codigo FROM deleted WHERE aci_codigo IS NOT NULL) AS l WHERE l.aci_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(aci_codigo)
+                                   FROM   (SELECT aci_codigo
+                                           FROM   inserted
+                                           WHERE  aci_codigo IS NOT NULL
+                                           UNION
+                                           SELECT aci_codigo
+                                           FROM   deleted
+                                           WHERE  aci_codigo IS NOT NULL) AS l
+                                   WHERE  l.aci_codigo > @lock_id);
                END
            -- Bloquea INSERT/UPDATE cuando el activo de información asociado (anterior o nuevo) no es editable
            IF EXISTS (SELECT 1
@@ -8046,24 +8286,32 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @raices_aci TABLE (aci_codigo INT PRIMARY KEY);
-           INSERT INTO @raices_aci (aci_codigo)
+           DECLARE @raices_aci TABLE (
+               aci_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_aci (
+               aci_codigo
+           )
            SELECT DISTINCT sif.aci_codigo
-           FROM   (SELECT sif_codigo FROM inserted UNION SELECT sif_codigo FROM deleted) AS x
+           FROM   (SELECT sif_codigo
+                   FROM   inserted
+                   UNION
+                   SELECT sif_codigo
+                   FROM   deleted) AS x
                   INNER JOIN
                   sgspi.sistema_informacion_ficha AS sif
                   ON sif.sif_codigo = x.sif_codigo
            WHERE  sif.aci_codigo IS NOT NULL;
-           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo) FROM @raices_aci),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(aci_codigo)
+                                      FROM   @raices_aci), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[modulo_sistema_informacion].', 1;
-                   SET @lock_id = (SELECT MIN(aci_codigo) FROM @raices_aci WHERE aci_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(aci_codigo)
+                                   FROM   @raices_aci
+                                   WHERE  aci_codigo > @lock_id);
                END
            -- Bloquea INSERT/UPDATE cuando el activo de información del sistema padre no es editable
            IF EXISTS (SELECT 1
@@ -9084,16 +9332,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo)
+                                      FROM   (SELECT ado_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT ado_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_soporte_registro].', 1;
-                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(ado_codigo)
+                                   FROM   (SELECT ado_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT ado_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.ado_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
@@ -9221,16 +9478,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo)
+                                      FROM   (SELECT ado_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT ado_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_medio_conservacion].', 1;
-                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(ado_codigo)
+                                   FROM   (SELECT ado_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT ado_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.ado_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
@@ -9358,16 +9624,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo)
+                                      FROM   (SELECT ado_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT ado_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_idioma].', 1;
-                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(ado_codigo)
+                                   FROM   (SELECT ado_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT ado_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.ado_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
@@ -9495,16 +9770,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo)
+                                      FROM   (SELECT ado_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT ado_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_formato_archivo].', 1;
-                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(ado_codigo)
+                                   FROM   (SELECT ado_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT ado_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.ado_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
@@ -9632,16 +9916,25 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (aci) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(ado_codigo)
+                                      FROM   (SELECT ado_codigo
+                                              FROM   inserted
+                                              UNION
+                                              SELECT ado_codigo
+                                              FROM   deleted) AS l), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:aci:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:aci] en [sgspi].[activo_documental_unidad_productora].', 1;
-                   SET @lock_id = (SELECT MIN(ado_codigo) FROM (SELECT ado_codigo FROM inserted UNION SELECT ado_codigo FROM deleted) AS l WHERE l.ado_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(ado_codigo)
+                                   FROM   (SELECT ado_codigo
+                                           FROM   inserted
+                                           UNION
+                                           SELECT ado_codigo
+                                           FROM   deleted) AS l
+                                   WHERE  l.ado_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT ado_codigo
@@ -10792,23 +11085,31 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
                           FROM   inserted)
                RETURN;
            -- [AP-24] Serializa el agregado por raíz (eia) en orden ascendente para evitar deadlocks AB-BA
-           DECLARE @raices_eia TABLE (eia_codigo INT PRIMARY KEY);
-           INSERT INTO @raices_eia (eia_codigo)
+           DECLARE @raices_eia TABLE (
+               eia_codigo INT PRIMARY KEY);
+           INSERT INTO @raices_eia (
+               eia_codigo
+           )
            SELECT DISTINCT plt.eia_codigo
-           FROM   (SELECT plt_codigo FROM inserted UNION SELECT plt_codigo FROM deleted) AS x
+           FROM   (SELECT plt_codigo
+                   FROM   inserted
+                   UNION
+                   SELECT plt_codigo
+                   FROM   deleted) AS x
                   INNER JOIN
                   sgspi.plan_tratamiento AS plt
                   ON plt.plt_codigo = x.plt_codigo;
-           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo) FROM @raices_eia),
-                   @lock_res AS NVARCHAR (60),
-                   @lock_rc AS INT;
+           DECLARE @lock_id AS INT = (SELECT MIN(eia_codigo)
+                                      FROM   @raices_eia), @lock_res AS NVARCHAR (60), @lock_rc AS INT;
            WHILE @lock_id IS NOT NULL
                BEGIN
                    SET @lock_res = CONCAT(N'sgspi:eia:', @lock_id);
                    EXECUTE @lock_rc = sys.sp_getapplock @Resource = @lock_res, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
                    IF @lock_rc < 0
                        THROW 50023, N'Tiempo de espera agotado al adquirir bloqueo del agregado [sgspi:eia] en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
-                   SET @lock_id = (SELECT MIN(eia_codigo) FROM @raices_eia WHERE eia_codigo > @lock_id);
+                   SET @lock_id = (SELECT MIN(eia_codigo)
+                                   FROM   @raices_eia
+                                   WHERE  eia_codigo > @lock_id);
                END
            IF EXISTS (SELECT 1
                       FROM   (SELECT plt_codigo
@@ -10972,61 +11273,170 @@ ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_auditor_control;
 
 -- Base: lista blanca de lectura sobre las 49 tablas de negocio, la vista de alcance y las 5 funciones inline (las 49 aud_* quedan solo para auditor y oficial).
 -- ALTER es lo que habilita TRUNCATE y DISABLE TRIGGER. Las 6 vistas de reporte se otorgan al final de la sección 6.
-GRANT SELECT ON sgspi.periodo_vigencia TO sgspi_rol_base;
-GRANT SELECT ON sgspi.estado_flujo_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.tipo_proceso_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.proceso_institucional TO sgspi_rol_base;
-GRANT SELECT ON sgspi.proceso_institucional_uaa TO sgspi_rol_base;
-GRANT SELECT ON sgspi.factor_entorno_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.analisis_contexto_factor TO sgspi_rol_base;
-GRANT SELECT ON sgspi.parte_interesada TO sgspi_rol_base;
-GRANT SELECT ON sgspi.requisito_parte_interesada TO sgspi_rol_base;
-GRANT SELECT ON sgspi.requisito_parte_interesada_proceso_institucional TO sgspi_rol_base;
-GRANT SELECT ON sgspi.tipo_activo_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.causal_excepcion_transparencia TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_informacion TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_informacion_proceso_institucional TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_informacion_sede TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_informacion_responsable TO sgspi_rol_base;
-GRANT SELECT ON sgspi.sistema_informacion_ficha TO sgspi_rol_base;
-GRANT SELECT ON sgspi.modulo_sistema_informacion TO sgspi_rol_base;
-GRANT SELECT ON sgspi.serie_documental_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.subserie_documental_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_base;
-GRANT SELECT ON sgspi.periodicidad_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.estado_publicacion_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.soporte_registro_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.medio_conservacion_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.idioma_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.formato_archivo_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_documental TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_documental_soporte_registro TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_documental_medio_conservacion TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_documental_idioma TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_documental_formato_archivo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.activo_documental_unidad_productora TO sgspi_rol_base;
-GRANT SELECT ON sgspi.escala_probabilidad TO sgspi_rol_base;
-GRANT SELECT ON sgspi.escala_impacto TO sgspi_rol_base;
-GRANT SELECT ON sgspi.zona_riesgo_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.evento_incertidumbre_activo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.plan_tratamiento TO sgspi_rol_base;
-GRANT SELECT ON sgspi.actividad_tratamiento TO sgspi_rol_base;
-GRANT SELECT ON sgspi.seguimiento_actividad TO sgspi_rol_base;
-GRANT SELECT ON sgspi.estandar_normativo_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.control_referencia_normativa TO sgspi_rol_base;
-GRANT SELECT ON sgspi.atributo_control_catalogo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_base;
-GRANT SELECT ON sgspi.plan_tratamiento_control_referencia_normativa TO sgspi_rol_base;
-GRANT SELECT ON sgspi.evaluacion_aplicabilidad_control TO sgspi_rol_base;
-GRANT SELECT ON sgspi.vw_usuario_rol_alcance_sgspi TO sgspi_rol_base;
-GRANT SELECT ON sgspi.ufn_persona_sesion TO sgspi_rol_base;
-GRANT SELECT ON sgspi.ufn_proceso_en_alcance TO sgspi_rol_base;
-GRANT SELECT ON sgspi.ufn_activo_en_alcance TO sgspi_rol_base;
-GRANT SELECT ON sgspi.ufn_rls_alcance_proceso TO sgspi_rol_base;
-GRANT SELECT ON sgspi.ufn_rls_alcance_activo TO sgspi_rol_base;
+GRANT SELECT
+    ON sgspi.periodo_vigencia TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.estado_flujo_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.tipo_proceso_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.proceso_institucional TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.proceso_institucional_uaa TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.factor_entorno_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.analisis_contexto_factor TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.parte_interesada TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.requisito_parte_interesada TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.requisito_parte_interesada_proceso_institucional TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.tipo_activo_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.causal_excepcion_transparencia TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_informacion TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_informacion_proceso_institucional TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_informacion_sede TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_informacion_responsable TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.sistema_informacion_ficha TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.modulo_sistema_informacion TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.serie_documental_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.subserie_documental_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.periodicidad_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.estado_publicacion_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.soporte_registro_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.medio_conservacion_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.idioma_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.formato_archivo_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_documental TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_documental_soporte_registro TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_documental_medio_conservacion TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_documental_idioma TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_documental_formato_archivo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.activo_documental_unidad_productora TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.escala_probabilidad TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.escala_impacto TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.zona_riesgo_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.evento_incertidumbre_activo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.plan_tratamiento TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.actividad_tratamiento TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.seguimiento_actividad TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.estandar_normativo_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.control_referencia_normativa TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.atributo_control_catalogo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.plan_tratamiento_control_referencia_normativa TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.evaluacion_aplicabilidad_control TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.vw_usuario_rol_alcance_sgspi TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.ufn_persona_sesion TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.ufn_proceso_en_alcance TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.ufn_activo_en_alcance TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.ufn_rls_alcance_proceso TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.ufn_rls_alcance_activo TO sgspi_rol_base;
 
 DENY ALTER
     ON SCHEMA::sgspi TO sgspi_rol_base;
@@ -11041,11 +11451,15 @@ DENY DELETE
 DENY INSERT, UPDATE, DELETE, ALTER
     ON SCHEMA::sgspi TO sgspi_rol_consulta;
 
-GRANT SELECT ON sgspi.ufn_rls_alcance_proceso TO sgspi_rol_consulta;
-GRANT SELECT ON sgspi.ufn_rls_alcance_activo TO sgspi_rol_consulta;
+GRANT SELECT
+    ON sgspi.ufn_rls_alcance_proceso TO sgspi_rol_consulta;
+
+GRANT SELECT
+    ON sgspi.ufn_rls_alcance_activo TO sgspi_rol_consulta;
 
 -- DDM (SQL Server 2019): UNMASK a nivel de BD solo para roles que gestionan/auditan plt y eac (todos los escritores de esas tablas tienen UNMASK para no enmascarar aud_*)
 GRANT UNMASK TO sgspi_rol_oficial_seguridad_privacidad, sgspi_rol_auditor_control, sgspi_rol_comite_direccion, sgspi_rol_lider_propietario;
+
 GRANT SELECT
     ON sgspi.periodo_vigencia TO sgspi_rol_consulta;
 
@@ -11504,55 +11918,152 @@ DENY INSERT, UPDATE, DELETE, ALTER
     ON sgspi.aud_evaluacion_aplicabilidad_control TO sgspi_rol_base;
 
 -- [AP-01] [AP-02] Lectura de las 49 tablas aud_* restringida exclusivamente a auditoría y oficial de seguridad/privacidad
-GRANT SELECT ON sgspi.aud_periodo_vigencia TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_estado_flujo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_transicion_estado_flujo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_tipo_proceso_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_proceso_institucional_uaa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_factor_entorno_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_analisis_contexto_factor TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_parte_interesada TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_requisito_parte_interesada TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_tipo_activo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_causal_excepcion_transparencia TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_informacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_informacion_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_informacion_sede TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_informacion_responsable TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_sistema_informacion_ficha TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_modulo_sistema_informacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_serie_documental_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_subserie_documental_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_periodicidad_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_estado_publicacion_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_soporte_registro_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_medio_conservacion_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_idioma_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_formato_archivo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_documental TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_documental_soporte_registro TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_documental_medio_conservacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_documental_idioma TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_documental_formato_archivo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_activo_documental_unidad_productora TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_escala_probabilidad TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_escala_impacto TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_zona_riesgo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_matriz_valoracion_riesgo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_evento_incertidumbre_activo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_estrategia_tratamiento_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_plan_tratamiento TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_actividad_tratamiento TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_seguimiento_actividad TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_estandar_normativo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_control_referencia_normativa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_atributo_control_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_control_referencia_normativa_atributo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-GRANT SELECT ON sgspi.aud_evaluacion_aplicabilidad_control TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT
+    ON sgspi.aud_periodo_vigencia TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_estado_flujo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_transicion_estado_flujo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_tipo_proceso_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_proceso_institucional_uaa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_factor_entorno_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_analisis_contexto_factor TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_parte_interesada TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_requisito_parte_interesada TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_tipo_activo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_causal_excepcion_transparencia TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_sede TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_responsable TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_sistema_informacion_ficha TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_modulo_sistema_informacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_serie_documental_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_subserie_documental_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_periodicidad_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_estado_publicacion_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_soporte_registro_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_medio_conservacion_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_idioma_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_formato_archivo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_soporte_registro TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_medio_conservacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_idioma TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_formato_archivo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_unidad_productora TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_escala_probabilidad TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_escala_impacto TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_zona_riesgo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_matriz_valoracion_riesgo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_evento_incertidumbre_activo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_estrategia_tratamiento_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_plan_tratamiento TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_actividad_tratamiento TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_seguimiento_actividad TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_estandar_normativo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_control_referencia_normativa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_atributo_control_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_control_referencia_normativa_atributo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+
+GRANT SELECT
+    ON sgspi.aud_evaluacion_aplicabilidad_control TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
 
 
 GO
@@ -11572,25 +12083,25 @@ IF EXISTS (SELECT 1
 
 CREATE SECURITY POLICY sgspi.spol_alcance_lectura
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
     ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion,
-    ADD BLOCK PREDICATE  sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion
+    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion
     WITH (STATE = ON, SCHEMABINDING = OFF);
 
 
@@ -11686,7 +12197,7 @@ CREATE OR ALTER VIEW sgspi.vw_matriz_tratamiento_riesgos
 AS
 WITH   cte_controles_27001
 AS     (SELECT   ptc.plt_codigo,
-                 STRING_AGG(CAST(crn.crn_identificador_control AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27001
+                 STRING_AGG(CAST (crn.crn_identificador_control AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27001
         FROM     sgspi.plan_tratamiento_control_referencia_normativa AS ptc
                  INNER JOIN
                  sgspi.control_referencia_normativa AS crn
@@ -11699,7 +12210,7 @@ AS     (SELECT   ptc.plt_codigo,
         GROUP BY ptc.plt_codigo),
        cte_controles_27701
 AS     (SELECT   ptc.plt_codigo,
-                 STRING_AGG(CAST(CONCAT_WS(N': ', crn.crn_rol_privacidad_pii, crn.crn_identificador_control) AS NVARCHAR (MAX)), N' | ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27701
+                 STRING_AGG(CAST (CONCAT_WS(N': ', crn.crn_rol_privacidad_pii, crn.crn_identificador_control) AS NVARCHAR (MAX)), N' | ') WITHIN GROUP (ORDER BY crn.crn_codigo) AS crn_controles_iso27701
         FROM     sgspi.plan_tratamiento_control_referencia_normativa AS ptc
                  INNER JOIN
                  sgspi.control_referencia_normativa AS crn
@@ -11802,8 +12313,8 @@ AS     (SELECT   u.upc_codigo,
                  u.upc_nombre_unidad,
                  raiz.upc_prefijo_archivistico AS upc_cod_seccion_raiz,
                  raiz.upc_nombre_unidad AS upc_nombre_seccion_raiz,
-                 STRING_AGG(CAST(anc.upc_prefijo_archivistico AS NVARCHAR (MAX)), N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_prefijos_ccd,
-                 STRING_AGG(CAST(anc.upc_nombre_unidad AS NVARCHAR (MAX)), N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_jerarquica_unidad
+                 STRING_AGG(CAST (anc.upc_prefijo_archivistico AS NVARCHAR (MAX)), N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_prefijos_ccd,
+                 STRING_AGG(CAST (anc.upc_nombre_unidad AS NVARCHAR (MAX)), N' > ') WITHIN GROUP (ORDER BY anc.upc_nodo_jerarquico) AS upc_ruta_jerarquica_unidad
         FROM     sgspi.unidad_productora_cuadro_clasificacion_documental AS u
                  INNER JOIN
                  sgspi.unidad_productora_cuadro_clasificacion_documental AS anc
@@ -11863,13 +12374,13 @@ CREATE OR ALTER VIEW sgspi.vw_inventario_activo_documental_mr04
 AS
 WITH   cte_trd_agregado
 AS     (SELECT   v.ado_codigo,
-                 STRING_AGG(CAST(v.adu_codigo_serie_trd_calculado AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_serie_documental_trd,
-                 STRING_AGG(CAST(v.adu_codigo_subserie_trd_calculado AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_subserie_documental_trd
+                 STRING_AGG(CAST (v.adu_codigo_serie_trd_calculado AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_serie_documental_trd,
+                 STRING_AGG(CAST (v.adu_codigo_subserie_trd_calculado AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY v.upc_codigo) AS ado_codigos_subserie_documental_trd
         FROM     sgspi.vw_desglose_ccd_trd_mr04 AS v
         GROUP BY v.ado_codigo),
        cte_procesos_doc
 AS     (SELECT   aip.aci_codigo,
-                 STRING_AGG(CAST(pr.pri_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY pr.pri_codigo) AS ado_procesos_asociados
+                 STRING_AGG(CAST (pr.pri_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY pr.pri_codigo) AS ado_procesos_asociados
         FROM     sgspi.activo_informacion_proceso_institucional AS aip
                  INNER JOIN
                  sgspi.proceso_institucional AS pr
@@ -11878,7 +12389,7 @@ AS     (SELECT   aip.aci_codigo,
         GROUP BY aip.aci_codigo),
        cte_dependencias_doc
 AS     (SELECT   x.aci_codigo,
-                 STRING_AGG(CAST(x.uaa_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY x.uaa_nombre) AS ado_dependencias_oficinas
+                 STRING_AGG(CAST (x.uaa_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY x.uaa_nombre) AS ado_dependencias_oficinas
         FROM     (SELECT DISTINCT air.aci_codigo,
                                   u.uaa_nombre
                   FROM   sgspi.activo_informacion_responsable AS air
@@ -11889,7 +12400,7 @@ AS     (SELECT   x.aci_codigo,
         GROUP BY x.aci_codigo),
        cte_propietarios_doc
 AS     (SELECT   air.aci_codigo,
-                 STRING_AGG(CAST(c.car_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_propietarios_activo
+                 STRING_AGG(CAST (c.car_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_propietarios_activo
         FROM     sgspi.activo_informacion_responsable AS air
                  INNER JOIN
                  dbo.cargo AS c
@@ -11899,7 +12410,7 @@ AS     (SELECT   air.aci_codigo,
         GROUP BY air.aci_codigo),
        cte_custodios_doc
 AS     (SELECT   air.aci_codigo,
-                 STRING_AGG(CAST(c.car_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_custodios_activo
+                 STRING_AGG(CAST (c.car_nombre AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY air.car_codigo, air.uaa_codigo) AS ado_custodios_activo
         FROM     sgspi.activo_informacion_responsable AS air
                  INNER JOIN
                  dbo.cargo AS c
@@ -11909,7 +12420,7 @@ AS     (SELECT   air.aci_codigo,
         GROUP BY air.aci_codigo),
        cte_soportes_doc
 AS     (SELECT   ads.ado_codigo,
-                 STRING_AGG(CAST(src.src_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY src.src_nombre DESC) AS ado_soporte_registro
+                 STRING_AGG(CAST (src.src_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY src.src_nombre DESC) AS ado_soporte_registro
         FROM     sgspi.activo_documental_soporte_registro AS ads
                  INNER JOIN
                  sgspi.soporte_registro_catalogo AS src
@@ -11918,7 +12429,7 @@ AS     (SELECT   ads.ado_codigo,
         GROUP BY ads.ado_codigo),
        cte_medios_doc
 AS     (SELECT   adm.ado_codigo,
-                 STRING_AGG(CAST(mcc.mcc_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY mcc.mcc_nombre DESC) AS ado_medio_conservacion
+                 STRING_AGG(CAST (mcc.mcc_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY mcc.mcc_nombre DESC) AS ado_medio_conservacion
         FROM     sgspi.activo_documental_medio_conservacion AS adm
                  INNER JOIN
                  sgspi.medio_conservacion_catalogo AS mcc
@@ -11927,7 +12438,7 @@ AS     (SELECT   adm.ado_codigo,
         GROUP BY adm.ado_codigo),
        cte_idiomas_doc
 AS     (SELECT   adi.ado_codigo,
-                 STRING_AGG(CAST(idi.idi_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY idi.idi_nombre) AS ado_idioma
+                 STRING_AGG(CAST (idi.idi_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY idi.idi_nombre) AS ado_idioma
         FROM     sgspi.activo_documental_idioma AS adi
                  INNER JOIN
                  sgspi.idioma_catalogo AS idi
@@ -11937,7 +12448,7 @@ AS     (SELECT   adi.ado_codigo,
 -- [AP-08] El formato documental ahora es multivaluado normalizado ([adf] + [fac])
        cte_formatos_doc
 AS     (SELECT   adf.ado_codigo,
-                 STRING_AGG(CAST(fac.fac_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY fac.fac_nombre) AS ado_formato_documental
+                 STRING_AGG(CAST (fac.fac_nombre AS NVARCHAR (MAX)), N'/') WITHIN GROUP (ORDER BY fac.fac_nombre) AS ado_formato_documental
         FROM     sgspi.activo_documental_formato_archivo AS adf
                  INNER JOIN
                  sgspi.formato_archivo_catalogo AS fac
@@ -12063,11 +12574,11 @@ SELECT   crn.crn_codigo,
          enc.enc_identificador,
          crn.crn_identificador_control,
          crn.crn_nombre_control,
-         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'TIPO_CONTROL' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS tipo_control,
-         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'PROPIEDAD_SEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS propiedades_seguridad,
-         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'CONCEPTO_CIBERSEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS conceptos_ciberseguridad,
-         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'CAPACIDAD_OPERACIONAL' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS capacidades_operacionales,
-         STRING_AGG(CAST(CASE WHEN aac.aac_tipo_atributo = N'DOMINIO_SEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS dominios_seguridad
+         STRING_AGG(CAST (CASE WHEN aac.aac_tipo_atributo = N'TIPO_CONTROL' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS tipo_control,
+         STRING_AGG(CAST (CASE WHEN aac.aac_tipo_atributo = N'PROPIEDAD_SEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS propiedades_seguridad,
+         STRING_AGG(CAST (CASE WHEN aac.aac_tipo_atributo = N'CONCEPTO_CIBERSEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS conceptos_ciberseguridad,
+         STRING_AGG(CAST (CASE WHEN aac.aac_tipo_atributo = N'CAPACIDAD_OPERACIONAL' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS capacidades_operacionales,
+         STRING_AGG(CAST (CASE WHEN aac.aac_tipo_atributo = N'DOMINIO_SEGURIDAD' THEN aac.aac_valor END AS NVARCHAR (MAX)), N', ') WITHIN GROUP (ORDER BY aac.aac_valor) AS dominios_seguridad
 FROM     sgspi.control_referencia_normativa AS crn
          INNER JOIN
          sgspi.estandar_normativo_catalogo AS enc
@@ -12092,12 +12603,23 @@ IF @@TRANCOUNT = 0
 
 GO
 -- Lectura de las seis vistas de reporte para sgspi_rol_base (RLS filtra las filas según alcance del actor)
-GRANT SELECT ON sgspi.vw_consolidado_dofa TO sgspi_rol_base;
-GRANT SELECT ON sgspi.vw_resumen_activos_criticidad TO sgspi_rol_base;
-GRANT SELECT ON sgspi.vw_matriz_tratamiento_riesgos TO sgspi_rol_base;
-GRANT SELECT ON sgspi.vw_desglose_ccd_trd_mr04 TO sgspi_rol_base;
-GRANT SELECT ON sgspi.vw_inventario_activo_documental_mr04 TO sgspi_rol_base;
-GRANT SELECT ON sgspi.vw_controles_atributos_iso27002 TO sgspi_rol_base;
+GRANT SELECT
+    ON sgspi.vw_consolidado_dofa TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.vw_resumen_activos_criticidad TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.vw_matriz_tratamiento_riesgos TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.vw_desglose_ccd_trd_mr04 TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.vw_inventario_activo_documental_mr04 TO sgspi_rol_base;
+
+GRANT SELECT
+    ON sgspi.vw_controles_atributos_iso27002 TO sgspi_rol_base;
 
 -- D8: la cuenta compartida solo lee las cinco vistas de inventario, DOFA y controles (encadenamiento de propiedad con dbo).
 GRANT SELECT
@@ -12149,62 +12671,30 @@ IF (SELECT COUNT(*)
                          AND (SELECT COUNT(*)
                               FROM   sys.security_predicates AS pr
                               WHERE  pr.object_id = sp.object_id) = 20)
-    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 7 vistas, 5 funciones, política RLS spol_alcance_lectura activa con 20 predicados).';
+   OR NOT EXISTS (SELECT 1
+                  FROM   sys.partition_schemes AS ps
+                         INNER JOIN
+                         sys.partition_functions AS pf
+                         ON pf.function_id = ps.function_id
+                  WHERE  ps.name = N'PS_sgspi_aud_anio'
+                         AND pf.name = N'PF_sgspi_aud_anio')
+    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 7 vistas, 5 funciones, política RLS spol_alcance_lectura activa con 20 predicados, esquema de partición PS_sgspi_aud_anio).';
 
-DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST(v.nombre AS NVARCHAR (MAX)), N', ')
-                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'),
-                                                                     (N'sgspi.transicion_estado_flujo', N'U'),
-                                                                     (N'sgspi.analisis_contexto_factor', N'U'),
-                                                                     (N'sgspi.requisito_parte_interesada', N'U'),
-                                                                     (N'sgspi.activo_informacion', N'U'),
-                                                                     (N'sgspi.activo_documental', N'U'),
-                                                                     (N'sgspi.evento_incertidumbre_activo', N'U'),
-                                                                     (N'sgspi.plan_tratamiento', N'U'),
-                                                                     (N'sgspi.actividad_tratamiento', N'U'),
-                                                                     (N'sgspi.seguimiento_actividad', N'U'),
-                                                                     (N'sgspi.evaluacion_aplicabilidad_control', N'U'),
-                                                                     (N'sgspi.ufn_persona_sesion', N'IF'),
-                                                                     (N'sgspi.ufn_proceso_en_alcance', N'IF'),
-                                                                     (N'sgspi.ufn_activo_en_alcance', N'IF'),
-                                                                     (N'sgspi.ufn_rls_alcance_proceso', N'IF'),
-                                                                     (N'sgspi.ufn_rls_alcance_activo', N'IF'),
-                                                                     (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'),
-                                                                     (N'sgspi.vw_consolidado_dofa', N'V'),
-                                                                     (N'sgspi.vw_resumen_activos_criticidad', N'V'),
-                                                                     (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'),
-                                                                     (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'),
-                                                                     (N'sgspi.vw_inventario_activo_documental_mr04', N'V'),
-                                                                     (N'sgspi.vw_controles_atributos_iso27002', N'V'),
-                                                                     (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'),
-                                                                     (N'sgspi.TR_sga_inmutabilidad', N'TR'),
-                                                                     (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
+DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST (v.nombre AS NVARCHAR (MAX)), N', ')
+                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'), (N'sgspi.transicion_estado_flujo', N'U'), (N'sgspi.analisis_contexto_factor', N'U'), (N'sgspi.requisito_parte_interesada', N'U'), (N'sgspi.activo_informacion', N'U'), (N'sgspi.activo_documental', N'U'), (N'sgspi.evento_incertidumbre_activo', N'U'), (N'sgspi.plan_tratamiento', N'U'), (N'sgspi.actividad_tratamiento', N'U'), (N'sgspi.seguimiento_actividad', N'U'), (N'sgspi.evaluacion_aplicabilidad_control', N'U'), (N'sgspi.ufn_persona_sesion', N'IF'), (N'sgspi.ufn_proceso_en_alcance', N'IF'), (N'sgspi.ufn_activo_en_alcance', N'IF'), (N'sgspi.ufn_rls_alcance_proceso', N'IF'), (N'sgspi.ufn_rls_alcance_activo', N'IF'), (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'), (N'sgspi.vw_consolidado_dofa', N'V'), (N'sgspi.vw_resumen_activos_criticidad', N'V'), (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'), (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'), (N'sgspi.vw_inventario_activo_documental_mr04', N'V'), (N'sgspi.vw_controles_atributos_iso27002', N'V'), (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_sga_inmutabilidad', N'TR'), (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
                                                       WHERE  OBJECT_ID(v.nombre, v.tipo) IS NULL), 1000);
 
 IF @objetos_faltantes IS NOT NULL
     SET @fallos += N' Faltan objetos clave: ' + @objetos_faltantes + N'.';
 
 DECLARE @roles_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.rol, N', ')
-                                              FROM   (VALUES (N'sgspi_rol_base'),
-                                                             (N'sgspi_rol_custodio_operador'),
-                                                             (N'sgspi_rol_lider_propietario'),
-                                                             (N'sgspi_rol_gestor_documental'),
-                                                             (N'sgspi_rol_oficial_seguridad_privacidad'),
-                                                             (N'sgspi_rol_comite_direccion'),
-                                                             (N'sgspi_rol_auditor_control'),
-                                                             (N'sgspi_rol_consulta')) AS v(rol)
+                                              FROM   (VALUES (N'sgspi_rol_base'), (N'sgspi_rol_custodio_operador'), (N'sgspi_rol_lider_propietario'), (N'sgspi_rol_gestor_documental'), (N'sgspi_rol_oficial_seguridad_privacidad'), (N'sgspi_rol_comite_direccion'), (N'sgspi_rol_auditor_control'), (N'sgspi_rol_consulta')) AS v(rol)
                                               WHERE  DATABASE_PRINCIPAL_ID(v.rol) IS NULL);
 
 IF @roles_faltantes IS NOT NULL
     SET @fallos += N' Faltan roles: ' + @roles_faltantes + N'.';
 
-DECLARE @aud_rotas AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST(t.name AS NVARCHAR (MAX)), N', ')
+DECLARE @aud_rotas AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST (t.name AS NVARCHAR (MAX)), N', ')
                                               FROM   sys.tables AS t
                                               WHERE  t.schema_id = SCHEMA_ID(N'sgspi')
                                                      AND ((t.name LIKE N'aud[_]%'
@@ -12227,7 +12717,7 @@ IF @aud_rotas IS NOT NULL
 
 IF LEN(@fallos) > 0
     BEGIN
-        ROLLBACK TRANSACTION;
+        ROLLBACK;
         RAISERROR (N'DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS:%s', 16, 1, @fallos);
         SET NOEXEC ON;
     END
@@ -12244,7 +12734,7 @@ ELSE
     BEGIN CATCH
         DECLARE @err_vista AS NVARCHAR (1500) = ERROR_MESSAGE();
         IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
+            ROLLBACK;
         RAISERROR (N'DESPLIEGUE SGSPI REVERTIDO SIN CAMBIOS: error al compilar vista (%s).', 16, 1, @err_vista);
         SET NOEXEC ON;
     END CATCH
@@ -12389,20 +12879,20 @@ SELECT   N'Tabla de [dbo] sin índice en la columna de búsqueda del SGSPI' AS h
 FROM     (VALUES (N'dbo.usuario_general', N'us'), (N'dbo.usuario_estudiantes', N'us'), (N'dbo.usuario_estudiantes_virtual', N'us'), (N'dbo.usuario_docentes', N'us'), (N'dbo.usuario_administrativos', N'us'), (N'dbo.usuario_graduados', N'us'), (N'dbo.usuario_estudiantes_intercambio', N'us'), (N'dbo.usuario_externos', N'us'), (N'dbo.usuario_grupo', N'usg_usuario')) AS v(tabla, columna)
 WHERE    OBJECTPROPERTY(OBJECT_ID(v.tabla), N'IsUserTable') = 1 -- en producción usuario_general es una vista UNION: se revisan sus 7 tablas base
          AND NOT EXISTS (SELECT 1
-                     FROM   sys.indexes AS ix
-                            INNER JOIN
-                            sys.index_columns AS ic
-                            ON ic.object_id = ix.object_id
-                               AND ic.index_id = ix.index_id
-                            INNER JOIN
-                            sys.columns AS c
-                            ON c.object_id = ic.object_id
-                               AND c.column_id = ic.column_id
-                     WHERE  ix.object_id = OBJECT_ID(v.tabla)
-                            AND ix.is_disabled = 0
-                            AND ix.has_filter = 0
-                            AND ic.key_ordinal = 1
-                            AND c.name = v.columna);
+                         FROM   sys.indexes AS ix
+                                INNER JOIN
+                                sys.index_columns AS ic
+                                ON ic.object_id = ix.object_id
+                                   AND ic.index_id = ix.index_id
+                                INNER JOIN
+                                sys.columns AS c
+                                ON c.object_id = ic.object_id
+                                   AND c.column_id = ic.column_id
+                         WHERE  ix.object_id = OBJECT_ID(v.tabla)
+                                AND ix.is_disabled = 0
+                                AND ix.has_filter = 0
+                                AND ic.key_ordinal = 1
+                                AND c.name = v.columna);
 
 
 GO
