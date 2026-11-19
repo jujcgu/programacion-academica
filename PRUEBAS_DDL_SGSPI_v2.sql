@@ -102,11 +102,19 @@ IF EXISTS (SELECT 1 FROM sys.tables AS t
                                            WHERE tr.parent_id = t.object_id AND d.referenced_id = OBJECT_ID(N''sgspi.aud_'' + t.name)))))
     THROW 51000, N''hay tablas sin trigger de auditoría o aud_* sin trigger de inmutabilidad'', 1;', 0;
 
-EXECUTE #espera N'Mejora sensibilidad: las 6 columnas del mapa de vulnerabilidades están clasificadas (RANK HIGH)', N'
+EXECUTE #espera N'Fase 1 sensibilidad: 18 columnas confidenciales clasificadas (8 HIGH eia/aud_eia, 4 HIGH aci/aud_aci, 6 MEDIUM plt/sga/eac)', N'
 IF (SELECT COUNT(*) FROM sys.sensitivity_classifications AS sc
     WHERE  sc.major_id IN (OBJECT_ID(N''sgspi.evento_incertidumbre_activo''), OBJECT_ID(N''sgspi.aud_evento_incertidumbre_activo''))
-           AND sc.rank_desc = N''HIGH'') <> 6
-    THROW 51000, N''faltan columnas del mapa de vulnerabilidades por clasificar'', 1;', 0;
+           AND sc.rank_desc = N''HIGH'') <> 8
+   OR (SELECT COUNT(*) FROM sys.sensitivity_classifications AS sc
+       WHERE  sc.major_id IN (OBJECT_ID(N''sgspi.activo_informacion''), OBJECT_ID(N''sgspi.aud_activo_informacion''))
+              AND sc.rank_desc = N''HIGH'') <> 4
+   OR (SELECT COUNT(*) FROM sys.sensitivity_classifications AS sc
+       WHERE  sc.major_id IN (OBJECT_ID(N''sgspi.plan_tratamiento''), OBJECT_ID(N''sgspi.aud_plan_tratamiento''),
+                              OBJECT_ID(N''sgspi.seguimiento_actividad''), OBJECT_ID(N''sgspi.aud_seguimiento_actividad''),
+                              OBJECT_ID(N''sgspi.evaluacion_aplicabilidad_control''), OBJECT_ID(N''sgspi.aud_evaluacion_aplicabilidad_control''))
+              AND sc.rank_desc = N''MEDIUM'') <> 6
+    THROW 51000, N''faltan columnas confidenciales por clasificar'', 1;', 0;
 
 -- Guarda de los EXCEPT de transición: toda columna de contenido de las 5 tablas con flujo debe estar en el EXCEPT previo a aud_*
 EXECUTE #espera N'AP-05 toda columna de contenido de las tablas con flujo está en el EXCEPT de su trigger', N'
@@ -367,6 +375,17 @@ BEGIN TRAN;
 INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''https://sgspi/acta.pdf'', REPLICATE(''a'', 64));
 ROLLBACK;', 0;
 
+EXECUTE #espera N'Fase 1 CK_sga_uri_evidencia: rechaza esquema http://', N'INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''http://sgspi/acta.pdf'', REPLICATE(''a'', 64));', 547;
+
+EXECUTE #espera N'Fase 1 CK_sga_uri_evidencia: rechaza ruta UNC y traversal', N'INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''\\servidor\recurso\acta.pdf'', REPLICATE(''a'', 64));', 547;
+
+EXECUTE #espera N'Fase 1 CK_sga_uri_evidencia: rechaza traversal (..)', N'INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''/sgspi/../secreto.pdf'', REPLICATE(''a'', 64));', 547;
+
+EXECUTE #espera N'Fase 1 CK_sga_uri_evidencia: acepta ruta lógica interna /sgspi/', N'
+BEGIN TRAN;
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 20, N''Avance'', N''acta.pdf'', N''/sgspi/2026/acta.pdf'', REPLICATE(''a'', 64));
+ROLLBACK;', 0;
+
 EXECUTE #espera N'AP-09 seguimiento sincroniza el avance de la actividad', N'
 INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance) VALUES ((SELECT act_codigo FROM sgspi.actividad_tratamiento WHERE act_numero_orden = 1), 1, 40, N''Avance parcial'');
 IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 40 THROW 51000, N''avance no sincronizado'', 1;', 0;
@@ -445,6 +464,8 @@ CREATE USER sgspi_prueba_consulta WITHOUT LOGIN;
 
 CREATE USER sgspi_prueba_custodio WITHOUT LOGIN;
 
+CREATE USER sgspi_prueba_lider WITHOUT LOGIN;
+
 CREATE USER sgspi_prueba_oficial WITHOUT LOGIN;
 
 CREATE USER sgspi_prueba_auditor WITHOUT LOGIN;
@@ -458,6 +479,8 @@ CREATE USER sgspi_prueba_sin_rol WITHOUT LOGIN;
 ALTER ROLE sgspi_rol_consulta ADD MEMBER sgspi_prueba_consulta;
 
 ALTER ROLE sgspi_rol_custodio_operador ADD MEMBER sgspi_prueba_custodio;
+
+ALTER ROLE sgspi_rol_lider_propietario ADD MEMBER sgspi_prueba_lider;
 
 ALTER ROLE sgspi_rol_oficial_seguridad_privacidad ADD MEMBER sgspi_prueba_oficial;
 
@@ -528,21 +551,121 @@ EXECUTE #espera N'D8 ni su copia en la auditoría', N'EXECUTE AS USER = N''sgspi
 
 EXECUTE #espera N'D8 la cuenta compartida tampoco lee el resto del evento', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT eia_identificador_evento, eia_escenario_operacional INTO #p4 FROM sgspi.evento_incertidumbre_activo;', 229;
 
-EXECUTE #espera N'D8 la cuenta compartida lee vw_inventario_activo_documental_mr04', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p6 FROM sgspi.vw_inventario_activo_documental_mr04;', 0;
+EXECUTE #espera N'D8 la cuenta compartida lee vw_inventario_activo_documental_mr04 con datos institucionales', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p6 FROM sgspi.vw_inventario_activo_documental_mr04; IF NOT EXISTS (SELECT 1 FROM #p6) THROW 51000, N''la vista institucional quedó vacía por RLS'', 1;', 0;
 
 EXECUTE #espera N'D8 la cuenta compartida no lee plan_tratamiento', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p7 FROM sgspi.plan_tratamiento;', 229;
 
 EXECUTE #espera N'D8 la cuenta compartida no lee aud_activo_informacion', N'EXECUTE AS USER = N''sgspi_prueba_consulta''; SELECT * INTO #p8 FROM sgspi.aud_activo_informacion;', 229;
 
+EXECUTE #espera N'Fase 1 aud_* restringida: custodio no lee aud_activo_informacion ni aud_evento_incertidumbre_activo', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; SELECT TOP (1) * INTO #p_aud_c FROM sgspi.aud_activo_informacion;', 229;
+
+EXECUTE #espera N'Fase 1 aud_* restringida: líder no lee aud_requisito_parte_interesada', N'EXECUTE AS USER = N''sgspi_prueba_lider''; SELECT TOP (1) * INTO #p_aud_l FROM sgspi.aud_requisito_parte_interesada;', 229;
+
+EXECUTE #espera N'Fase 1 aud_* restringida: auditor y oficial sí leen aud_evento_incertidumbre_activo', N'
+EXECUTE AS USER = N''sgspi_prueba_auditor'';
+SELECT TOP (1) * INTO #p_aud_a FROM sgspi.aud_evento_incertidumbre_activo;
+REVERT;
+EXECUTE AS USER = N''sgspi_prueba_oficial'';
+SELECT TOP (1) * INTO #p_aud_o FROM sgspi.aud_evento_incertidumbre_activo;', 0;
+
 EXECUTE #espera N'D5 el oficial sí lee las vulnerabilidades', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; SELECT eia_condicion_vulnerabilidad INTO #p5 FROM sgspi.evento_incertidumbre_activo;', 0;
 
-EXECUTE #espera N'D5 un custodio no registra DOFA en un proceso fuera de su alcance', N'
+EXECUTE #espera N'D5 un custodio no registra DOFA en un proceso fuera de su alcance (BLOCK PREDICATE RLS)', N'
 INSERT sgspi.proceso_institucional (pri_identificador, pri_nombre, tpr_codigo) VALUES (N''P03'', N''Proceso de otra UAA'', 1);
 EXECUTE AS USER = N''sgspi_prueba_custodio'';
 INSERT sgspi.analisis_contexto_factor (pev_codigo, pri_codigo, fec_codigo, acf_naturaleza_factor, acf_numero_factor, acf_descripcion_situacion, per_codigo_creador)
-VALUES (1, (SELECT pri_codigo FROM sgspi.proceso_institucional WHERE pri_identificador = N''P03''), 1, N''DEBILIDAD'', 4, N''Fuera de alcance'', 1);', 50021;
+VALUES (1, (SELECT pri_codigo FROM sgspi.proceso_institucional WHERE pri_identificador = N''P03''), 1, N''DEBILIDAD'', 4, N''Fuera de alcance'', 1);', 33504;
 
-EXECUTE #espera N'D5 un custodio no modifica un activo fuera de su alcance', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.activo_informacion SET aci_nombre_activo = N''Cambio ajeno'' WHERE aci_codigo_inventario = N''INV-6'';', 50021;
+EXECUTE #espera N'Fase 1 RLS en lectura: custodio no ve activos fuera de su alcance (INV-6) ni puede editarlos', N'
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+IF EXISTS (SELECT 1 FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-6'')
+    THROW 51000, N''RLS filtró mal: INV-6 visible para custodio'', 1;
+IF NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-2'')
+    THROW 51000, N''RLS filtró mal: INV-2 en alcance no visible para custodio'', 1;
+UPDATE sgspi.activo_informacion SET aci_nombre_activo = N''Cambio ajeno'' WHERE aci_codigo_inventario = N''INV-6'';
+IF @@ROWCOUNT <> 0
+    THROW 51000, N''custodio modificó activo fuera de alcance'', 1;', 0;
+
+EXECUTE #espera N'Fase 1 RLS BLOCK AFTER UPDATE: custodio no puede mover un activo propio (INV-2) a otra UAA', N'
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+UPDATE sgspi.activo_informacion SET uaa_codigo = 2 WHERE aci_codigo_inventario = N''INV-2'';', 33504;
+
+EXECUTE #espera N'Fase 1 RLS en lectura (eia): custodio no ve riesgos de otro proceso (P03)', N'
+BEGIN TRAN;
+DECLARE @p3 INT = (SELECT pri_codigo FROM sgspi.proceso_institucional WHERE pri_identificador = N''P03'');
+INSERT sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo) VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-6''), @p3);
+INSERT sgspi.evento_incertidumbre_activo (pev_codigo, eia_numero_evento, eia_naturaleza_evento, pri_codigo, aci_codigo_primario, aci_codigo_soporte, tac_codigo_componente, eia_fuente_generadora, eia_condicion_vulnerabilidad, eia_efecto_consecuencia, eia_escenario_operacional, epr_codigo_inherente, eim_codigo_inherente, per_codigo_creador)
+VALUES (1, 50, N''RIESGO'', @p3, (SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-6''), 2, 1, N''f'', N''v'', N''e'', N''Riesgo ajeno'', 5, 5, 1);
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+IF EXISTS (SELECT 1 FROM sgspi.evento_incertidumbre_activo WHERE eia_numero_evento = 50)
+    THROW 51000, N''RLS filtró mal: eia de P03 visible para custodio'', 1;
+IF NOT EXISTS (SELECT 1 FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'')
+    THROW 51000, N''RLS filtró mal: RA-01 en alcance no visible para custodio'', 1;
+REVERT;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Fase 1 bypass rpi cerrado (RLS): líder no ve ni edita rpi sin proceso activo en alcance', N'
+EXECUTE AS USER = N''sgspi_prueba_lider'';
+IF EXISTS (SELECT 1 FROM sgspi.requisito_parte_interesada WHERE rpi_codigo = 1)
+    THROW 51000, N''RLS expuso rpi sin proceso en alcance al líder'', 1;
+UPDATE sgspi.requisito_parte_interesada SET rpi_necesidad_expectativa = N''Cambio ajeno'' WHERE rpi_codigo = 1;
+IF @@ROWCOUNT <> 0 THROW 51000, N''RLS permitió editar rpi ajeno'', 1;', 0;
+
+ALTER SECURITY POLICY sgspi.spol_alcance_lectura
+    WITH (STATE = OFF);
+
+EXECUTE #espera N'Fase 1 bypass rpi cerrado (defensa en profundidad TR_rpi): líder recibe 50021 sin RLS', N'
+EXECUTE AS USER = N''sgspi_prueba_lider'';
+UPDATE sgspi.requisito_parte_interesada SET rpi_necesidad_expectativa = N''Bypass sin RLS'' WHERE rpi_codigo = 1;', 50021;
+
+ALTER SECURITY POLICY sgspi.spol_alcance_lectura
+    WITH (STATE = ON);
+
+EXECUTE #espera N'Fase 1 bypass sif/msi cerrado: custodio no crea sif sin aci ni sobre aci ajeno (33504)', N'
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.sistema_informacion_ficha (aci_codigo, sif_nombre_sistema, sif_modalidad_desarrollo, sif_descripcion_general)
+VALUES (NULL, N''SIF sin activo'', N''PROPIO'', N''Prueba'');', 33504;
+
+EXECUTE #espera N'Fase 1 bypass sif/msi cerrado: custodio no crea msi sobre sif ajeno (33504)', N'
+BEGIN TRAN;
+INSERT sgspi.sistema_informacion_ficha (aci_codigo, sif_nombre_sistema, sif_modalidad_desarrollo, sif_descripcion_general)
+VALUES ((SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-6''), N''SIF ajeno'', N''PROPIO'', N''Prueba'');
+DECLARE @sif_ajeno INT = SCOPE_IDENTITY();
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.modulo_sistema_informacion (sif_codigo, msi_nombre_modulo) VALUES (@sif_ajeno, N''Mod ajeno'');', 33504;
+
+EXECUTE #espera N'Fase 1 defensa puente+RLS: custodio no inserta sede sobre activo oculto por RLS (INV-6 -> 50021)', N'
+DECLARE @aci6 INT = (SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-6'');
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.activo_informacion_sede (aci_codigo, sus_codigo)
+VALUES (@aci6, 1);', 50021;
+
+EXECUTE #espera N'Fase 1 DDM: custodio ve presupuesto/observaciones enmascarados; auditor ve reales; aud_sga preserva URI real', N'
+BEGIN TRAN;
+DECLARE @eia_ra1 INT = (SELECT eia_codigo FROM sgspi.evento_incertidumbre_activo WHERE eia_identificador_evento = N''RA-01'');
+DECLARE @eac_id INT = (SELECT MAX(eac_codigo) FROM sgspi.evaluacion_aplicabilidad_control);
+UPDATE sgspi.plan_tratamiento SET plt_presupuesto_estimado_cop = 123456.78 WHERE eia_codigo = @eia_ra1;
+UPDATE sgspi.evaluacion_aplicabilidad_control SET eac_observaciones_auditoria = N''Hallazgo reservado'' WHERE eac_codigo = @eac_id;
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+DECLARE @pres_c DECIMAL(18, 2) = (SELECT plt_presupuesto_estimado_cop FROM sgspi.plan_tratamiento WHERE eia_codigo = @eia_ra1);
+DECLARE @obs_c NVARCHAR(1000) = (SELECT eac_observaciones_auditoria FROM sgspi.evaluacion_aplicabilidad_control WHERE eac_codigo = @eac_id);
+IF ISNULL(@pres_c, -1) <> 0.00
+    THROW 51000, N''DDM no enmascaró presupuesto para custodio'', 1;
+IF ISNULL(@obs_c, N'''') <> N''xxxx''
+    THROW 51000, N''DDM no enmascaró observaciones para custodio'', 1;
+INSERT sgspi.seguimiento_actividad (act_codigo, per_codigo, sga_porcentaje_reportado, sga_descripcion_avance, sga_nombre_archivo_evidencia, sga_uri_almacenamiento_evidencia, sga_hash_sha256_evidencia)
+VALUES (1, 1, 55, N''Evidencia custodio'', N''ev.pdf'', N''https://sgspi/ev_real.pdf'', REPLICATE(''b'', 64));
+DECLARE @sga_id INT = SCOPE_IDENTITY();
+REVERT;
+IF (SELECT asa_uri_almacenamiento_evidencia FROM sgspi.aud_seguimiento_actividad WHERE sga_codigo = @sga_id AND asa_operacion = ''I'') <> N''https://sgspi/ev_real.pdf''
+    THROW 51000, N''aud_seguimiento_actividad perdió la URI real'', 1;
+EXECUTE AS USER = N''sgspi_prueba_auditor'';
+DECLARE @pres_a DECIMAL(18, 2) = (SELECT plt_presupuesto_estimado_cop FROM sgspi.plan_tratamiento WHERE eia_codigo = @eia_ra1);
+DECLARE @obs_a NVARCHAR(1000) = (SELECT eac_observaciones_auditoria FROM sgspi.evaluacion_aplicabilidad_control WHERE eac_codigo = @eac_id);
+IF ISNULL(@pres_a, -1) <> 123456.78 OR ISNULL(@obs_a, N'''') <> N''Hallazgo reservado''
+    THROW 51000, N''auditor no recibió UNMASK'', 1;
+REVERT;
+ROLLBACK;', 0;
 
 EXECUTE #espera N'AP-02 auditor no edita el resto del plan', N'EXECUTE AS USER = N''sgspi_prueba_auditor''; UPDATE sgspi.plan_tratamiento SET plt_justificacion_estrategia = N''x'' WHERE 1 = 0;', 230;
 
@@ -587,6 +710,25 @@ UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci
 EXECUTE #sesion_como 2; -- aprueba la persona 2
 
 EXECUTE #espera N'AP-02 el oficial sí aprueba el activo', N'EXECUTE AS USER = N''sgspi_prueba_oficial''; UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo_inventario = N''INV-R'';', 0;
+
+EXECUTE #espera N'Fase 1 sif/msi bloqueados cuando aci padre es VIGENTE (50011)', N'
+BEGIN TRAN;
+DECLARE @aci_r INT = (SELECT aci_codigo FROM sgspi.activo_informacion WHERE aci_codigo_inventario = N''INV-R'');
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.sistema_informacion_ficha (aci_codigo, sif_nombre_sistema, sif_modalidad_desarrollo, sif_descripcion_general)
+VALUES (@aci_r, N''SIF en vigente'', N''PROPIO'', N''Prueba'');', 50011;
+
+EXECUTE #espera N'Fase 1 msi bloqueado cuando aci padre del sif pasa a VIGENTE (50011)', N'
+BEGIN TRAN;
+INSERT sgspi.sistema_informacion_ficha (aci_codigo, sif_nombre_sistema, sif_modalidad_desarrollo, sif_descripcion_general)
+VALUES (2, N''SIF editable'', N''PROPIO'', N''Prueba'');
+DECLARE @sif_ed INT = SCOPE_IDENTITY();
+INSERT sgspi.modulo_sistema_informacion (sif_codigo, msi_nombre_modulo) VALUES (@sif_ed, N''Mod ok'');
+DISABLE TRIGGER sgspi.TR_aci_integridad_y_actualizacion ON sgspi.activo_informacion;
+UPDATE sgspi.activo_informacion SET aci_estado_registro = N''VIGENTE'' WHERE aci_codigo = 2;
+ENABLE TRIGGER sgspi.TR_aci_integridad_y_actualizacion ON sgspi.activo_informacion;
+EXECUTE AS USER = N''sgspi_prueba_custodio'';
+INSERT sgspi.modulo_sistema_informacion (sif_codigo, msi_nombre_modulo) VALUES (@sif_ed, N''Mod bloqueado'');', 50011;
 
 -- 1.2 Firma de Archivo
 EXECUTE #espera N'AP-02 nadie escribe la firma de Archivo con UPDATE', N'EXECUTE AS USER = N''sgspi_prueba_custodio''; UPDATE sgspi.activo_documental SET per_codigo_revisor_archivo = 2 WHERE 1 = 0;', 230;
@@ -798,6 +940,8 @@ GO
 DROP USER sgspi_prueba_consulta;
 
 DROP USER sgspi_prueba_custodio;
+
+DROP USER sgspi_prueba_lider;
 
 DROP USER sgspi_prueba_oficial;
 

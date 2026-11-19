@@ -34,7 +34,9 @@ CREATE DATABASE AUDIT SPECIFICATION sgspi_auditoria_bd
     ADD (INSERT, UPDATE, DELETE ON OBJECT::dbo.usuario_grupo BY public),    -- quién da grupo SGSPI_* y UAA (alcance, error 50021)
     ADD (INSERT, UPDATE, DELETE ON OBJECT::dbo.grupo BY public),
     ADD (SELECT ON OBJECT::sgspi.evento_incertidumbre_activo BY public),     -- lectura del mapa de vulnerabilidades
-    ADD (SELECT ON OBJECT::sgspi.aud_evento_incertidumbre_activo BY public)
+    ADD (SELECT ON OBJECT::sgspi.aud_evento_incertidumbre_activo BY public),
+    ADD (SELECT ON OBJECT::sgspi.activo_informacion BY public),              -- lectura de activos con PII/reserva (Ley 1581 / Ley 1712)
+    ADD (SELECT ON OBJECT::sgspi.aud_activo_informacion BY public)
     WITH (STATE = ON);
 GO
 
