@@ -47,17 +47,17 @@ GO
 
 -- Consultas de control tras una carga histórica con triggers deshabilitados (AP-04; todas deben devolver 0 filas):
 -- 1) Registros en VIGENTE sin aprobador o con aprobador = creador:
-SELECT 'acf' AS tabla, acf_codigo AS codigo FROM sgspi.analisis_contexto_factor WHERE acf_estado_registro = N'VIGENTE' AND (per_codigo_aprobador IS NULL OR per_codigo_aprobador = per_codigo_creador)
+SELECT 'acf' AS tabla, acf_codigo AS codigo FROM sgspi.analisis_contexto_factor WHERE acf_fase_registro = N'VIGENTE' AND (per_codigo_aprobador IS NULL OR per_codigo_aprobador = per_codigo_creador)
 UNION ALL
-SELECT 'rpi', rpi_codigo FROM sgspi.requisito_parte_interesada WHERE rpi_estado_registro = N'VIGENTE' AND (per_codigo_aprobador IS NULL OR per_codigo_aprobador = per_codigo_creador)
+SELECT 'rpi', rpi_codigo FROM sgspi.requisito_parte_interesada WHERE rpi_fase_registro = N'VIGENTE' AND (per_codigo_aprobador IS NULL OR per_codigo_aprobador = per_codigo_creador)
 UNION ALL
-SELECT 'aci', aci_codigo FROM sgspi.activo_informacion WHERE aci_estado_registro = N'VIGENTE' AND (per_codigo_aprobador IS NULL OR per_codigo_aprobador = per_codigo_creador);
+SELECT 'aci', aci_codigo FROM sgspi.activo_informacion WHERE aci_fase_registro = N'VIGENTE' AND (per_codigo_aprobador IS NULL OR per_codigo_aprobador = per_codigo_creador);
 
 -- 2) Activos en VIGENTE sin propietario activo, sin custodio activo o documentales sin aval de Archivo:
 SELECT aci.aci_codigo
 FROM   sgspi.activo_informacion AS aci
-WHERE  aci.aci_estado_registro = N'VIGENTE'
-       AND aci.aci_esta_activo = 1
-       AND (NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion_responsable AS air WHERE air.aci_codigo = aci.aci_codigo AND air.air_esta_activo = 1 AND air.air_tipo_responsabilidad = N'PROPIETARIO')
-            OR NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion_responsable AS air WHERE air.aci_codigo = aci.aci_codigo AND air.air_esta_activo = 1 AND air.air_tipo_responsabilidad = N'CUSTODIO')
-            OR EXISTS (SELECT 1 FROM sgspi.activo_documental AS ado WHERE ado.ado_codigo = aci.aci_codigo AND ado.ado_esta_activo = 1 AND ado.per_codigo_revisor_archivo IS NULL));
+WHERE  aci.aci_fase_registro = N'VIGENTE'
+       AND aci.aci_estado = 1
+       AND (NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion_responsable AS air WHERE air.aci_codigo = aci.aci_codigo AND air.air_estado = 1 AND air.air_tipo_responsabilidad = N'PROPIETARIO')
+            OR NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion_responsable AS air WHERE air.aci_codigo = aci.aci_codigo AND air.air_estado = 1 AND air.air_tipo_responsabilidad = N'CUSTODIO')
+            OR EXISTS (SELECT 1 FROM sgspi.activo_documental AS ado WHERE ado.ado_codigo = aci.aci_codigo AND ado.ado_estado = 1 AND ado.per_codigo_revisor_archivo IS NULL));
