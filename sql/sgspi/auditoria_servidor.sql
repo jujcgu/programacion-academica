@@ -26,7 +26,7 @@ GO
 CREATE DATABASE AUDIT SPECIFICATION sgspi_auditoria_bd
     FOR SERVER AUDIT sgspi_auditoria
     ADD (SCHEMA_OBJECT_CHANGE_GROUP),             -- ALTER de tablas y triggers (incluye DISABLE/ENABLE TRIGGER)
-    ADD (DATABASE_ROLE_MEMBER_CHANGE_GROUP),      -- altas y bajas en sgspi_rol_*
+    ADD (DATABASE_ROLE_MEMBER_CHANGE_GROUP),      -- altas y bajas en grupo_sgspi_*
     ADD (DATABASE_PRINCIPAL_CHANGE_GROUP),        -- CREATE/ALTER/DROP USER y ROLE
     ADD (SCHEMA_OBJECT_PERMISSION_CHANGE_GROUP),  -- GRANT/DENY sobre objetos
     ADD (DATABASE_PERMISSION_CHANGE_GROUP),

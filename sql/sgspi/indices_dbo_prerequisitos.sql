@@ -1,10 +1,10 @@
 -- ==================================================================================================
--- ÍNDICES PRERREQUISITO EN [dbo] PARA EL ESQUEMA [sgspi] (DDL v2.2)
+-- ÍNDICES PRERREQUISITO EN [dbo] PARA EL ESQUEMA [sgspi] (DDL v2.4 - Fase 1)
 -- ==================================================================================================
 -- Ejecutar ANTES o DESPUÉS de DDL_SGSPI_SQLSERVER2019_v2.sql (fuera de su transacción única).
 -- Motivo:
---   - sgspi.ufn_persona_sesion() busca ORIGINAL_LOGIN() en la columna [sys] de
---     [dbo].[usuario_administrativos] y [dbo].[usuario_docentes] en cada INSERT, UPDATE y lectura RLS.
+--   - sgspi.usp_obtener_contexto_usuario busca por la columna [us] en
+--     [dbo].[usuario_administrativos] y [dbo].[usuario_docentes] sin depender de [sys].
 --   - [dbo].[usuario_grupo](usg_usuario) ya cuenta con [ind_usuario_grupo] en academia3000, pero se
 --     incluye una verificación idempotente por seguridad.
 --   - Sin filtro (has_filter = 0) para cumplir la verificación de la sección 7 del DDL y permitir
@@ -33,10 +33,10 @@ IF OBJECTPROPERTY(OBJECT_ID(N'dbo.usuario_administrativos'), N'IsUserTable') = 1
                           AND ix.is_disabled = 0
                           AND ix.has_filter = 0
                           AND ic.key_ordinal = 1
-                          AND c.name = N'sys')
+                          AND c.name = N'us')
 BEGIN
-    CREATE NONCLUSTERED INDEX IX_usuario_administrativos_sys
-        ON dbo.usuario_administrativos (sys)
+    CREATE NONCLUSTERED INDEX IX_usuario_administrativos_us
+        ON dbo.usuario_administrativos (us)
         INCLUDE (uid, up, state);
 END;
 GO
@@ -56,10 +56,10 @@ IF OBJECTPROPERTY(OBJECT_ID(N'dbo.usuario_docentes'), N'IsUserTable') = 1
                           AND ix.is_disabled = 0
                           AND ix.has_filter = 0
                           AND ic.key_ordinal = 1
-                          AND c.name = N'sys')
+                          AND c.name = N'us')
 BEGIN
-    CREATE NONCLUSTERED INDEX IX_usuario_docentes_sys
-        ON dbo.usuario_docentes (sys)
+    CREATE NONCLUSTERED INDEX IX_usuario_docentes_us
+        ON dbo.usuario_docentes (us)
         INCLUDE (uid, up, state);
 END;
 GO

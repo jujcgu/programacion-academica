@@ -3,7 +3,7 @@ PROYECTO:     Sistema de Gestión de Seguridad y Privacidad de la Información (
 ENTIDAD:      Universidad Surcolombiana (USCO)
 BASE DATOS:   Integrado con el esquema corporativo [dbo] de la USCO (academia3000)
 MOTOR BD:     Microsoft SQL Server 2019 Standard/Enterprise (compatible con compatibility_level >= 100)
-VERSIÓN:      2.3 — Remediación integral P0–P3 (seguridad, concurrencia, integridad, auditoría after-image, índices y despliegue seguro) + compatibilidad academia3000 nivel 100
+VERSIÓN:      2.4 — Fase 1 (desacople de ORIGINAL_LOGIN()/RLS/roles por actor hacia tríada estándar USCO grupo_sgspi_login + grupo_sgspi_consulta + grupo_sgspi_ejecucion + grupo_sgspi_migracion, contexto de login encapsulado sin uwd2 y enmascaramiento de ubicación en vista pública) + base v2.3 SQL Server 2019 / academia3000 nivel 100
 CONVENCIÓN:   Estándar Institucional USCO (academia3000):
 1. Todas las llaves primarias y foráneas usan el sufijo [_codigo] (cero [_id]).
 2. Las columnas propias de cada tabla inician con el acrónimo de 3 letras de su tabla local ([<acr>_...]) y las
@@ -81,16 +81,11 @@ ORIGINAL_LOGIN(), error 50017 si no hay persona; también para un DBA) y cuándo
 queda como segunda barrera). La auditoría del servidor (DISABLE TRIGGER, roles de BD y de servidor, usuarios, permisos,
 DML de [sgspi] y de dbo.usuario_grupo/dbo.grupo, lecturas de [eia] y cambios de la propia auditoría) se configura fuera de
 la transacción en sql/sgspi/auditoria_servidor.sql.
-AP-02  Privilegios mínimos: sgspi_rol_base (SELECT, DENY ALTER, DENY de escritura sobre [efc]/[tef] y sobre
-columnas inmutables) y seis roles de actor, uno por grupo SGSPI_* de [dbo].[grupo], con GRANT por
-tabla (sección 5.10.10). vw_usuario_rol_alcance_sgspi ya no expone per_identificacion ni per_email_interno
-y solo lista grupos SGSPI_*. D5/D8: líder y custodio solo escriben en el alcance de sus UAA (sección 5.9b,
-error 50021); la cuenta compartida (sgspi_rol_consulta) queda fuera de sgspi_rol_base y solo lee por lista blanca
-los catálogos y las cinco vistas de inventario, DOFA y controles (vw_consolidado_dofa,
-vw_resumen_activos_criticidad, vw_desglose_ccd_trd_mr04, vw_inventario_activo_documental_mr04,
-vw_controles_atributos_iso27002), sin acceso a eia, plt, act, sga ni aud_*. Los roles transversales
-van en lista explícita (oficial, comité y auditor; el gestor documental solo en activos, D9): sin rol de actor no hay
-alcance. D2: el dictamen de eficacia solo lo escribe el auditor (DENY de sus columnas al líder y al oficial).
+AP-02  Privilegios mínimos bajo estándar institucional USCO (sección 5.10.10): roles planos AUTHORIZATION dbo con prefijo
+grupo_sgspi_* (grupo_sgspi_login para usp_obtener_contexto_usuario y vw_usuario_rol_alcance_sgspi; grupo_sgspi_consulta
+para lectura de [sgspi] y maestras FK de [dbo]; grupo_sgspi_ejecucion con GRANT por tabla sobre [sgspi], DELETE solo en
+las 11 puentes N:M y DENY ALTER/DELETE en entidades/aud_*; grupo_sgspi_migracion exclusivo para Flyway CI/CD).
+vw_usuario_rol_alcance_sgspi no expone per_identificacion, per_email_interno, uwd, uwd2 ni sys y solo lista grupos SGSPI_*.
 AP-03  Identidad sin procedimiento de contexto de sesión: sgspi.ufn_persona_sesion() resuelve la persona desde
 ORIGINAL_LOGIN() -> [dbo].[usuario_administrativos]/[dbo].[usuario_docentes].[sys]; los triggers la exigen (error 50017 si falta), firman con ella las
 aprobaciones y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor distinto.
@@ -232,14 +227,10 @@ VALUES                     (N'dbo.uaa', N'uaa_codigo'),
                            (N'dbo.usuario_administrativos', N'uid'),
                            (N'dbo.usuario_administrativos', N'up'),
                            (N'dbo.usuario_administrativos', N'us'),
-                           (N'dbo.usuario_administrativos', N'sys'),
-                           (N'dbo.usuario_administrativos', N'uwd2'),
                            (N'dbo.usuario_administrativos', N'state'),
                            (N'dbo.usuario_docentes', N'uid'),
                            (N'dbo.usuario_docentes', N'up'),
                            (N'dbo.usuario_docentes', N'us'),
-                           (N'dbo.usuario_docentes', N'sys'),
-                           (N'dbo.usuario_docentes', N'uwd2'),
                            (N'dbo.usuario_docentes', N'state');
 
 DECLARE @faltantes AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(tabla, N'.', columna), N', ')
@@ -288,17 +279,17 @@ DECLARE @tipo_fk_invalido AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(v.tabla
 IF @tipo_fk_invalido IS NOT NULL
     SET @errores += N' Columnas FK de [dbo] no son de tipo INT: ' + @tipo_fk_invalido + N'.';
 
--- [E2] Valida tipo de cadena (VARCHAR/NVARCHAR) en [sys] de usuario_administrativos y usuario_docentes
-DECLARE @tipo_sys_invalido AS NVARCHAR (500) = (SELECT STRING_AGG(CONCAT(v.tabla, N'.sys (', TYPE_NAME(c.system_type_id), N')'), N', ')
+-- [E2] Valida tipo de cadena (VARCHAR/NVARCHAR) en [us] de usuario_administrativos y usuario_docentes
+DECLARE @tipo_us_invalido AS NVARCHAR (500) = (SELECT STRING_AGG(CONCAT(v.tabla, N'.us (', TYPE_NAME(c.system_type_id), N')'), N', ')
                                                 FROM   (VALUES (N'dbo.usuario_administrativos'), (N'dbo.usuario_docentes')) AS v(tabla)
                                                        INNER JOIN
                                                        sys.columns AS c
                                                        ON c.object_id = OBJECT_ID(v.tabla)
-                                                          AND c.name = N'sys'
+                                                          AND c.name = N'us'
                                                 WHERE  c.system_type_id NOT IN (167, 231)); -- VARCHAR / NVARCHAR
 
-IF @tipo_sys_invalido IS NOT NULL
-    SET @errores += N' Columna [sys] de tipo incompatible (se requiere VARCHAR/NVARCHAR): ' + @tipo_sys_invalido + N'.';
+IF @tipo_us_invalido IS NOT NULL
+    SET @errores += N' Columna [us] de tipo incompatible (se requiere VARCHAR/NVARCHAR): ' + @tipo_us_invalido + N'.';
 
 -- [E2] Exige READ_COMMITTED_SNAPSHOT ON (prerequisito de concurrencia sin deadlocks [AP-24])
 IF EXISTS (SELECT 1
@@ -326,9 +317,9 @@ IF NOT EXISTS (SELECT 1
 
 IF EXISTS (SELECT 1
            FROM   sys.fn_listextendedproperty(N'sgspi_version', N'SCHEMA', N'sgspi', NULL, NULL, NULL, NULL))
-    EXECUTE sys.sp_updateextendedproperty N'sgspi_version', N'2.3', N'SCHEMA', N'sgspi';
+    EXECUTE sys.sp_updateextendedproperty N'sgspi_version', N'2.4', N'SCHEMA', N'sgspi';
 ELSE
-    EXECUTE sys.sp_addextendedproperty N'sgspi_version', N'2.3', N'SCHEMA', N'sgspi';
+    EXECUTE sys.sp_addextendedproperty N'sgspi_version', N'2.4', N'SCHEMA', N'sgspi';
 
 
 GO
@@ -426,10 +417,7 @@ FROM   (VALUES -- ACF: Análisis de Contexto de Factores
        (N'EIA', N'BORRADOR', N'Borrador', 1, 1), (N'EIA', N'EN_VALIDACION_LIDER', N'En validación del líder', 0, 1), (N'EIA', N'EN_REVISION_SGSPI', N'En revisión SGSPI', 0, 1), (N'EIA', N'OBSERVADO', N'Observado', 0, 1), (N'EIA', N'EN_ACEPTACION_COMITE', N'En aceptación del comité', 0, 1), (N'EIA', N'APROBADO_PLANIFICADO', N'Aprobado y planificado', 0, 0), (N'EIA', N'EN_EJECUCION', N'En ejecución', 0, 0), (N'EIA', N'EN_EVALUACION_EFICACIA', N'En evaluación de eficacia', 0, 0), (N'EIA', N'CERRADO_EFICAZ', N'Cerrado eficaz', 0, 0), (N'EIA', N'HISTORICO', N'Histórico', 0, 0), -- ACT: Actividades de Tratamiento
        (N'ACT', N'PENDIENTE', N'Pendiente', 1, 1), (N'ACT', N'EN_CURSO', N'En curso', 0, 1), (N'ACT', N'COMPLETADA', N'Completada', 0, 0), (N'ACT', N'OBSERVADA', N'Observada', 0, 1)) AS v(dominio, identificador, nombre, es_inicial, permite_edicion);
 
--- [AP-05] Transiciones válidas (se toman de los triggers originales); tef_rol_requerido NULL = cualquier rol con UPDATE
--- Las de captura de ACI y EIA (desde BORRADOR y OBSERVADO) nombran sus roles, una fila por rol: el gestor (ACI), el comité
--- y el auditor (EIA) tienen UPDATE del estado solo para sus propias transiciones.
--- D2: el auditor certifica la eficacia (EN_EVALUACION_EFICACIA -> CERRADO_EFICAZ) o reabre la ejecución (-> EN_EJECUCION)
+-- [AP-05] Transiciones válidas (deduplicadas sin rol de BD: el RBAC por actor opera en Spring Security 7)
 INSERT INTO sgspi.transicion_estado_flujo (
     efc_dominio,
     efc_identificador_origen,
@@ -439,13 +427,13 @@ INSERT INTO sgspi.transicion_estado_flujo (
 SELECT v.dominio,
        v.origen,
        v.destino,
-       v.rol_requerido
+       NULL
 FROM   (VALUES -- ACF
-       (N'ACF', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL), (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACF', N'OBSERVADO', N'BORRADOR', NULL), (N'ACF', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL), (N'ACF', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), -- RPI
-       (N'RPI', N'BORRADOR', N'EN_VALIDACION_LIDER', NULL), (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'RPI', N'OBSERVADO', N'BORRADOR', NULL), (N'RPI', N'OBSERVADO', N'EN_VALIDACION_LIDER', NULL), (N'RPI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), -- ACI
-       (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_custodio_operador'), (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI', N'sgspi_rol_gestor_documental'), (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO', N'sgspi_rol_gestor_documental'), (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_custodio_operador'), (N'ACI', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'ACI', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_custodio_operador'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'INACTIVO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'INACTIVO', N'VIGENTE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'ACI', N'INACTIVO', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), -- EIA
-       (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO', N'sgspi_rol_comite_direccion'), (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO', N'sgspi_rol_comite_direccion'), (N'EIA', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_lider_propietario'), (N'EIA', N'OBSERVADO', N'BORRADOR', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_lider_propietario'), (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION', N'sgspi_rol_lider_propietario'), (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EJECUCION', N'OBSERVADO', N'sgspi_rol_lider_propietario'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ', N'sgspi_rol_auditor_control'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION', N'sgspi_rol_auditor_control'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO', N'sgspi_rol_oficial_seguridad_privacidad'), (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO', N'sgspi_rol_oficial_seguridad_privacidad'), -- ACT
-       (N'ACT', N'PENDIENTE', N'EN_CURSO', NULL), (N'ACT', N'PENDIENTE', N'OBSERVADA', NULL), (N'ACT', N'EN_CURSO', N'COMPLETADA', N'sgspi_rol_lider_propietario'), (N'ACT', N'EN_CURSO', N'OBSERVADA', N'sgspi_rol_lider_propietario'), (N'ACT', N'OBSERVADA', N'PENDIENTE', NULL), (N'ACT', N'OBSERVADA', N'EN_CURSO', NULL), (N'ACT', N'COMPLETADA', N'OBSERVADA', N'sgspi_rol_oficial_seguridad_privacidad')) AS v(dominio, origen, destino, rol_requerido);
+       (N'ACF', N'BORRADOR', N'EN_VALIDACION_LIDER'), (N'ACF', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI'), (N'ACF', N'EN_VALIDACION_LIDER', N'OBSERVADO'), (N'ACF', N'EN_VALIDACION_LIDER', N'BORRADOR'), (N'ACF', N'EN_REVISION_SGSPI', N'VIGENTE'), (N'ACF', N'EN_REVISION_SGSPI', N'OBSERVADO'), (N'ACF', N'OBSERVADO', N'BORRADOR'), (N'ACF', N'OBSERVADO', N'EN_VALIDACION_LIDER'), (N'ACF', N'VIGENTE', N'HISTORICO'), (N'ACF', N'VIGENTE', N'EN_REVISION_SGSPI'), -- RPI
+       (N'RPI', N'BORRADOR', N'EN_VALIDACION_LIDER'), (N'RPI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI'), (N'RPI', N'EN_VALIDACION_LIDER', N'OBSERVADO'), (N'RPI', N'EN_VALIDACION_LIDER', N'BORRADOR'), (N'RPI', N'EN_REVISION_SGSPI', N'VIGENTE'), (N'RPI', N'EN_REVISION_SGSPI', N'OBSERVADO'), (N'RPI', N'OBSERVADO', N'BORRADOR'), (N'RPI', N'OBSERVADO', N'EN_VALIDACION_LIDER'), (N'RPI', N'VIGENTE', N'HISTORICO'), (N'RPI', N'VIGENTE', N'EN_REVISION_SGSPI'), -- ACI
+       (N'ACI', N'BORRADOR', N'EN_VALIDACION_LIDER'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_ARCHIVO'), (N'ACI', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI'), (N'ACI', N'EN_VALIDACION_LIDER', N'OBSERVADO'), (N'ACI', N'EN_VALIDACION_LIDER', N'BORRADOR'), (N'ACI', N'EN_REVISION_ARCHIVO', N'EN_REVISION_SGSPI'), (N'ACI', N'EN_REVISION_ARCHIVO', N'OBSERVADO'), (N'ACI', N'EN_REVISION_SGSPI', N'VIGENTE'), (N'ACI', N'EN_REVISION_SGSPI', N'OBSERVADO'), (N'ACI', N'OBSERVADO', N'BORRADOR'), (N'ACI', N'OBSERVADO', N'EN_VALIDACION_LIDER'), (N'ACI', N'VIGENTE', N'INACTIVO'), (N'ACI', N'VIGENTE', N'HISTORICO'), (N'ACI', N'VIGENTE', N'EN_REVISION_SGSPI'), (N'ACI', N'VIGENTE', N'EN_REVISION_ARCHIVO'), (N'ACI', N'INACTIVO', N'VIGENTE'), (N'ACI', N'INACTIVO', N'HISTORICO'), -- EIA
+       (N'EIA', N'BORRADOR', N'EN_VALIDACION_LIDER'), (N'EIA', N'EN_VALIDACION_LIDER', N'EN_REVISION_SGSPI'), (N'EIA', N'EN_VALIDACION_LIDER', N'OBSERVADO'), (N'EIA', N'EN_VALIDACION_LIDER', N'BORRADOR'), (N'EIA', N'EN_REVISION_SGSPI', N'EN_ACEPTACION_COMITE'), (N'EIA', N'EN_REVISION_SGSPI', N'APROBADO_PLANIFICADO'), (N'EIA', N'EN_REVISION_SGSPI', N'OBSERVADO'), (N'EIA', N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO'), (N'EIA', N'EN_ACEPTACION_COMITE', N'OBSERVADO'), (N'EIA', N'OBSERVADO', N'BORRADOR'), (N'EIA', N'OBSERVADO', N'EN_VALIDACION_LIDER'), (N'EIA', N'APROBADO_PLANIFICADO', N'EN_EJECUCION'), (N'EIA', N'APROBADO_PLANIFICADO', N'OBSERVADO'), (N'EIA', N'EN_EJECUCION', N'EN_EVALUACION_EFICACIA'), (N'EIA', N'EN_EJECUCION', N'OBSERVADO'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'CERRADO_EFICAZ'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'EN_EJECUCION'), (N'EIA', N'EN_EVALUACION_EFICACIA', N'OBSERVADO'), (N'EIA', N'CERRADO_EFICAZ', N'HISTORICO'), -- ACT
+       (N'ACT', N'PENDIENTE', N'EN_CURSO'), (N'ACT', N'PENDIENTE', N'OBSERVADA'), (N'ACT', N'EN_CURSO', N'COMPLETADA'), (N'ACT', N'EN_CURSO', N'OBSERVADA'), (N'ACT', N'OBSERVADA', N'PENDIENTE'), (N'ACT', N'OBSERVADA', N'EN_CURSO'), (N'ACT', N'COMPLETADA', N'OBSERVADA')) AS v(dominio, origen, destino);
 
 
 GO
@@ -1802,7 +1790,7 @@ para no registrar dos veces los UPDATE internos de los triggers.
 Columnas: las de origen menos las calculadas, <acr>_version y <acr>_fecha_creacion; la clave conserva su nombre (FK al origen) y
 las demás cambian el acrónimo de origen por el de auditoría (en aud_seguimiento_actividad, el per_codigo de origen
 es per_codigo_autor), más per_codigo, <aud>_operacion (CHAR(1) DEFAULT 'U' CHECK IN ('I', 'U')), <aud>_usuario_bd y
-<aud>_fecha_cambio. Son inmutables: TR_<aud>_inmutabilidad (error 50016) y DENY de escritura a sgspi_rol_base.
+<aud>_fecha_cambio. Son inmutables: TR_<aud>_inmutabilidad (error 50016) y DENY de escritura a los roles de runtime grupo_sgspi_*.
 Almacenamiento [C1][D2][D3][D4]: PK BIGINT monotónica (<aud>_codigo) sin FKs hacia dbo.persona (reduce 62 -> 13 FKs
 sobre dbo.persona), DATA_COMPRESSION = PAGE únicamente en las 9 aud_* operativas (aaf, ari, aai, aao, aea, apt, aat, asa,
 aae) y sus índices NC, sin compresión ni índice per_codigo en las 40 aud_* de catálogos/puente.
@@ -1810,6 +1798,7 @@ shortcut: [D3] sin particionamiento prematuro (PF_sgspi_aud_anio/PS_sgspi_aud_an
 aud_seguimiento_actividad (y aud_* de alto volumen) cuando supere 5M filas o 5 GB, usando filegroups anuales separados.
 Filegroups [D4]: si el DBA pre-crea [FG_SGSPI_DATOS] / [FG_SGSPI_DATA] y lo marca DEFAULT antes de desplegar, todas las
 tablas de [sgspi] se alojan fuera de [PRIMARY] sin fallar cuando el filegroup no existe.
+shortcut: tablas aud_* y triggers mantienen per_codigo vía SESSION_CONTEXT opcional, se retiran en Fase 2 al activar SYSTEM_VERSIONING.
 ==================================================================================================*/
 -- [apv] Auditoría de [sgspi].[periodo_vigencia] ([pev])
 CREATE TABLE sgspi.aud_periodo_vigencia (
@@ -1820,7 +1809,7 @@ CREATE TABLE sgspi.aud_periodo_vigencia (
     apv_fecha_cierre    DATE               NULL,
     apv_fase_vigencia   NVARCHAR (20)      NOT NULL,
     apv_estado          BIT                NOT NULL,
-    per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo          INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     apv_operacion       CHAR (1)           CONSTRAINT DF_apv_operacion DEFAULT 'U' NOT NULL,
     apv_usuario_bd      SYSNAME            CONSTRAINT DF_apv_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apv_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_apv_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1843,7 +1832,7 @@ CREATE TABLE sgspi.aud_estado_flujo_catalogo (
     aec_es_inicial      BIT                NOT NULL,
     aec_permite_edicion BIT                NOT NULL,
     aec_estado          BIT                NOT NULL,
-    per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo          INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aec_operacion       CHAR (1)           CONSTRAINT DF_aec_operacion DEFAULT 'U' NOT NULL,
     aec_usuario_bd      SYSNAME            CONSTRAINT DF_aec_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aec_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_aec_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1865,7 +1854,7 @@ CREATE TABLE sgspi.aud_transicion_estado_flujo (
     efc_identificador_destino NVARCHAR (30)      NOT NULL,
     atf_rol_requerido         SYSNAME            NULL,
     atf_estado                BIT                NOT NULL,
-    per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     atf_operacion             CHAR (1)           CONSTRAINT DF_atf_operacion DEFAULT 'U' NOT NULL,
     atf_usuario_bd            SYSNAME            CONSTRAINT DF_atf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     atf_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_atf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1886,7 +1875,7 @@ CREATE TABLE sgspi.aud_tipo_proceso_catalogo (
     atr_nombre        NVARCHAR (50)      NOT NULL,
     atr_descripcion   NVARCHAR (255)     NULL,
     atr_estado        BIT                NOT NULL,
-    per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo        INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     atr_operacion     CHAR (1)           CONSTRAINT DF_atr_operacion DEFAULT 'U' NOT NULL,
     atr_usuario_bd    SYSNAME            CONSTRAINT DF_atr_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     atr_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_atr_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1909,7 +1898,7 @@ CREATE TABLE sgspi.aud_proceso_institucional (
     uaa_codigo_lider  INT                NULL,
     car_codigo_lider  INT                NULL,
     api_estado        BIT                NOT NULL,
-    per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo        INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     api_operacion     CHAR (1)           CONSTRAINT DF_api_operacion DEFAULT 'U' NOT NULL,
     api_usuario_bd    SYSNAME            CONSTRAINT DF_api_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     api_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_api_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1928,7 +1917,7 @@ CREATE TABLE sgspi.aud_proceso_institucional_uaa (
     pri_codigo       INT                NOT NULL,
     uaa_codigo       INT                NOT NULL,
     apu_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     apu_operacion    CHAR (1)           CONSTRAINT DF_apu_operacion DEFAULT 'U' NOT NULL,
     apu_usuario_bd   SYSNAME            CONSTRAINT DF_apu_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apu_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_apu_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1949,7 +1938,7 @@ CREATE TABLE sgspi.aud_factor_entorno_catalogo (
     afc_ambito_entorno NVARCHAR (15)      NOT NULL,
     afc_descripcion    NVARCHAR (255)     NULL,
     afc_estado         BIT                NOT NULL,
-    per_codigo         INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo         INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     afc_operacion      CHAR (1)           CONSTRAINT DF_afc_operacion DEFAULT 'U' NOT NULL,
     afc_usuario_bd     SYSNAME            CONSTRAINT DF_afc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     afc_fecha_cambio   DATETIMEOFFSET (0) CONSTRAINT DF_afc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -1980,7 +1969,7 @@ CREATE TABLE sgspi.aud_analisis_contexto_factor (
     per_codigo_aprobador        INT                NULL,
     aaf_fecha_actualizacion     DATETIMEOFFSET (0) NOT NULL,
     aaf_estado                  BIT                NOT NULL,
-    per_codigo                  INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                  INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aaf_operacion               CHAR (1)           CONSTRAINT DF_aaf_operacion DEFAULT 'U' NOT NULL,
     aaf_usuario_bd              SYSNAME            CONSTRAINT DF_aaf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aaf_fecha_cambio            DATETIMEOFFSET (0) CONSTRAINT DF_aaf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2005,7 +1994,7 @@ CREATE TABLE sgspi.aud_parte_interesada (
     apa_origen          NVARCHAR (15)      NOT NULL,
     apa_descripcion_rol NVARCHAR (255)     NULL,
     apa_estado          BIT                NOT NULL,
-    per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo          INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     apa_operacion       CHAR (1)           CONSTRAINT DF_apa_operacion DEFAULT 'U' NOT NULL,
     apa_usuario_bd      SYSNAME            CONSTRAINT DF_apa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apa_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_apa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2034,7 +2023,7 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada (
     per_codigo_aprobador      INT                NULL,
     ari_fecha_actualizacion   DATETIMEOFFSET (0) NOT NULL,
     ari_estado                BIT                NOT NULL,
-    per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     ari_operacion             CHAR (1)           CONSTRAINT DF_ari_operacion DEFAULT 'U' NOT NULL,
     ari_usuario_bd            SYSNAME            CONSTRAINT DF_ari_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ari_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_ari_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2058,7 +2047,7 @@ CREATE TABLE sgspi.aud_requisito_parte_interesada_proceso_institucional (
     pri_codigo         INT                NOT NULL,
     arp_fecha_registro DATETIMEOFFSET (0) NOT NULL,
     arp_estado         BIT                NOT NULL,
-    per_codigo         INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo         INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     arp_operacion      CHAR (1)           CONSTRAINT DF_arp_operacion DEFAULT 'U' NOT NULL,
     arp_usuario_bd     SYSNAME            CONSTRAINT DF_arp_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     arp_fecha_cambio   DATETIMEOFFSET (0) CONSTRAINT DF_arp_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2080,7 +2069,7 @@ CREATE TABLE sgspi.aud_tipo_activo_catalogo (
     atc_nombre          NVARCHAR (120)     NOT NULL,
     atc_ejemplos_ref    NVARCHAR (255)     NULL,
     atc_estado          BIT                NOT NULL,
-    per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo          INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     atc_operacion       CHAR (1)           CONSTRAINT DF_atc_operacion DEFAULT 'U' NOT NULL,
     atc_usuario_bd      SYSNAME            CONSTRAINT DF_atc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     atc_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_atc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2102,7 +2091,7 @@ CREATE TABLE sgspi.aud_causal_excepcion_transparencia (
     ace_descripcion_causal      NVARCHAR (500)     NOT NULL,
     ace_norma_referencia        NVARCHAR (100)     NOT NULL,
     ace_estado                  BIT                NOT NULL,
-    per_codigo                  INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                  INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     ace_operacion               CHAR (1)           CONSTRAINT DF_ace_operacion DEFAULT 'U' NOT NULL,
     ace_usuario_bd              SYSNAME            CONSTRAINT DF_ace_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ace_fecha_cambio            DATETIMEOFFSET (0) CONSTRAINT DF_ace_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2152,7 +2141,7 @@ CREATE TABLE sgspi.aud_activo_informacion (
     per_codigo_revisor_archivo          INT                NULL,
     aai_fecha_actualizacion             DATETIMEOFFSET (0) NOT NULL,
     aai_estado                          BIT                NOT NULL,
-    per_codigo                          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                          INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aai_operacion                       CHAR (1)           CONSTRAINT DF_aai_operacion DEFAULT 'U' NOT NULL,
     aai_usuario_bd                      SYSNAME            CONSTRAINT DF_aai_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aai_fecha_cambio                    DATETIMEOFFSET (0) CONSTRAINT DF_aai_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2175,7 +2164,7 @@ CREATE TABLE sgspi.aud_activo_informacion_proceso_institucional (
     aci_codigo       INT                NOT NULL,
     pri_codigo       INT                NOT NULL,
     aap_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aap_operacion    CHAR (1)           CONSTRAINT DF_aap_operacion DEFAULT 'U' NOT NULL,
     aap_usuario_bd   SYSNAME            CONSTRAINT DF_aap_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aap_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aap_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2194,7 +2183,7 @@ CREATE TABLE sgspi.aud_activo_informacion_sede (
     aci_codigo       INT                NOT NULL,
     sus_codigo       INT                NOT NULL,
     aas_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aas_operacion    CHAR (1)           CONSTRAINT DF_aas_operacion DEFAULT 'U' NOT NULL,
     aas_usuario_bd   SYSNAME            CONSTRAINT DF_aas_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aas_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aas_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2215,7 +2204,7 @@ CREATE TABLE sgspi.aud_activo_informacion_responsable (
     uaa_codigo               INT                NOT NULL,
     air_tipo_responsabilidad NVARCHAR (20)      NOT NULL,
     aar_estado               BIT                NOT NULL,
-    per_codigo               INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo               INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aar_operacion            CHAR (1)           CONSTRAINT DF_aar_operacion DEFAULT 'U' NOT NULL,
     aar_usuario_bd           SYSNAME            CONSTRAINT DF_aar_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aar_fecha_cambio         DATETIMEOFFSET (0) CONSTRAINT DF_aar_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2238,7 +2227,7 @@ CREATE TABLE sgspi.aud_sistema_informacion_ficha (
     asf_fabricante_proveedor NVARCHAR (150)     NULL,
     asf_descripcion_general  NVARCHAR (1000)    NOT NULL,
     asf_estado               BIT                NOT NULL,
-    per_codigo               INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo               INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     asf_operacion            CHAR (1)           CONSTRAINT DF_asf_operacion DEFAULT 'U' NOT NULL,
     asf_usuario_bd           SYSNAME            CONSTRAINT DF_asf_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asf_fecha_cambio         DATETIMEOFFSET (0) CONSTRAINT DF_asf_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2260,7 +2249,7 @@ CREATE TABLE sgspi.aud_modulo_sistema_informacion (
     ami_nombre_modulo     NVARCHAR (200)     NOT NULL,
     ami_usuarios_objetivo NVARCHAR (150)     NULL,
     ami_estado            BIT                NOT NULL,
-    per_codigo            INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo            INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     ami_operacion         CHAR (1)           CONSTRAINT DF_ami_operacion DEFAULT 'U' NOT NULL,
     ami_usuario_bd        SYSNAME            CONSTRAINT DF_ami_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     ami_fecha_cambio      DATETIMEOFFSET (0) CONSTRAINT DF_ami_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2280,7 +2269,7 @@ CREATE TABLE sgspi.aud_serie_documental_catalogo (
     aso_numero_ccd   SMALLINT           NOT NULL,
     aso_nombre_serie NVARCHAR (150)     NOT NULL,
     aso_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aso_operacion    CHAR (1)           CONSTRAINT DF_aso_operacion DEFAULT 'U' NOT NULL,
     aso_usuario_bd   SYSNAME            CONSTRAINT DF_aso_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aso_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aso_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2301,7 +2290,7 @@ CREATE TABLE sgspi.aud_subserie_documental_catalogo (
     asd_numero_ccd      SMALLINT           NOT NULL,
     asd_nombre_subserie NVARCHAR (200)     NOT NULL,
     asd_estado          BIT                NOT NULL,
-    per_codigo          INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo          INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     asd_operacion       CHAR (1)           CONSTRAINT DF_asd_operacion DEFAULT 'U' NOT NULL,
     asd_usuario_bd      SYSNAME            CONSTRAINT DF_asd_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asd_fecha_cambio    DATETIMEOFFSET (0) CONSTRAINT DF_asd_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2323,7 +2312,7 @@ CREATE TABLE sgspi.aud_unidad_productora_cuadro_clasificacion_documental (
     uaa_codigo              INT                NULL,
     auc_nombre_unidad       NVARCHAR (150)     NOT NULL,
     auc_estado              BIT                NOT NULL,
-    per_codigo              INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo              INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     auc_operacion           CHAR (1)           CONSTRAINT DF_auc_operacion DEFAULT 'U' NOT NULL,
     auc_usuario_bd          SYSNAME            CONSTRAINT DF_auc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     auc_fecha_cambio        DATETIMEOFFSET (0) CONSTRAINT DF_auc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2343,7 +2332,7 @@ CREATE TABLE sgspi.aud_periodicidad_catalogo (
     apc_nombre       NVARCHAR (40)      NOT NULL,
     apc_orden        TINYINT            NOT NULL,
     apc_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     apc_operacion    CHAR (1)           CONSTRAINT DF_apc_operacion DEFAULT 'U' NOT NULL,
     apc_usuario_bd   SYSNAME            CONSTRAINT DF_apc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_apc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2363,7 +2352,7 @@ CREATE TABLE sgspi.aud_estado_publicacion_catalogo (
     aep_nombre       NVARCHAR (60)      NOT NULL,
     aep_descripcion  NVARCHAR (255)     NULL,
     aep_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aep_operacion    CHAR (1)           CONSTRAINT DF_aep_operacion DEFAULT 'U' NOT NULL,
     aep_usuario_bd   SYSNAME            CONSTRAINT DF_aep_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aep_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aep_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2382,7 +2371,7 @@ CREATE TABLE sgspi.aud_soporte_registro_catalogo (
     src_codigo       SMALLINT           NOT NULL,
     asc_nombre       NVARCHAR (30)      NOT NULL,
     asc_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     asc_operacion    CHAR (1)           CONSTRAINT DF_asc_operacion DEFAULT 'U' NOT NULL,
     asc_usuario_bd   SYSNAME            CONSTRAINT DF_asc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_asc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2401,7 +2390,7 @@ CREATE TABLE sgspi.aud_medio_conservacion_catalogo (
     mcc_codigo       SMALLINT           NOT NULL,
     amc_nombre       NVARCHAR (30)      NOT NULL,
     amc_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     amc_operacion    CHAR (1)           CONSTRAINT DF_amc_operacion DEFAULT 'U' NOT NULL,
     amc_usuario_bd   SYSNAME            CONSTRAINT DF_amc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     amc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_amc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2421,7 +2410,7 @@ CREATE TABLE sgspi.aud_idioma_catalogo (
     aii_codigo_iso   NVARCHAR (10)      NOT NULL,
     aii_nombre       NVARCHAR (50)      NOT NULL,
     aii_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aii_operacion    CHAR (1)           CONSTRAINT DF_aii_operacion DEFAULT 'U' NOT NULL,
     aii_usuario_bd   SYSNAME            CONSTRAINT DF_aii_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aii_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aii_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2440,7 +2429,7 @@ CREATE TABLE sgspi.aud_formato_archivo_catalogo (
     fac_codigo       SMALLINT           NOT NULL,
     afa_nombre       NVARCHAR (60)      NOT NULL,
     afa_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     afa_operacion    CHAR (1)           CONSTRAINT DF_afa_operacion DEFAULT 'U' NOT NULL,
     afa_usuario_bd   SYSNAME            CONSTRAINT DF_afa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     afa_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_afa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2467,7 +2456,7 @@ CREATE TABLE sgspi.aud_activo_documental (
     aao_lugar_consulta_ubicacion      NVARCHAR (255)     NOT NULL,
     aao_fecha_actualizacion           DATETIMEOFFSET (0) NOT NULL,
     aao_estado                        BIT                NOT NULL,
-    per_codigo                        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                        INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aao_operacion                     CHAR (1)           CONSTRAINT DF_aao_operacion DEFAULT 'U' NOT NULL,
     aao_usuario_bd                    SYSNAME            CONSTRAINT DF_aao_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aao_fecha_cambio                  DATETIMEOFFSET (0) CONSTRAINT DF_aao_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2490,7 +2479,7 @@ CREATE TABLE sgspi.aud_activo_documental_soporte_registro (
     ado_codigo       INT                NOT NULL,
     src_codigo       SMALLINT           NOT NULL,
     aad_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aad_operacion    CHAR (1)           CONSTRAINT DF_aad_operacion DEFAULT 'U' NOT NULL,
     aad_usuario_bd   SYSNAME            CONSTRAINT DF_aad_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aad_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aad_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2509,7 +2498,7 @@ CREATE TABLE sgspi.aud_activo_documental_medio_conservacion (
     ado_codigo       INT                NOT NULL,
     mcc_codigo       SMALLINT           NOT NULL,
     aam_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aam_operacion    CHAR (1)           CONSTRAINT DF_aam_operacion DEFAULT 'U' NOT NULL,
     aam_usuario_bd   SYSNAME            CONSTRAINT DF_aam_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aam_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aam_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2528,7 +2517,7 @@ CREATE TABLE sgspi.aud_activo_documental_idioma (
     ado_codigo       INT                NOT NULL,
     idi_codigo       SMALLINT           NOT NULL,
     aid_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aid_operacion    CHAR (1)           CONSTRAINT DF_aid_operacion DEFAULT 'U' NOT NULL,
     aid_usuario_bd   SYSNAME            CONSTRAINT DF_aid_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aid_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aid_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2547,7 +2536,7 @@ CREATE TABLE sgspi.aud_activo_documental_formato_archivo (
     ado_codigo       INT                NOT NULL,
     fac_codigo       SMALLINT           NOT NULL,
     afd_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     afd_operacion    CHAR (1)           CONSTRAINT DF_afd_operacion DEFAULT 'U' NOT NULL,
     afd_usuario_bd   SYSNAME            CONSTRAINT DF_afd_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     afd_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_afd_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2566,7 +2555,7 @@ CREATE TABLE sgspi.aud_activo_documental_unidad_productora (
     ado_codigo       INT                NOT NULL,
     upc_codigo       INT                NOT NULL,
     aau_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aau_operacion    CHAR (1)           CONSTRAINT DF_aau_operacion DEFAULT 'U' NOT NULL,
     aau_usuario_bd   SYSNAME            CONSTRAINT DF_aau_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aau_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aau_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2588,7 +2577,7 @@ CREATE TABLE sgspi.aud_escala_probabilidad (
     aer_descripcion_criterio  NVARCHAR (255)     NOT NULL,
     aer_frecuencia_referencia NVARCHAR (100)     NOT NULL,
     aer_estado                BIT                NOT NULL,
-    per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aer_operacion             CHAR (1)           CONSTRAINT DF_aer_operacion DEFAULT 'U' NOT NULL,
     aer_usuario_bd            SYSNAME            CONSTRAINT DF_aer_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aer_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_aer_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2610,7 +2599,7 @@ CREATE TABLE sgspi.aud_escala_impacto (
     aem_descripcion_organizacional NVARCHAR (1000)    NOT NULL,
     aem_descripcion_operativa      NVARCHAR (1000)    NULL,
     aem_estado                     BIT                NOT NULL,
-    per_codigo                     INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                     INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aem_operacion                  CHAR (1)           CONSTRAINT DF_aem_operacion DEFAULT 'U' NOT NULL,
     aem_usuario_bd                 SYSNAME            CONSTRAINT DF_aem_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aem_fecha_cambio               DATETIMEOFFSET (0) CONSTRAINT DF_aem_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2630,7 +2619,7 @@ CREATE TABLE sgspi.aud_zona_riesgo_catalogo (
     azc_nombre_nivel NVARCHAR (30)      NOT NULL,
     azc_orden        TINYINT            NOT NULL,
     azc_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     azc_operacion    CHAR (1)           CONSTRAINT DF_azc_operacion DEFAULT 'U' NOT NULL,
     azc_usuario_bd   SYSNAME            CONSTRAINT DF_azc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     azc_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_azc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2653,7 +2642,7 @@ CREATE TABLE sgspi.aud_matriz_valoracion_riesgo (
     amr_directriz_tratamiento_oportunidad NVARCHAR (255)     NOT NULL,
     amr_requiere_aprobacion_comite        BIT                NOT NULL,
     amr_estado                            BIT                NOT NULL,
-    per_codigo                            INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                            INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     amr_operacion                         CHAR (1)           CONSTRAINT DF_amr_operacion DEFAULT 'U' NOT NULL,
     amr_usuario_bd                        SYSNAME            CONSTRAINT DF_amr_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     amr_fecha_cambio                      DATETIMEOFFSET (0) CONSTRAINT DF_amr_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2691,7 +2680,7 @@ CREATE TABLE sgspi.aud_evento_incertidumbre_activo (
     per_codigo_aprobador_comite  INT                NULL,
     aea_fecha_actualizacion      DATETIMEOFFSET (0) NOT NULL,
     aea_estado                   BIT                NOT NULL,
-    per_codigo                   INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                   INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aea_operacion                CHAR (1)           CONSTRAINT DF_aea_operacion DEFAULT 'U' NOT NULL,
     aea_usuario_bd               SYSNAME            CONSTRAINT DF_aea_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aea_fecha_cambio             DATETIMEOFFSET (0) CONSTRAINT DF_aea_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2716,7 +2705,7 @@ CREATE TABLE sgspi.aud_estrategia_tratamiento_catalogo (
     aet_naturaleza_aplicable NVARCHAR (15)      NOT NULL,
     aet_descripcion          NVARCHAR (255)     NULL,
     aet_estado               BIT                NOT NULL,
-    per_codigo               INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo               INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aet_operacion            CHAR (1)           CONSTRAINT DF_aet_operacion DEFAULT 'U' NOT NULL,
     aet_usuario_bd           SYSNAME            CONSTRAINT DF_aet_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aet_fecha_cambio         DATETIMEOFFSET (0) CONSTRAINT DF_aet_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2755,7 +2744,7 @@ CREATE TABLE sgspi.aud_plan_tratamiento (
     apt_fecha_evaluacion_eficacia  DATETIMEOFFSET (0) NULL,
     apt_fecha_actualizacion        DATETIMEOFFSET (0) NOT NULL,
     apt_estado                     BIT                NOT NULL,
-    per_codigo                     INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                     INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     apt_operacion                  CHAR (1)           CONSTRAINT DF_apt_operacion DEFAULT 'U' NOT NULL,
     apt_usuario_bd                 SYSNAME            CONSTRAINT DF_apt_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     apt_fecha_cambio               DATETIMEOFFSET (0) CONSTRAINT DF_apt_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2786,7 +2775,7 @@ CREATE TABLE sgspi.aud_actividad_tratamiento (
     aat_fase_actividad        NVARCHAR (30)      NOT NULL,
     aat_fecha_actualizacion   DATETIMEOFFSET (0) NOT NULL,
     aat_estado                BIT                NOT NULL,
-    per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aat_operacion             CHAR (1)           CONSTRAINT DF_aat_operacion DEFAULT 'U' NOT NULL,
     aat_usuario_bd            SYSNAME            CONSTRAINT DF_aat_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aat_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_aat_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2816,7 +2805,7 @@ CREATE TABLE sgspi.aud_seguimiento_actividad (
     asa_uri_almacenamiento_evidencia NVARCHAR (500)     NULL,
     asa_hash_sha256_evidencia        CHAR (64)          NULL,
     asa_estado                       BIT                NOT NULL,
-    per_codigo                       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     asa_operacion                    CHAR (1)           CONSTRAINT DF_asa_operacion DEFAULT 'U' NOT NULL,
     asa_usuario_bd                   SYSNAME            CONSTRAINT DF_asa_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     asa_fecha_cambio                 DATETIMEOFFSET (0) CONSTRAINT DF_asa_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2843,7 +2832,7 @@ CREATE TABLE sgspi.aud_estandar_normativo_catalogo (
     aen_organismo     NVARCHAR (100)     NULL,
     aen_anio_edicion  SMALLINT           NULL,
     aen_estado        BIT                NOT NULL,
-    per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo        INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aen_operacion     CHAR (1)           CONSTRAINT DF_aen_operacion DEFAULT 'U' NOT NULL,
     aen_usuario_bd    SYSNAME            CONSTRAINT DF_aen_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aen_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_aen_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2866,7 +2855,7 @@ CREATE TABLE sgspi.aud_control_referencia_normativa (
     acn_nombre_control        NVARCHAR (200)     NOT NULL,
     acn_objetivo_requisito    NVARCHAR (1500)    NOT NULL,
     acn_estado                BIT                NOT NULL,
-    per_codigo                INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     acn_operacion             CHAR (1)           CONSTRAINT DF_acn_operacion DEFAULT 'U' NOT NULL,
     acn_usuario_bd            SYSNAME            CONSTRAINT DF_acn_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     acn_fecha_cambio          DATETIMEOFFSET (0) CONSTRAINT DF_acn_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2886,7 +2875,7 @@ CREATE TABLE sgspi.aud_atributo_control_catalogo (
     acc_tipo_atributo NVARCHAR (30)      NOT NULL,
     acc_valor         NVARCHAR (60)      NOT NULL,
     acc_estado        BIT                NOT NULL,
-    per_codigo        INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo        INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     acc_operacion     CHAR (1)           CONSTRAINT DF_acc_operacion DEFAULT 'U' NOT NULL,
     acc_usuario_bd    SYSNAME            CONSTRAINT DF_acc_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     acc_fecha_cambio  DATETIMEOFFSET (0) CONSTRAINT DF_acc_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2905,7 +2894,7 @@ CREATE TABLE sgspi.aud_control_referencia_normativa_atributo (
     crn_codigo       SMALLINT           NOT NULL,
     aac_codigo       SMALLINT           NOT NULL,
     aca_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aca_operacion    CHAR (1)           CONSTRAINT DF_aca_operacion DEFAULT 'U' NOT NULL,
     aca_usuario_bd   SYSNAME            CONSTRAINT DF_aca_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aca_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_aca_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2924,7 +2913,7 @@ CREATE TABLE sgspi.aud_plan_tratamiento_control_referencia_normativa (
     plt_codigo       INT                NOT NULL,
     crn_codigo       SMALLINT           NOT NULL,
     acp_estado       BIT                NOT NULL,
-    per_codigo       INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo       INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     acp_operacion    CHAR (1)           CONSTRAINT DF_acp_operacion DEFAULT 'U' NOT NULL,
     acp_usuario_bd   SYSNAME            CONSTRAINT DF_acp_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     acp_fecha_cambio DATETIMEOFFSET (0) CONSTRAINT DF_acp_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2953,7 +2942,7 @@ CREATE TABLE sgspi.aud_evaluacion_aplicabilidad_control (
     aae_observaciones_auditoria     NVARCHAR (1000)    NULL,
     aae_fecha_actualizacion         DATETIMEOFFSET (0) NOT NULL,
     aae_estado                      BIT                NOT NULL,
-    per_codigo                      INT                NOT NULL, -- Quién hizo el cambio ([dbo].[persona])
+    per_codigo                      INT                NULL, -- Quién hizo el cambio ([dbo].[persona]); NULL en migraciones CI/CD o cargas sin sesión
     aae_operacion                   CHAR (1)           CONSTRAINT DF_aae_operacion DEFAULT 'U' NOT NULL,
     aae_usuario_bd                  SYSNAME            CONSTRAINT DF_aae_usuario_bd DEFAULT ORIGINAL_LOGIN() NOT NULL,
     aae_fecha_cambio                DATETIMEOFFSET (0) CONSTRAINT DF_aae_fecha_cambio DEFAULT SYSDATETIMEOFFSET() NOT NULL,
@@ -2999,18 +2988,18 @@ IF @@TRANCOUNT = 0
 
 GO
 /*==================================================================================================
-5.9b ALCANCE POR PROCESO [AP-02] D5: la vista y las funciones con que los triggers limitan la escritura
-Los roles líder y custodio solo escriben en los procesos de las UAA donde la persona tiene un grupo SGSPI_*
-(vía proceso_institucional_uaa) y en los activos de esas UAA o asociados a esos procesos (error 50021). El oficial,
-el comité, el auditor y db_owner son transversales; el gestor documental lo es solo en los activos (D9: en actividades
-y seguimientos tiene el alcance del custodio, que aproxima [Asignado]). Sin uno de esos roles no hay alcance transversal.
+5.9b SEGURIDAD DE ACCESO Y CONTEXTO DE USUARIO PARA POOL HikariCP + SPRING SECURITY 7
+- Se retiran ufn_persona_sesion, ufn_proceso_en_alcance, ufn_activo_en_alcance, las 3 funciones RLS
+  (ufn_rls_*) y vw_sgspi_admin_login (exponía uwd2).
+- La vista vw_usuario_rol_alcance_sgspi usa UNION (evita duplicados administrativo-docente) y no exige [sys].
+- sgspi.usp_obtener_contexto_usuario encapsula identidad, roles y alcance UAA/proceso sin proyectar hashes.
 ==================================================================================================*/
 -- 6.0 Vista de Integración de Seguridad y Alcance por Proceso/UAA
--- CONCAT con literales Unicode (N''); consulta solo administrativos y docentes (UNION ALL sin Sort)
+-- CONCAT con literales Unicode (N''); consulta administrativos y docentes deduplicados (UNION sin depender de [sys])
 CREATE OR ALTER VIEW sgspi.vw_usuario_rol_alcance_sgspi
 AS
 SELECT p.per_codigo,
-       -- sin per_identificacion ni per_email_interno: la vista la lee todo sgspi_rol_base [AP-02]
+       -- sin per_identificacion ni per_email_interno: lectura mínima de identidad/alcance
        CONCAT(RTRIM(ISNULL(p.per_nombre, N'')), N' ', RTRIM(ISNULL(p.per_apellido, N''))) AS per_nombre_completo,
        ug.usg_codigo,
        ug.usg_usuario AS uge_codigo_usuario,
@@ -3031,13 +3020,11 @@ FROM   dbo.usuario_grupo AS ug
        INNER JOIN
        (SELECT uid,
                up,
-               sys,
                state
         FROM   dbo.usuario_administrativos
-        UNION ALL
+        UNION
         SELECT uid,
                up,
-               sys,
                state
         FROM   dbo.usuario_docentes) AS ugen
        ON ugen.uid = ug.usg_usuario
@@ -3056,10 +3043,9 @@ WHERE  ug.usg_estado = 1
        AND g.gru_estado = 1
        AND ugen.state = 1
        AND ugen.up IS NOT NULL
-       AND ugen.sys IS NOT NULL
        AND p.per_estado = 1
        AND u.uaa_estado = 1
-       AND g.gru_id LIKE 'SGSPI[_]%'; -- D5: grupos del SGSPI por gru_id (estándar dbo.grupo USCO)
+       AND g.gru_id LIKE 'SGSPI[_]%'; -- grupos del SGSPI por gru_id (estándar dbo.grupo USCO)
 
 
 GO
@@ -3068,319 +3054,87 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- 6.0b Vista de Autenticación Administrativa SGSPI (estándar LoginDS de Spring Boot USCO; lectura exclusiva de sgspi_rol_login)
-CREATE OR ALTER VIEW sgspi.vw_sgspi_admin_login
+-- 6.0b Contexto de usuario encapsulado para Spring Security 7 (sin exponer uwd/uwd2/sys/per_identificacion/per_email_interno)
+-- Fail-closed: si @us mapea a >1 per_codigo activo distinto en usuario_administrativos/usuario_docentes, devuelve 0 filas.
+CREATE OR ALTER PROCEDURE sgspi.usp_obtener_contexto_usuario
+@us VARCHAR (60)
 AS
-SELECT ug.usg_codigo,
-       ug.usg_usuario,
-       ug.usg_grupo,
-       ug.usg_uaa,
-       ug.usg_estado,
-       g.gru_codigo,
-       g.gru_nombre,
-       g.gru_id,
-       u.uid,
-       u.up,
-       u.us,
-       u.sys,
-       u.uwd2,
-       u.state
-FROM   dbo.usuario_grupo AS ug
-       INNER JOIN
-       dbo.grupo AS g
-       ON g.gru_codigo = ug.usg_grupo
-       INNER JOIN
-       (SELECT uid,
-               up,
-               us,
-               sys,
-               uwd2,
-               state
-        FROM   dbo.usuario_administrativos
-        UNION ALL
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @us_limpio AS VARCHAR (60) = LTRIM(RTRIM(ISNULL(@us, '')));
+    IF @us_limpio = ''
+        BEGIN
+            SELECT TOP (0)
+                   CAST (NULL AS INT)           AS per_codigo,
+                   CAST (NULL AS INT)           AS uid,
+                   CAST (NULL AS NVARCHAR (85)) AS nombre_completo,
+                   CAST (NULL AS VARCHAR (100)) AS gru_id,
+                   CAST (NULL AS INT)           AS uaa_codigo,
+                   CAST (NULL AS INT)           AS pri_codigo;
+            RETURN;
+        END;
+
+    WITH cte_cuentas AS (
         SELECT uid,
                up,
-               us,
-               sys,
-               uwd2,
-               state
-        FROM   dbo.usuario_docentes) AS u
-       ON u.uid = ug.usg_usuario
-WHERE  ug.usg_estado = 1
-       AND g.gru_estado = 1
-       AND g.gru_id LIKE 'SGSPI[_]%'
-       AND u.state = 1
-       AND u.up IS NOT NULL
-       AND u.sys IS NOT NULL;
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [AP-03] [C2] Persona de la sesión fail-closed (ORIGINAL_LOGIN() -> dbo.usuario_administrativos/dbo.usuario_docentes.sys):
--- devuelve 0 filas (disparando error 50017) si el login no existe activo o mapea a más de una persona distinta (COUNT(DISTINCT up) <> 1).
-CREATE OR ALTER FUNCTION sgspi.ufn_persona_sesion
-( )
-RETURNS TABLE 
-AS
-RETURN 
-    SELECT MIN(u.up) AS per_codigo
-    FROM   (SELECT up,
-                   sys,
-                   state
-            FROM   dbo.usuario_administrativos
-            UNION ALL
-            SELECT up,
-                   sys,
-                   state
-            FROM   dbo.usuario_docentes) AS u
-    WHERE  u.sys = CONVERT (VARCHAR (128), ORIGINAL_LOGIN()) -- si [sys] es VARCHAR, la columna no se convierte y usa IX_*_sys
-           AND u.sys IS NOT NULL
-           AND u.up IS NOT NULL
-           AND u.state = 1
-    HAVING COUNT(DISTINCT u.up) = 1
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [A3] Una fila si la sesión puede escribir en el proceso. Con @pri_codigo NULL solo hay fila si la sesión es transversal.
--- Consulta directa a piu + dbo.usuario_grupo + dbo.grupo + usuario_administrativos/usuario_docentes (sin vw_usuario_rol_alcance_sgspi
--- ni joins innecesarios a persona/uaa/pri), filtrando por sys para buscar por índice IX_*_sys.
-CREATE OR ALTER FUNCTION sgspi.ufn_proceso_en_alcance
-(@pri_codigo INT, @per_actor INT)
-RETURNS TABLE 
-AS
-RETURN 
-    SELECT 1 AS permitido
-    WHERE  ISNULL(IS_MEMBER(N'db_owner'), 0) = 1
-           OR ISNULL(IS_MEMBER(N'sgspi_rol_oficial_seguridad_privacidad'), 0) = 1
-           OR ISNULL(IS_MEMBER(N'sgspi_rol_comite_direccion'), 0) = 1
-           OR ISNULL(IS_MEMBER(N'sgspi_rol_auditor_control'), 0) = 1
-           OR (@per_actor IS NOT NULL
-               AND @pri_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.proceso_institucional_uaa AS piu
-                                  INNER JOIN
-                                  dbo.usuario_grupo AS ug
-                                  ON ug.usg_uaa = piu.uaa_codigo
-                                     AND ug.usg_estado = 1
-                                  INNER JOIN
-                                  dbo.grupo AS g
-                                  ON g.gru_codigo = ug.usg_grupo
-                                     AND g.gru_estado = 1
-                                     AND g.gru_id LIKE 'SGSPI[_]%'
-                                  INNER JOIN
-                                  (SELECT uid,
-                                          up,
-                                          sys,
-                                          state
-                                   FROM   dbo.usuario_administrativos
-                                   UNION ALL
-                                   SELECT uid,
-                                          up,
-                                          sys,
-                                          state
-                                   FROM   dbo.usuario_docentes) AS u
-                                  ON u.uid = ug.usg_usuario
-                                     AND u.sys = CONVERT (VARCHAR (128), ORIGINAL_LOGIN())
-                                     AND u.up = @per_actor
-                                     AND u.state = 1
-                                     AND u.sys IS NOT NULL
-                           WHERE  piu.pri_codigo = @pri_codigo
-                                  AND piu.piu_estado = 1))
-
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [A3] Una fila si la sesión puede escribir en el activo: es transversal (en activos también el gestor documental), el activo
--- es de una de sus UAA o está asociado (aip activa) a uno de sus procesos. Con @aci_codigo NULL solo cuenta la UAA.
-CREATE OR ALTER FUNCTION sgspi.ufn_activo_en_alcance
-(@aci_codigo INT, @uaa_codigo INT, @per_actor INT)
-RETURNS TABLE 
-AS
-RETURN 
-    SELECT 1 AS permitido
-    WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_proceso_en_alcance(NULL, NULL))
-           OR ISNULL(IS_MEMBER(N'sgspi_rol_gestor_documental'), 0) = 1 -- D9: avala y completa todos los activos documentales
-           OR (@per_actor IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   dbo.usuario_grupo AS ug
-                                  INNER JOIN
-                                  dbo.grupo AS g
-                                  ON g.gru_codigo = ug.usg_grupo
-                                     AND g.gru_estado = 1
-                                     AND g.gru_id LIKE 'SGSPI[_]%'
-                                  INNER JOIN
-                                  (SELECT uid,
-                                          up,
-                                          sys,
-                                          state
-                                   FROM   dbo.usuario_administrativos
-                                   UNION ALL
-                                   SELECT uid,
-                                          up,
-                                          sys,
-                                          state
-                                   FROM   dbo.usuario_docentes) AS u
-                                  ON u.uid = ug.usg_usuario
-                                     AND u.sys = CONVERT (VARCHAR (128), ORIGINAL_LOGIN())
-                                     AND u.up = @per_actor
-                                     AND u.state = 1
-                                     AND u.sys IS NOT NULL
-                           WHERE  ug.usg_estado = 1
-                                  AND (ug.usg_uaa = @uaa_codigo
-                                       OR (@aci_codigo IS NOT NULL
-                                           AND EXISTS (SELECT 1
-                                                       FROM   sgspi.proceso_institucional_uaa AS piu
-                                                              INNER JOIN
-                                                              sgspi.activo_informacion_proceso_institucional AS aip
-                                                              ON aip.pri_codigo = piu.pri_codigo
-                                                                 AND aip.aci_codigo = @aci_codigo
-                                                                 AND aip.aip_estado = 1
-                                                       WHERE  piu.uaa_codigo = ug.usg_uaa
-                                                              AND piu.piu_estado = 1)))))
-
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- [A2][A3] Predicado RLS exclusivo para [aip] sin referencia a [aci] ni [aip] (evita recursión circular con ufn_activo_en_alcance).
-CREATE OR ALTER FUNCTION sgspi.ufn_rls_alcance_aip
-(@pri_codigo INT)
-RETURNS TABLE 
-AS
-RETURN 
-    SELECT 1 AS permitido
-    WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_proceso_en_alcance(NULL, NULL))
-           OR ISNULL(IS_MEMBER(N'sgspi_rol_gestor_documental'), 0) = 1
-           OR (ISNULL(IS_MEMBER(N'sgspi_rol_consulta'), 0) = 1
-               AND ISNULL(IS_MEMBER(N'sgspi_rol_base'), 0) = 0)
-           OR (@pri_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(@pri_codigo, ps.per_codigo) AS a))
-
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- Predicados RLS en lectura [AP-02]: sin SCHEMABINDING porque las tablas corporativas de [dbo] y vw_usuario_rol_alcance_sgspi no tienen SCHEMABINDING (SQL Server exige SCHEMABINDING = OFF en la política y GRANT SELECT sobre estas funciones).
--- sgspi_rol_consulta solo entra si NO pertenece a sgspi_rol_base (solo lee sus 5 vistas en lista blanca; un actor en sgspi_rol_base no puede escalar).
-CREATE OR ALTER FUNCTION sgspi.ufn_rls_alcance_proceso
-(@pri_codigo INT, @rpi_codigo INT, @eia_codigo INT, @plt_codigo INT, @act_codigo INT)
-RETURNS TABLE 
-AS
-RETURN 
-    SELECT 1 AS permitido
-    WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_proceso_en_alcance(NULL, NULL))
-           OR (ISNULL(IS_MEMBER(N'sgspi_rol_consulta'), 0) = 1
-               AND ISNULL(IS_MEMBER(N'sgspi_rol_base'), 0) = 0)
-           OR (@pri_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(@pri_codigo, ps.per_codigo) AS a))
-           OR (@rpi_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  INNER JOIN
-                                  sgspi.requisito_parte_interesada_proceso_institucional AS rpp
-                                  ON rpp.rpi_codigo = @rpi_codigo
-                                     AND rpp.rpp_estado = 1
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(rpp.pri_codigo, ps.per_codigo) AS a))
-           OR (@eia_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  INNER JOIN
-                                  sgspi.evento_incertidumbre_activo AS eia
-                                  ON eia.eia_codigo = @eia_codigo
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a))
-           OR (@plt_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  INNER JOIN
-                                  sgspi.plan_tratamiento AS plt
-                                  ON plt.plt_codigo = @plt_codigo
-                                  INNER JOIN
-                                  sgspi.evento_incertidumbre_activo AS eia
-                                  ON eia.eia_codigo = plt.eia_codigo
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a))
-           OR (@act_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  INNER JOIN
-                                  sgspi.actividad_tratamiento AS act
-                                  ON act.act_codigo = @act_codigo
-                                  INNER JOIN
-                                  sgspi.plan_tratamiento AS plt
-                                  ON plt.plt_codigo = act.plt_codigo
-                                  INNER JOIN
-                                  sgspi.evento_incertidumbre_activo AS eia
-                                  ON eia.eia_codigo = plt.eia_codigo
-                                  CROSS APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, ps.per_codigo) AS a))
-
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
-CREATE OR ALTER FUNCTION sgspi.ufn_rls_alcance_activo
-(@aci_codigo INT, @uaa_codigo INT, @aci_codigo_padre INT, @sif_codigo INT)
-RETURNS TABLE 
-AS
-RETURN 
-    SELECT 1 AS permitido
-    WHERE  EXISTS (SELECT 1
-                   FROM   sgspi.ufn_activo_en_alcance(NULL, NULL, NULL))
-           OR (ISNULL(IS_MEMBER(N'sgspi_rol_consulta'), 0) = 1
-               AND ISNULL(IS_MEMBER(N'sgspi_rol_base'), 0) = 0)
-           OR (@aci_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  CROSS APPLY sgspi.ufn_activo_en_alcance(@aci_codigo, @uaa_codigo, ps.per_codigo) AS a))
-           OR (@aci_codigo_padre IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  INNER JOIN
-                                  sgspi.activo_informacion AS aci
-                                  ON aci.aci_codigo = @aci_codigo_padre
-                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, ps.per_codigo) AS a))
-           OR (@sif_codigo IS NOT NULL
-               AND EXISTS (SELECT 1
-                           FROM   sgspi.ufn_persona_sesion() AS ps
-                                  INNER JOIN
-                                  sgspi.sistema_informacion_ficha AS sif
-                                  ON sif.sif_codigo = @sif_codigo
-                                  INNER JOIN
-                                  sgspi.activo_informacion AS aci
-                                  ON aci.aci_codigo = sif.aci_codigo
-                                  CROSS APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, ps.per_codigo) AS a))
-
+               us
+        FROM   dbo.usuario_administrativos
+        WHERE  us = @us_limpio
+               AND state = 1
+               AND up IS NOT NULL
+        UNION
+        SELECT uid,
+               up,
+               us
+        FROM   dbo.usuario_docentes
+        WHERE  us = @us_limpio
+               AND state = 1
+               AND up IS NOT NULL
+    ),
+    cte_identidad AS (
+        SELECT MIN(up)  AS per_codigo,
+               MIN(uid) AS uid_principal
+        FROM   cte_cuentas
+        HAVING COUNT(DISTINCT up) = 1
+    )
+    SELECT DISTINCT
+           p.per_codigo,
+           id.uid_principal AS uid,
+           LTRIM(RTRIM(CONCAT(RTRIM(ISNULL(p.per_nombre, N'')), N' ', RTRIM(ISNULL(p.per_apellido, N''))))) AS nombre_completo,
+           g.gru_id,
+           u.uaa_codigo,
+           pr.pri_codigo
+    FROM   cte_identidad AS id
+           INNER JOIN
+           cte_cuentas AS c
+           ON c.up = id.per_codigo
+           INNER JOIN
+           dbo.persona AS p
+           ON p.per_codigo = id.per_codigo
+              AND p.per_estado = 1
+           INNER JOIN
+           dbo.usuario_grupo AS ug
+           ON ug.usg_usuario = c.uid
+              AND ug.usg_estado = 1
+           INNER JOIN
+           dbo.grupo AS g
+           ON g.gru_codigo = ug.usg_grupo
+              AND g.gru_estado = 1
+              AND g.gru_id LIKE 'SGSPI[_]%'
+           INNER JOIN
+           dbo.uaa AS u
+           ON u.uaa_codigo = ug.usg_uaa
+              AND u.uaa_estado = 1
+           LEFT OUTER JOIN
+           sgspi.proceso_institucional_uaa AS piu
+           ON piu.uaa_codigo = u.uaa_codigo
+              AND piu.piu_estado = 1
+           LEFT OUTER JOIN
+           sgspi.proceso_institucional AS pr
+           ON pr.pri_codigo = piu.pri_codigo
+              AND pr.pri_estado = 1
+    ORDER BY g.gru_id, u.uaa_codigo, pr.pri_codigo;
+END
 
 
 GO
@@ -3489,28 +3243,24 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                     AND efc.efc_estado = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[analisis_contexto_factor] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- [AP-15] Un creador ajeno anularía CK_acf_sod_aprobador
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   deleted AS d
                                          WHERE  d.acf_codigo = i.acf_codigo)
+                             AND @per_actor IS NOT NULL
                              AND i.per_codigo_creador <> @per_actor)
                THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[analisis_contexto_factor].', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT pri_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT pri_codigo
-                              FROM   deleted) AS x
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[analisis_contexto_factor].', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -3550,10 +3300,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                                 AND tef.efc_identificador_origen = d.acf_fase_registro
                                                                 AND tef.efc_identificador_destino = i.acf_fase_registro
                                                                 AND tef.tef_estado = 1
-                                                                AND efc_dest.efc_estado = 1
-                                                                AND (tef.tef_rol_requerido IS NULL
-                                                                     OR IS_MEMBER(tef.tef_rol_requerido) = 1
-                                                                     OR IS_MEMBER(N'db_owner') = 1))))
+                                                                AND efc_dest.efc_estado = 1)))
                        THROW 50011, N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[analisis_contexto_factor].', 1;
                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                    IF EXISTS (SELECT i.acf_codigo,
@@ -3608,6 +3355,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                                         AND (efc.efc_permite_edicion = 0
                                                              OR efc.efc_estado = 0)))
                        THROW 50011, N'No se permite modificar el contenido durante una transición de estado en [sgspi].[analisis_contexto_factor].', 1;
+                    IF EXISTS (SELECT 1
+                               FROM   inserted AS i
+                                      INNER JOIN
+                                      deleted AS d
+                                      ON d.acf_codigo = i.acf_codigo
+                               WHERE  d.acf_fase_registro <> i.acf_fase_registro
+                                      AND i.acf_fase_registro = N'VIGENTE'
+                                      AND COALESCE(@per_actor, i.per_codigo_aprobador) IS NULL)
+                        THROW 50020, N'Transición incompleta: VIGENTE exige la firma de aprobación [per_codigo_aprobador] o sesión activa en [sgspi].[analisis_contexto_factor].', 1;
                     -- [AP-01] [C2] Detecta filas con cambio real, actualiza fecha/firma en 1 UPDATE y archiva after-image ('U')
                     DECLARE @cambiadas TABLE (
                         acf_codigo INT PRIMARY KEY);
@@ -3656,7 +3412,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                             UPDATE t
                             SET    t.acf_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN @ahora ELSE t.acf_fecha_actualizacion END, -- [AP-12]
                                    t.per_codigo_aprobador    = CASE WHEN d.acf_fase_registro <> i.acf_fase_registro
-                                                                         AND i.acf_fase_registro = N'VIGENTE' THEN @per_actor WHEN d.acf_fase_registro <> i.acf_fase_registro
+                                                                         AND i.acf_fase_registro = N'VIGENTE' THEN COALESCE(@per_actor, i.per_codigo_aprobador) WHEN d.acf_fase_registro <> i.acf_fase_registro
                                                                                                                                      AND ((d.acf_fase_registro = N'VIGENTE'
                                                                                                                                            AND i.acf_fase_registro <> N'HISTORICO')
                                                                                                                                           OR i.acf_fase_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL ELSE t.per_codigo_aprobador END
@@ -3712,7 +3468,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                                    t.per_codigo_aprobador,
                                    t.acf_fecha_actualizacion,
                                    t.acf_estado,
-                                   @per_actor,
+                                   COALESCE(@per_actor, CASE WHEN t.acf_fase_registro = N'VIGENTE' THEN t.per_codigo_aprobador END),
                                    'U',
                                    ORIGINAL_LOGIN(),
                                    @ahora
@@ -3759,7 +3515,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_acf_integridad_y_actualizacion
                       i.per_codigo_aprobador,
                       i.acf_fecha_actualizacion,
                       i.acf_estado,
-                      @per_actor,
+                      COALESCE(@per_actor, i.per_codigo_creador),
                       'I',
                       ORIGINAL_LOGIN(),
                       SYSDATETIMEOFFSET()
@@ -3824,29 +3580,24 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                     AND efc.efc_estado = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[requisito_parte_interesada] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- [AP-15] Un creador ajeno anularía CK_rpi_sod_aprobador
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   deleted AS d
                                          WHERE  d.rpi_codigo = i.rpi_codigo)
+                             AND @per_actor IS NOT NULL
                              AND i.per_codigo_creador <> @per_actor)
                THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[requisito_parte_interesada].', 1;
-           -- [AP-02] D5: un rol no transversal solo escribe en rpi con al menos un proceso activo (rpp) en su alcance
-           IF NOT EXISTS (SELECT 1
-                          FROM   sgspi.ufn_proceso_en_alcance(NULL, @per_actor))
-              AND EXISTS (SELECT 1
-                          FROM   inserted AS i
-                          WHERE  NOT EXISTS (SELECT 1
-                                             FROM   sgspi.requisito_parte_interesada_proceso_institucional AS rpp
-                                                    CROSS APPLY sgspi.ufn_proceso_en_alcance(rpp.pri_codigo, @per_actor) AS a
-                                             WHERE  rpp.rpi_codigo = i.rpi_codigo
-                                                    AND rpp.rpp_estado = 1))
-               THROW 50021, N'Fuera de alcance: el requisito no tiene procesos activos en las UAA del usuario en [sgspi].[requisito_parte_interesada].', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -3886,10 +3637,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                                 AND tef.efc_identificador_origen = d.rpi_fase_registro
                                                                 AND tef.efc_identificador_destino = i.rpi_fase_registro
                                                                 AND tef.tef_estado = 1
-                                                                AND efc_dest.efc_estado = 1
-                                                                AND (tef.tef_rol_requerido IS NULL
-                                                                     OR IS_MEMBER(tef.tef_rol_requerido) = 1
-                                                                     OR IS_MEMBER(N'db_owner') = 1))))
+                                                                AND efc_dest.efc_estado = 1)))
                        THROW 50011, N'Transición inválida o intento de modificar un registro sin estado editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[requisito_parte_interesada].', 1;
                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                    IF EXISTS (SELECT i.rpi_codigo,
@@ -3953,6 +3701,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                                       WHERE  rpp.rpi_codigo = i.rpi_codigo
                                                              AND rpp.rpp_estado = 1))
                         THROW 50020, N'Transición incompleta: VIGENTE exige al menos un proceso activo asociado en [sgspi].[requisito_parte_interesada_proceso_institucional].', 1;
+                    IF EXISTS (SELECT 1
+                               FROM   inserted AS i
+                                      INNER JOIN
+                                      deleted AS d
+                                      ON d.rpi_codigo = i.rpi_codigo
+                               WHERE  d.rpi_fase_registro <> i.rpi_fase_registro
+                                      AND i.rpi_fase_registro = N'VIGENTE'
+                                      AND COALESCE(@per_actor, i.per_codigo_aprobador) IS NULL)
+                        THROW 50020, N'Transición incompleta: VIGENTE exige la firma de aprobación [per_codigo_aprobador] o sesión activa en [sgspi].[requisito_parte_interesada].', 1;
                     -- [AP-01] [C2] Detecta filas con cambio real, actualiza fecha/firma en 1 UPDATE y archiva after-image ('U')
                     DECLARE @cambiadas TABLE (
                         rpi_codigo INT PRIMARY KEY);
@@ -3997,7 +3754,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                             UPDATE t
                             SET    t.rpi_fecha_actualizacion = CASE WHEN @actualizar_fecha = 1 THEN @ahora ELSE t.rpi_fecha_actualizacion END, -- [AP-12]
                                    t.per_codigo_aprobador    = CASE WHEN d.rpi_fase_registro <> i.rpi_fase_registro
-                                                                         AND i.rpi_fase_registro = N'VIGENTE' THEN @per_actor WHEN d.rpi_fase_registro <> i.rpi_fase_registro
+                                                                         AND i.rpi_fase_registro = N'VIGENTE' THEN COALESCE(@per_actor, i.per_codigo_aprobador) WHEN d.rpi_fase_registro <> i.rpi_fase_registro
                                                                                                                                      AND ((d.rpi_fase_registro = N'VIGENTE'
                                                                                                                                            AND i.rpi_fase_registro <> N'HISTORICO')
                                                                                                                                           OR i.rpi_fase_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL ELSE t.per_codigo_aprobador END
@@ -4049,7 +3806,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                                    t.per_codigo_aprobador,
                                    t.rpi_fecha_actualizacion,
                                    t.rpi_estado,
-                                   @per_actor,
+                                   COALESCE(@per_actor, CASE WHEN t.rpi_fase_registro = N'VIGENTE' THEN t.per_codigo_aprobador END),
                                    'U',
                                    ORIGINAL_LOGIN(),
                                    @ahora
@@ -4092,7 +3849,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpi_integridad_y_actualizacion
                       i.per_codigo_aprobador,
                       i.rpi_fecha_actualizacion,
                       i.rpi_estado,
-                      @per_actor,
+                      COALESCE(@per_actor, i.per_codigo_creador),
                       'I',
                       ORIGINAL_LOGIN(),
                       SYSDATETIMEOFFSET()
@@ -4165,30 +3922,24 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                              WHERE  d.aci_codigo = i.aci_codigo))
                THROW 50018, N'La firma de Archivo [per_codigo_revisor_archivo] no se envía al crear el activo: la registra la transición EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las aprobaciones y la revisión de Archivo
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- [AP-15] Un creador ajeno anularía CK_aci_sod_aprobador
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   deleted AS d
                                          WHERE  d.aci_codigo = i.aci_codigo)
+                             AND @per_actor IS NOT NULL
                              AND i.per_codigo_creador <> @per_actor)
                THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[activo_informacion].', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance, antes y después del cambio de UAA
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo,
-                                     uaa_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo,
-                                     uaa_codigo
-                              FROM   deleted) AS x
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(x.aci_codigo, x.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion].', 1;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -4216,10 +3967,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                                 AND tef.efc_identificador_origen = d.aci_fase_registro
                                                                 AND tef.efc_identificador_destino = i.aci_fase_registro
                                                                 AND tef.tef_estado = 1
-                                                                AND efc_dest.efc_estado = 1
-                                                                AND (tef.tef_rol_requerido IS NULL
-                                                                     OR IS_MEMBER(tef.tef_rol_requerido) = 1
-                                                                     OR IS_MEMBER(N'db_owner') = 1))))
+                                                                AND efc_dest.efc_estado = 1)))
                        THROW 50011, N'Transición inválida o intento de modificar un activo no editable (VIGENTE/HISTORICO) sin reabrir revisión en [sgspi].[activo_informacion].', 1;
                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                    IF EXISTS (SELECT i.aci_codigo,
@@ -4419,6 +4167,18 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                                                    WHERE  adu.ado_codigo = i.aci_codigo
                                                                           AND adu.adu_estado = 1)))))
                         THROW 50020, N'Transición incompleta: VIGENTE exige proceso (aip), sede si no es transversal (ais) y, en activos documentales, soporte/medio/idioma/formato/unidad productora activos en [sgspi].[activo_informacion].', 1;
+                    IF EXISTS (SELECT 1
+                               FROM   inserted AS i
+                                      INNER JOIN
+                                      deleted AS d
+                                      ON d.aci_codigo = i.aci_codigo
+                               WHERE  (d.aci_fase_registro = N'EN_REVISION_ARCHIVO'
+                                       AND i.aci_fase_registro = N'EN_REVISION_SGSPI'
+                                       AND COALESCE(@per_actor, i.per_codigo_revisor_archivo) IS NULL)
+                                      OR (d.aci_fase_registro <> i.aci_fase_registro
+                                          AND i.aci_fase_registro = N'VIGENTE'
+                                          AND COALESCE(@per_actor, i.per_codigo_aprobador) IS NULL))
+                        THROW 50020, N'Transición incompleta: el aval de Archivo o la aprobación VIGENTE exigen firma o sesión activa en [sgspi].[activo_informacion].', 1;
                     -- [AP-01] [B1] [C2] Detecta filas con cambio real, actualiza fecha y firmas en 1 solo UPDATE sobre [aci] (sin escribir [ado]) y archiva after-image ('U')
                     DECLARE @cambiadas TABLE (
                         aci_codigo INT PRIMARY KEY);
@@ -4505,12 +4265,12 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                             UPDATE t
                             SET    t.aci_fecha_actualizacion    = CASE WHEN @actualizar_fecha = 1 THEN @ahora ELSE t.aci_fecha_actualizacion END, -- [AP-12]
                                    t.per_codigo_aprobador       = CASE WHEN d.aci_fase_registro <> i.aci_fase_registro
-                                                                            AND i.aci_fase_registro = N'VIGENTE' THEN @per_actor WHEN d.aci_fase_registro <> i.aci_fase_registro
+                                                                            AND i.aci_fase_registro = N'VIGENTE' THEN COALESCE(@per_actor, i.per_codigo_aprobador) WHEN d.aci_fase_registro <> i.aci_fase_registro
                                                                                                                                         AND ((d.aci_fase_registro = N'VIGENTE'
                                                                                                                                               AND i.aci_fase_registro <> N'HISTORICO')
                                                                                                                                              OR i.aci_fase_registro IN (N'OBSERVADO', N'BORRADOR')) THEN NULL ELSE t.per_codigo_aprobador END,
                                    t.per_codigo_revisor_archivo = CASE WHEN d.aci_fase_registro = N'EN_REVISION_ARCHIVO'
-                                                                            AND i.aci_fase_registro = N'EN_REVISION_SGSPI' THEN @per_actor WHEN (d.aci_fase_registro <> i.aci_fase_registro
+                                                                            AND i.aci_fase_registro = N'EN_REVISION_SGSPI' THEN COALESCE(@per_actor, i.per_codigo_revisor_archivo) WHEN (d.aci_fase_registro <> i.aci_fase_registro
                                                                                                                                                  AND ((d.aci_fase_registro = N'VIGENTE'
                                                                                                                                                        AND i.aci_fase_registro NOT IN (N'HISTORICO', N'INACTIVO'))
                                                                                                                                                       OR i.aci_fase_registro IN (N'OBSERVADO', N'BORRADOR', N'EN_REVISION_ARCHIVO')))
@@ -4612,7 +4372,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                                    t.per_codigo_revisor_archivo,
                                    t.aci_fecha_actualizacion,
                                    t.aci_estado,
-                                   @per_actor,
+                                   COALESCE(@per_actor, CASE WHEN t.aci_fase_registro = N'VIGENTE' THEN t.per_codigo_aprobador WHEN t.aci_fase_registro = N'EN_REVISION_SGSPI' THEN t.per_codigo_revisor_archivo END),
                                    'U',
                                    ORIGINAL_LOGIN(),
                                    @ahora
@@ -4697,7 +4457,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_aci_integridad_y_actualizacion
                        i.per_codigo_revisor_archivo,
                        i.aci_fecha_actualizacion,
                        i.aci_estado,
-                       @per_actor,
+                       COALESCE(@per_actor, i.per_codigo_creador),
                        'I',
                        ORIGINAL_LOGIN(),
                        SYSDATETIMEOFFSET()
@@ -4795,23 +4555,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_ado_integridad_y_actualizacion
                                                 AND sbd.sbd_estado = 1))
                THROW 50015, N'Subserie requerida: la serie documental seleccionada tiene subseries y [sbd_codigo] no puede ser NULL en [sgspi].[activo_documental].', 1;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass cuando RLS oculta al padre)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -5009,28 +4761,24 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                     AND efc.efc_estado = 1))
                THROW 50014, N'Estado inicial inválido: un registro nuevo de [sgspi].[evento_incertidumbre_activo] solo puede crearse en el estado inicial del flujo.', 1;
            -- [AP-03] Persona de la sesión: crea los registros nuevos y firma las validaciones y aprobaciones
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- [AP-15] Un creador ajeno anularía CK_eia_sod_firmas
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
                       WHERE  NOT EXISTS (SELECT 1
                                          FROM   deleted AS d
                                          WHERE  d.eia_codigo = i.eia_codigo)
+                             AND @per_actor IS NOT NULL
                              AND i.per_codigo_creador <> @per_actor)
                THROW 50019, N'Creador inválido: [per_codigo_creador] debe ser la persona de la sesión en [sgspi].[evento_incertidumbre_activo].', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT pri_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT pri_codigo
-                              FROM   deleted) AS x
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso no está en las UAA del usuario en [sgspi].[evento_incertidumbre_activo].', 1;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -5096,10 +4844,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                                 AND tef.efc_identificador_origen = d.eia_fase_registro
                                                                 AND tef.efc_identificador_destino = i.eia_fase_registro
                                                                 AND tef.tef_estado = 1
-                                                                AND efc_dest.efc_estado = 1
-                                                                AND (tef.tef_rol_requerido IS NULL
-                                                                     OR IS_MEMBER(tef.tef_rol_requerido) = 1
-                                                                     OR IS_MEMBER(N'db_owner') = 1))))
+                                                                AND efc_dest.efc_estado = 1)))
                        THROW 50011, N'Transición de estado inválida o intento de alterar un evento cerrado/histórico en [sgspi].[evento_incertidumbre_activo].', 1;
                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo pueden cambiar el estado y las firmas (si el origen o el destino no es editable)
                    IF EXISTS (SELECT i.eia_codigo,
@@ -5307,6 +5052,21 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                                                  AND plt.plt_estado = 1
                                                                  AND ptc.ptc_estado = 1)))
                         THROW 50020, N'Transición incompleta: APROBADO_PLANIFICADO exige al menos una actividad activa ([act]) y un control normativo activo ([ptc]) en el plan de tratamiento de [sgspi].[evento_incertidumbre_activo].', 1;
+                    IF EXISTS (SELECT 1
+                               FROM   inserted AS i
+                                      INNER JOIN
+                                      deleted AS d
+                                      ON d.eia_codigo = i.eia_codigo
+                               WHERE  (d.eia_fase_registro = N'EN_VALIDACION_LIDER'
+                                       AND i.eia_fase_registro = N'EN_REVISION_SGSPI'
+                                       AND COALESCE(@per_actor, i.per_codigo_validador_lider) IS NULL)
+                                      OR (d.eia_fase_registro = N'EN_REVISION_SGSPI'
+                                          AND i.eia_fase_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO')
+                                          AND COALESCE(@per_actor, i.per_codigo_revisor_sgspi) IS NULL)
+                                      OR (d.eia_fase_registro = N'EN_ACEPTACION_COMITE'
+                                          AND i.eia_fase_registro = N'APROBADO_PLANIFICADO'
+                                          AND COALESCE(@per_actor, i.per_codigo_aprobador_comite) IS NULL))
+                        THROW 50020, N'Transición incompleta: la validación, revisión SGSPI o aprobación del comité exigen firma o sesión activa en [sgspi].[evento_incertidumbre_activo].', 1;
                     -- [AP-01] [C2] Detecta filas con cambio real, actualiza fecha/firmas en 1 UPDATE y archiva after-image ('U')
                     DECLARE @cambiadas TABLE (
                         eia_codigo INT PRIMARY KEY);
@@ -5370,13 +5130,13 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                             SET    t.eia_fecha_actualizacion     = CASE WHEN @actualizar_fecha = 1 THEN @ahora ELSE t.eia_fecha_actualizacion END, -- [AP-11] [AP-12]
                                    t.per_codigo_validador_lider  = CASE WHEN d.eia_fase_registro <> i.eia_fase_registro
                                                                              AND i.eia_fase_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_fase_registro = N'EN_VALIDACION_LIDER'
-                                                                                                                                                     AND i.eia_fase_registro = N'EN_REVISION_SGSPI' THEN @per_actor ELSE t.per_codigo_validador_lider END,
+                                                                                                                                                     AND i.eia_fase_registro = N'EN_REVISION_SGSPI' THEN COALESCE(@per_actor, i.per_codigo_validador_lider) ELSE t.per_codigo_validador_lider END,
                                    t.per_codigo_revisor_sgspi    = CASE WHEN d.eia_fase_registro <> i.eia_fase_registro
                                                                              AND i.eia_fase_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_fase_registro = N'EN_REVISION_SGSPI'
-                                                                                                                                                     AND i.eia_fase_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN @per_actor ELSE t.per_codigo_revisor_sgspi END,
+                                                                                                                                                     AND i.eia_fase_registro IN (N'EN_ACEPTACION_COMITE', N'APROBADO_PLANIFICADO') THEN COALESCE(@per_actor, i.per_codigo_revisor_sgspi) ELSE t.per_codigo_revisor_sgspi END,
                                    t.per_codigo_aprobador_comite = CASE WHEN d.eia_fase_registro <> i.eia_fase_registro
                                                                              AND i.eia_fase_registro IN (N'OBSERVADO', N'BORRADOR') THEN NULL WHEN d.eia_fase_registro = N'EN_ACEPTACION_COMITE'
-                                                                                                                                                     AND i.eia_fase_registro = N'APROBADO_PLANIFICADO' THEN @per_actor ELSE t.per_codigo_aprobador_comite END
+                                                                                                                                                     AND i.eia_fase_registro = N'APROBADO_PLANIFICADO' THEN COALESCE(@per_actor, i.per_codigo_aprobador_comite) ELSE t.per_codigo_aprobador_comite END
                             FROM   sgspi.evento_incertidumbre_activo AS t
                                    INNER JOIN
                                    @cambiadas AS c
@@ -5446,7 +5206,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                                    t.per_codigo_aprobador_comite,
                                    t.eia_fecha_actualizacion,
                                    t.eia_estado,
-                                   @per_actor,
+                                   COALESCE(@per_actor, CASE WHEN t.eia_fase_registro = N'APROBADO_PLANIFICADO' THEN COALESCE(t.per_codigo_aprobador_comite, t.per_codigo_revisor_sgspi) WHEN t.eia_fase_registro = N'EN_ACEPTACION_COMITE' THEN t.per_codigo_revisor_sgspi WHEN t.eia_fase_registro = N'EN_REVISION_SGSPI' THEN t.per_codigo_validador_lider END),
                                    'U',
                                    ORIGINAL_LOGIN(),
                                    @ahora
@@ -5507,7 +5267,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_eia_integridad_y_actualizacion
                       i.per_codigo_aprobador_comite,
                       i.eia_fecha_actualizacion,
                       i.eia_estado,
-                      @per_actor,
+                      COALESCE(@per_actor, i.per_codigo_creador),
                       'I',
                       ORIGINAL_LOGIN(),
                       SYSDATETIMEOFFSET()
@@ -5723,23 +5483,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                        THROW 50020, N'Baja lógica denegada: existen actividades o controles activos asociados a [sgspi].[plan_tratamiento].', 1;
                END
            -- [AP-03] Persona de la sesión: firma el dictamen y queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT eia_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT eia_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia
-                             ON eia.eia_codigo = x.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- [AP-15] [B4] Dictamen de eficacia nuevo o cambiado (EXCEPT trata NULL = NULL): solo en EN_EVALUACION_EFICACIA, con SoD completo (incluyendo aprobador comité) y firmado por la persona de la sesión
            DECLARE @dictamen TABLE (
                plt_codigo           INT PRIMARY KEY,
@@ -5772,10 +5524,6 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
            IF EXISTS (SELECT 1
                       FROM   @dictamen)
                BEGIN
-                   -- D2: solo el auditor dictamina la eficacia; ni el líder ni el oficial evalúan el plan que ejecutan o aprobaron
-                   IF ISNULL(IS_MEMBER(N'sgspi_rol_auditor_control'), 0) = 0
-                      AND ISNULL(IS_MEMBER(N'db_owner'), 0) = 0
-                       THROW 50011, N'Operación denegada: el dictamen de eficacia solo lo registra el auditor (sgspi_rol_auditor_control) en [sgspi].[plan_tratamiento].', 1;
                    IF EXISTS (SELECT 1
                               FROM   @dictamen AS x
                                      INNER JOIN
@@ -5785,7 +5533,8 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                        THROW 50011, N'Estado inválido: el dictamen de eficacia solo puede registrarse o modificarse cuando el evento está en EN_EVALUACION_EFICACIA en [sgspi].[plan_tratamiento].', 1;
                    IF EXISTS (SELECT 1
                               FROM   @dictamen
-                              WHERE  per_codigo_evaluador IS NOT NULL
+                              WHERE  @per_actor IS NOT NULL
+                                     AND per_codigo_evaluador IS NOT NULL
                                      AND per_codigo_evaluador <> @per_actor)
                        THROW 50019, N'Evaluador inválido: [per_codigo_evaluador] debe ser la persona de la sesión en [sgspi].[plan_tratamiento].', 1;
                    IF EXISTS (SELECT 1
@@ -5794,10 +5543,10 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                                      sgspi.evento_incertidumbre_activo AS eia
                                      ON eia.eia_codigo = x.eia_codigo
                               WHERE  x.per_codigo_evaluador IS NOT NULL
-                                     AND (@per_actor = eia.per_codigo_creador
-                                          OR @per_actor = eia.per_codigo_validador_lider
-                                          OR @per_actor = eia.per_codigo_revisor_sgspi
-                                          OR @per_actor = eia.per_codigo_aprobador_comite))
+                                     AND (COALESCE(@per_actor, x.per_codigo_evaluador) = eia.per_codigo_creador
+                                          OR COALESCE(@per_actor, x.per_codigo_evaluador) = eia.per_codigo_validador_lider
+                                          OR COALESCE(@per_actor, x.per_codigo_evaluador) = eia.per_codigo_revisor_sgspi
+                                          OR COALESCE(@per_actor, x.per_codigo_evaluador) = eia.per_codigo_aprobador_comite))
                        THROW 50019, N'Segregación de funciones: el evaluador de eficacia no puede ser creador, validador líder, revisor SGSPI ni aprobador del comité del evento en [sgspi].[plan_tratamiento].', 1;
                END
            DECLARE @ahora AS DATETIMEOFFSET (0) = SYSDATETIMEOFFSET();
@@ -5928,7 +5677,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                                   t.plt_fecha_evaluacion_eficacia,
                                   t.plt_fecha_actualizacion,
                                   t.plt_estado,
-                                  @per_actor,
+                                  COALESCE(@per_actor, t.per_codigo_evaluador),
                                   'U',
                                   ORIGINAL_LOGIN(),
                                   @ahora
@@ -6003,7 +5752,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_plt_integridad_y_actualizacion
                           t.plt_fecha_evaluacion_eficacia,
                           t.plt_fecha_actualizacion,
                           t.plt_estado,
-                          @per_actor,
+                          COALESCE(@per_actor, t.per_codigo_evaluador),
                           'I',
                           ORIGINAL_LOGIN(),
                           @ahora
@@ -6099,26 +5848,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                  AND eia.eia_fase_registro NOT IN (N'APROBADO_PLANIFICADO', N'EN_EJECUCION')))
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar actividades de un evento en evaluación de eficacia, cerrado o histórico en [sgspi].[actividad_tratamiento].', 1;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT plt_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT plt_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.plan_tratamiento AS plt
-                             ON plt.plt_codigo = x.plt_codigo
-                             LEFT OUTER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia
-                             ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[actividad_tratamiento].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF EXISTS (SELECT 1
                       FROM   deleted)
                BEGIN
@@ -6146,10 +5884,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_act_integridad_y_actualizacion
                                                                 AND tef.efc_identificador_origen = d.act_fase_actividad
                                                                 AND tef.efc_identificador_destino = i.act_fase_actividad
                                                                 AND tef.tef_estado = 1
-                                                                AND efc_dest.efc_estado = 1
-                                                                AND (tef.tef_rol_requerido IS NULL
-                                                                     OR IS_MEMBER(tef.tef_rol_requerido) = 1
-                                                                     OR IS_MEMBER(N'db_owner') = 1))))
+                                                                AND efc_dest.efc_estado = 1)))
                        THROW 50011, N'Transición de estado inválida o intento de modificar una actividad en estado no editable (COMPLETADA) en [sgspi].[actividad_tratamiento].', 1;
                    -- EXCEPT trata NULL = NULL: si cambia el estado, solo puede cambiar act_fase_actividad (si el origen o el destino no es editable)
                    IF EXISTS (SELECT i.act_codigo,
@@ -6339,10 +6074,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_eac_integridad_y_actualizacion
                           FROM   inserted)
                RETURN;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- D7: no se crean registros ni se mueven a una vigencia cerrada o histórica
            IF EXISTS (SELECT 1
                       FROM   inserted AS i
@@ -6584,25 +6324,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_inmutabilidad
                                  AND eia.eia_fase_registro NOT IN (N'APROBADO_PLANIFICADO', N'EN_EJECUCION')))
                THROW 50011, N'Operación denegada: No se permite alterar seguimientos de una actividad completada/inactiva o de un evento en evaluación de eficacia, cerrado o histórico en [sgspi].[seguimiento_actividad].', 1;
            -- [AP-03] Persona de la sesión: queda en la auditoría
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo desactivan seguimientos de procesos de su alcance
-           IF EXISTS (SELECT 1
-                      FROM   inserted AS x
-                             LEFT OUTER JOIN
-                             sgspi.actividad_tratamiento AS act
-                             ON act.act_codigo = x.act_codigo
-                             LEFT OUTER JOIN
-                             sgspi.plan_tratamiento AS plt
-                             ON plt.plt_codigo = act.plt_codigo
-                             LEFT OUTER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia
-                             ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            -- [AP-01] [C2] Archiva after-image ('U') de las filas que cambian, con quién y cuándo
            INSERT INTO sgspi.aud_seguimiento_actividad (
                sga_codigo,
@@ -6747,29 +6477,20 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                                  AND eia.eia_fase_registro NOT IN (N'APROBADO_PLANIFICADO', N'EN_EJECUCION')))
                THROW 50011, N'Operación denegada: No se permite registrar seguimientos sobre una actividad completada/inactiva o un evento en evaluación de eficacia, cerrado o histórico en [sgspi].[seguimiento_actividad].', 1;
            -- [AP-03] [AP-15] El seguimiento lo registra la persona de la sesión
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           IF EXISTS (SELECT 1
-                      FROM   inserted
-                      WHERE  per_codigo <> @per_actor)
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
+           IF @per_actor IS NOT NULL
+              AND EXISTS (SELECT 1
+                          FROM   inserted
+                          WHERE  per_codigo <> @per_actor)
                THROW 50019, N'Autor inválido: [per_codigo] debe ser la persona de la sesión en [sgspi].[seguimiento_actividad].', 1;
-           -- [AP-02] D5: los roles líder y custodio solo reportan avances de procesos de su alcance (LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   inserted AS x
-                             LEFT OUTER JOIN
-                             sgspi.actividad_tratamiento AS act
-                             ON act.act_codigo = x.act_codigo
-                             LEFT OUTER JOIN
-                             sgspi.plan_tratamiento AS plt
-                             ON plt.plt_codigo = act.plt_codigo
-                             LEFT OUTER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia
-                             ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[seguimiento_actividad].', 1;
            -- Recalcula desde el último seguimiento activo por sga_codigo (serializado por applock en eia)
            UPDATE act
            SET    act.act_porcentaje_avance = ISNULL(u.sga_porcentaje_reportado, 0)
@@ -6810,7 +6531,7 @@ CREATE OR ALTER TRIGGER sgspi.TR_sga_sincronizar_avance
                   i.sga_uri_almacenamiento_evidencia,
                   i.sga_hash_sha256_evidencia,
                   i.sga_estado,
-                  @per_actor,
+                  COALESCE(@per_actor, i.per_codigo),
                   'I',
                   ORIGINAL_LOGIN(),
                   SYSDATETIMEOFFSET()
@@ -6858,10 +6579,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_pev_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -6966,10 +6692,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_efc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7080,10 +6811,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_tef_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7188,10 +6924,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_tpr_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7290,10 +7031,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_pri_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7448,10 +7194,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_piu_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7559,10 +7310,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_fec_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7677,10 +7433,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_pai_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7832,10 +7593,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_rpp_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[requisito_parte_interesada_proceso_institucional] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -7934,10 +7700,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_tac_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8042,10 +7813,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_cet_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8203,27 +7979,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_aip_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_proceso_institucional] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio asocian a sus procesos solo activos de sus UAA (la asociación nueva no da alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo,
-                                     pri_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo,
-                                     pri_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(x.pri_codigo, @per_actor) AS ap
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(NULL, p.uaa_codigo, @per_actor) AS aa
-                      WHERE  ap.permitido IS NULL
-                             OR aa.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo o el proceso no son de las UAA del usuario en [sgspi].[activo_informacion_proceso_institucional].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8353,23 +8117,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_ais_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_sede] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_sede].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8499,23 +8255,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_air_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_informacion_responsable] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_informacion_responsable].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8674,23 +8422,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_sif_auditoria
                                          WHERE  ado.ado_codigo = i.aci_codigo
                                                 AND ado.ado_estado = 1))
                THROW 50020, N'Exclusividad de subtipos: un activo documental activo ([ado]) no puede asociarse a una ficha de sistema de información ([sif]).', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: líder y custodio solo escriben fichas asociadas a activos de su alcance (aci_codigo NULL queda solo para roles transversales)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT aci_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT aci_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS aci
-                             ON aci.aci_codigo = x.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: la ficha de sistema no está asociada a un activo de las UAA ni de los procesos del usuario en [sgspi].[sistema_informacion_ficha].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8849,26 +8589,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_msi_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar módulos de un sistema cuyo activo de información no es editable en [sgspi].[modulo_sistema_informacion].', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: líder y custodio solo escriben módulos de sistemas asociados a activos de su alcance
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT sif_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT sif_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.sistema_informacion_ficha AS sif
-                             ON sif.sif_codigo = x.sif_codigo
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS aci
-                             ON aci.aci_codigo = sif.aci_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(aci.aci_codigo, aci.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el sistema del módulo no está asociado a un activo de las UAA ni de los procesos del usuario en [sgspi].[modulo_sistema_informacion].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -8967,10 +8696,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_sdo_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9080,10 +8814,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_sbd_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9182,10 +8921,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_upc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9307,10 +9051,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_pdc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9403,10 +9152,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_epc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9499,10 +9253,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_src_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9589,10 +9348,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_mcc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9679,10 +9443,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_idi_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9775,10 +9544,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_fac_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -9918,23 +9692,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_ads_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_soporte_registro] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_soporte_registro].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10064,23 +9830,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_adm_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_medio_conservacion] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_medio_conservacion].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10210,23 +9968,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_adi_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_idioma] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_idioma].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10356,23 +10106,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_adf_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_formato_archivo] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben activos de su alcance (ufn_activo_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT ado_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT ado_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.activo_informacion AS p
-                             ON p.aci_codigo = x.ado_codigo
-                             OUTER APPLY sgspi.ufn_activo_en_alcance(p.aci_codigo, p.uaa_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el activo no es de las UAA ni de los procesos del usuario en [sgspi].[activo_documental_formato_archivo].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10502,10 +10244,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_adu_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[activo_documental_unidad_productora] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10598,10 +10345,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_epr_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10712,10 +10464,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_eim_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10826,10 +10583,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_zrc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -10928,10 +10690,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_mvr_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11064,10 +10831,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_etc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11214,10 +10986,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_enc_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11328,10 +11105,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_crn_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11442,10 +11224,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_aac_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11538,10 +11325,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_cra_auditoria
            IF NOT EXISTS (SELECT 1
                           FROM   inserted)
                RETURN;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11680,26 +11472,15 @@ CREATE OR ALTER TRIGGER sgspi.TR_ptc_auditoria
                       WHERE  efc.efc_permite_edicion = 0
                              OR efc.efc_estado = 0)
                THROW 50011, N'Operación denegada: No se permite insertar ni modificar registros de [sgspi].[plan_tratamiento_control_referencia_normativa] cuando el padre no es editable.', 1;
-           DECLARE @per_actor AS INT = (SELECT per_codigo
-                                        FROM   sgspi.ufn_persona_sesion());
-           IF @per_actor IS NULL
-               THROW 50017, N'No se encontró una persona activa (usuario_administrativos/usuario_docentes.sys) para ORIGINAL_LOGIN().', 1;
-           -- [AP-02] D5: los roles líder y custodio solo escriben en procesos de su alcance (ufn_proceso_en_alcance; LEFT JOIN evita bypass por RLS)
-           IF EXISTS (SELECT 1
-                      FROM   (SELECT plt_codigo
-                              FROM   inserted
-                              UNION
-                              SELECT plt_codigo
-                              FROM   deleted) AS x
-                             LEFT OUTER JOIN
-                             sgspi.plan_tratamiento AS plt
-                             ON plt.plt_codigo = x.plt_codigo
-                             LEFT OUTER JOIN
-                             sgspi.evento_incertidumbre_activo AS eia
-                             ON eia.eia_codigo = plt.eia_codigo
-                             OUTER APPLY sgspi.ufn_proceso_en_alcance(eia.pri_codigo, @per_actor) AS a
-                      WHERE  a.permitido IS NULL)
-               THROW 50021, N'Fuera de alcance: el proceso del evento no está en las UAA del usuario en [sgspi].[plan_tratamiento_control_referencia_normativa].', 1;
+           DECLARE @per_actor AS INT = CASE SQL_VARIANT_PROPERTY(SESSION_CONTEXT(N'per_codigo'), 'BaseType')
+        WHEN 'int' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'smallint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'tinyint' THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo'))
+        WHEN 'bigint' THEN CASE WHEN CONVERT (BIGINT, SESSION_CONTEXT(N'per_codigo')) BETWEEN -2147483648 AND 2147483647 THEN CONVERT (INT, SESSION_CONTEXT(N'per_codigo')) END
+        WHEN 'nvarchar' THEN CASE WHEN CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE N'%[^0-9]%' AND LEN(CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (NVARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        WHEN 'varchar' THEN CASE WHEN CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo')) NOT LIKE '%[^0-9]%' AND LEN(CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) BETWEEN 1 AND 9 THEN CONVERT (INT, CONVERT (VARCHAR (30), SESSION_CONTEXT(N'per_codigo'))) END
+        ELSE NULL
+    END;
            IF NOT EXISTS (SELECT 1
                           FROM   deleted)
                BEGIN
@@ -11778,929 +11559,645 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- 5.10.10 Roles y permisos [AP-02]: privilegios mínimos por actor.
--- Cada persona escribe con su login SQL real, miembro de UN rol de actor (uno por grupo SGSPI_* de [dbo].[grupo]);
--- la cuenta compartida de consulta es miembro solo de sgspi_rol_consulta (fuera de sgspi_rol_base: solo lee por
--- lista blanca los catálogos y las cinco vistas de D8, sin acceso a eia, plt, act, sga ni aud_*). Los seis roles
--- de actor son miembros de sgspi_rol_base y heredan su SELECT y sus DENY. Este script NO asigna personas a roles (lo hace el DBA).
--- Los triggers no se ven afectados por los DENY: [sgspi] es de dbo y el encadenamiento de propiedad omite la verificación.
--- dbo / db_owner / sysadmin NO se pueden restringir con DENY; un login en db_datawriter anula estos GRANT.
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_base') IS NULL
-    CREATE ROLE sgspi_rol_base;
+-- 5.10.10 Roles y permisos bajo estándar institucional USCO (prefijo grupo_<modulo>_*, AUTHORIZATION dbo, estructura plana sin anidamiento).
+-- Se retiran todos los roles fuera de estándar (sgspi_rol_*), los DENY de columna (Msg 230 en Hibernate ORM 7) y la política RLS spol_alcance_lectura.
+-- dbo / db_owner / sysadmin NO se pueden restringir con DENY; el runtime usa cuentas separadas en grupo_sgspi_login, grupo_sgspi_consulta y grupo_sgspi_ejecucion.
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_login') IS NULL
+    CREATE ROLE grupo_sgspi_login AUTHORIZATION dbo; -- Cuenta técnica de autenticación/contexto (sgspi_login)
 
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_custodio_operador') IS NULL
-    CREATE ROLE sgspi_rol_custodio_operador; -- SGSPI_CUSTODIO_OPERADOR
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_consulta') IS NULL
+    CREATE ROLE grupo_sgspi_consulta AUTHORIZATION dbo; -- Cuenta técnica de solo lectura (sgspi_consulta)
 
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_lider_propietario') IS NULL
-    CREATE ROLE sgspi_rol_lider_propietario; -- SGSPI_LIDER_PROPIETARIO
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_ejecucion') IS NULL
+    CREATE ROLE grupo_sgspi_ejecucion AUTHORIZATION dbo; -- Cuenta técnica del pool transaccional HikariCP (sgspi_ejecucion)
 
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_gestor_documental') IS NULL
-    CREATE ROLE sgspi_rol_gestor_documental; -- SGSPI_GESTOR_DOCUMENTAL
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_migracion') IS NULL
+    CREATE ROLE grupo_sgspi_migracion AUTHORIZATION dbo; -- Cuenta exclusiva del pipeline CI/CD de Flyway (sgspi_migracion)
 
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_oficial_seguridad_privacidad') IS NULL
-    CREATE ROLE sgspi_rol_oficial_seguridad_privacidad; -- SGSPI_ADMIN_OPDP
+-- Capa _login: cero DML/DDL; solo contexto de inicio de sesión y vista de alcance (sin exponer uwd, uwd2 ni sys)
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON SCHEMA::sgspi TO grupo_sgspi_login;
 
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_comite_direccion') IS NULL
-    CREATE ROLE sgspi_rol_comite_direccion; -- SGSPI_COMITE_DIRECCION
-
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_auditor_control') IS NULL
-    CREATE ROLE sgspi_rol_auditor_control; -- SGSPI_AUDITOR_CONTROL
-
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_consulta') IS NULL
-    CREATE ROLE sgspi_rol_consulta; -- Cuenta compartida de consulta de la aplicación (D5/D8)
-
-IF DATABASE_PRINCIPAL_ID(N'sgspi_rol_login') IS NULL
-    CREATE ROLE sgspi_rol_login; -- Cuenta compartida de login de la aplicación (LoginDS Spring Boot)
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_custodio_operador;
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_lider_propietario;
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_gestor_documental;
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_oficial_seguridad_privacidad;
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_comite_direccion;
-
-ALTER ROLE sgspi_rol_base ADD MEMBER sgspi_rol_auditor_control;
-
--- Base: lista blanca de lectura sobre las 49 tablas de negocio, la vista de alcance y las 5 funciones inline (las 49 aud_* quedan solo para auditor y oficial).
--- ALTER es lo que habilita TRUNCATE y DISABLE TRIGGER. Las 6 vistas de reporte se otorgan al final de la sección 6.
-GRANT SELECT
-    ON sgspi.periodo_vigencia TO sgspi_rol_base;
+-- Capa _consulta (estándar USCO: SELECT sobre el esquema propio + SELECT explícito en las 5 maestras FK de [dbo]; cero DML/DDL)
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON SCHEMA::sgspi TO grupo_sgspi_consulta;
 
 GRANT SELECT
-    ON sgspi.estado_flujo_catalogo TO sgspi_rol_base;
+    ON SCHEMA::sgspi TO grupo_sgspi_consulta;
 
-GRANT SELECT
-    ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
+GRANT SELECT ON dbo.uaa TO grupo_sgspi_consulta;
 
-GRANT SELECT
-    ON sgspi.tipo_proceso_catalogo TO sgspi_rol_base;
+GRANT SELECT ON dbo.cargo TO grupo_sgspi_consulta;
 
-GRANT SELECT
-    ON sgspi.proceso_institucional TO sgspi_rol_base;
+GRANT SELECT ON dbo.persona TO grupo_sgspi_consulta;
 
-GRANT SELECT
-    ON sgspi.proceso_institucional_uaa TO sgspi_rol_base;
+GRANT SELECT ON dbo.espacio TO grupo_sgspi_consulta;
 
-GRANT SELECT
-    ON sgspi.factor_entorno_catalogo TO sgspi_rol_base;
+GRANT SELECT ON dbo.sub_sede TO grupo_sgspi_consulta;
 
-GRANT SELECT
-    ON sgspi.analisis_contexto_factor TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.parte_interesada TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.requisito_parte_interesada TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.requisito_parte_interesada_proceso_institucional TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.tipo_activo_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.causal_excepcion_transparencia TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_informacion TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_informacion_proceso_institucional TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_informacion_sede TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_informacion_responsable TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.sistema_informacion_ficha TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.modulo_sistema_informacion TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.serie_documental_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.subserie_documental_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.periodicidad_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.estado_publicacion_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.soporte_registro_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.medio_conservacion_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.idioma_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.formato_archivo_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_documental TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_documental_soporte_registro TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_documental_medio_conservacion TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_documental_idioma TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_documental_formato_archivo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.activo_documental_unidad_productora TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.escala_probabilidad TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.escala_impacto TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.zona_riesgo_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.evento_incertidumbre_activo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.plan_tratamiento TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.actividad_tratamiento TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.seguimiento_actividad TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.estandar_normativo_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.control_referencia_normativa TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.atributo_control_catalogo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.plan_tratamiento_control_referencia_normativa TO sgspi_rol_base;
-
--- A2: SoA (evaluacion_aplicabilidad_control) se retira de sgspi_rol_base y se otorga solo a roles con necesidad operativa/gobierno
-GRANT SELECT
-    ON sgspi.evaluacion_aplicabilidad_control TO sgspi_rol_oficial_seguridad_privacidad, sgspi_rol_auditor_control, sgspi_rol_comite_direccion, sgspi_rol_lider_propietario;
-
-GRANT SELECT
-    ON sgspi.vw_usuario_rol_alcance_sgspi TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.ufn_persona_sesion TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.ufn_proceso_en_alcance TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.ufn_activo_en_alcance TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.ufn_rls_alcance_aip TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.ufn_rls_alcance_proceso TO sgspi_rol_base;
-
-GRANT SELECT
-    ON sgspi.ufn_rls_alcance_activo TO sgspi_rol_base;
-
--- [B5] Helper de consecutivos para roles que crean acf, eia o act
-GRANT EXECUTE
-    ON sgspi.usp_siguiente_consecutivo TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental, sgspi_rol_oficial_seguridad_privacidad;
-
+-- Capa _ejecucion: escritura operativa sobre [sgspi] + lectura de las 5 maestras FK de [dbo] para relaciones JPA/ORM
 DENY ALTER
-    ON SCHEMA::sgspi TO sgspi_rol_base;
+    ON SCHEMA::sgspi TO grupo_sgspi_ejecucion;
 
--- [AP-22] Ningún registro se elimina: la baja es lógica (<acr>_estado = 0). El DENY también anula db_datawriter.
+-- Catálogos de máquina de estados: solo lectura para runtime (evolucionan vía Flyway / grupo_sgspi_migracion)
+GRANT SELECT
+    ON sgspi.estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE
+    ON sgspi.estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE
+    ON sgspi.transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+-- Entidades y catálogos operativos (36 tablas): lectura/escritura sin borrado físico
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.periodo_vigencia TO grupo_sgspi_ejecucion;
+
 DENY DELETE
-    ON SCHEMA::sgspi TO sgspi_rol_base;
+    ON sgspi.periodo_vigencia TO grupo_sgspi_ejecucion;
 
--- D8 / A4: la cuenta compartida queda fuera de sgspi_rol_base y solo lee por lista blanca los catálogos (aquí)
--- y las cuatro vistas públicas vigentes sin PII/ICC restringida (al final de la sección 6, tras crearlas).
--- Se blinda contra errores de DBA (escritura/DDL) y se otorga SELECT sobre las 3 funciones RLS (SCHEMABINDING = OFF).
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON SCHEMA::sgspi TO sgspi_rol_consulta;
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
 
--- LoginDS (estándar Spring Boot USCO): solo lee sgspi.vw_sgspi_admin_login; los demás roles tienen DENY explícito (expone uwd2).
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON SCHEMA::sgspi TO sgspi_rol_login;
+DENY DELETE
+    ON sgspi.tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
 
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.parte_interesada TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_informacion TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.idioma_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.idioma_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.escala_probabilidad TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.escala_probabilidad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.escala_impacto TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.escala_impacto TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.plan_tratamiento TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.plan_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
+
+-- Tablas puente N:M puras (11 tablas): habilita DELETE para colecciones JPA
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+    ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+-- Tablas de auditoría heredadas (49 aud_*): solo lectura para runtime; escritura exclusiva de triggers
 GRANT SELECT
-    ON sgspi.vw_sgspi_admin_login TO sgspi_rol_login;
-
-DENY SELECT
-    ON sgspi.vw_sgspi_admin_login TO sgspi_rol_base, sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.ufn_rls_alcance_aip TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.ufn_rls_alcance_proceso TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.ufn_rls_alcance_activo TO sgspi_rol_consulta;
-
--- A1: Sin GRANT UNMASK global (en SQL 2019 expone [dbo] y columnas de auditoría); reemplazado por DENY SELECT explícito por columna.
-DENY SELECT
-    ON sgspi.plan_tratamiento (plt_presupuesto_estimado_cop) TO sgspi_rol_custodio_operador, sgspi_rol_gestor_documental;
-
-DENY SELECT
-    ON sgspi.evaluacion_aplicabilidad_control (eac_observaciones_auditoria) TO sgspi_rol_lider_propietario, sgspi_rol_custodio_operador, sgspi_rol_gestor_documental;
-
-GRANT SELECT
-    ON sgspi.periodo_vigencia TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.estado_flujo_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.transicion_estado_flujo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.tipo_proceso_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.proceso_institucional TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.proceso_institucional_uaa TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.factor_entorno_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.parte_interesada TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.tipo_activo_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.causal_excepcion_transparencia TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.serie_documental_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.subserie_documental_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.periodicidad_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.estado_publicacion_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.soporte_registro_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.medio_conservacion_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.idioma_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.formato_archivo_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.escala_probabilidad TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.escala_impacto TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.zona_riesgo_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.estandar_normativo_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.control_referencia_normativa TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.atributo_control_catalogo TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_consulta;
-
--- La máquina de estados solo cambia por script de migración: quien la escribe se salta los triggers de flujo.
-DENY INSERT, UPDATE, DELETE
-    ON sgspi.estado_flujo_catalogo TO sgspi_rol_base;
-
-DENY INSERT, UPDATE, DELETE
-    ON sgspi.transicion_estado_flujo TO sgspi_rol_base;
-
--- Columnas inmutables para la aplicación: creador, consecutivos, fechas de control (las mantienen DEFAULT y triggers) y avance derivado de [sga].
-DENY UPDATE
-    ON sgspi.periodo_vigencia (pev_fecha_creacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.analisis_contexto_factor (acf_numero_factor, per_codigo_creador, per_codigo_aprobador, acf_fecha_creacion, acf_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.requisito_parte_interesada (per_codigo_creador, per_codigo_aprobador, rpi_fecha_creacion, rpi_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.requisito_parte_interesada_proceso_institucional (rpp_fecha_registro) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.activo_informacion (per_codigo_creador, per_codigo_aprobador, per_codigo_revisor_archivo, aci_fecha_creacion, aci_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.activo_documental (ado_fecha_creacion, ado_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.evento_incertidumbre_activo (eia_numero_evento, per_codigo_creador, per_codigo_validador_lider, per_codigo_revisor_sgspi, per_codigo_aprobador_comite, eia_fecha_creacion, eia_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.plan_tratamiento (plt_fecha_creacion, plt_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.actividad_tratamiento (act_porcentaje_avance, act_fecha_creacion, act_fecha_actualizacion) TO sgspi_rol_base;
-
-DENY UPDATE
-    ON sgspi.evaluacion_aplicabilidad_control (eac_fecha_creacion, eac_fecha_actualizacion) TO sgspi_rol_base;
-
--- Configuración y catálogos del SGSPI: solo el oficial de seguridad y privacidad.
-GRANT INSERT, UPDATE
-    ON sgspi.periodo_vigencia TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.tipo_proceso_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.proceso_institucional TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.factor_entorno_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.tipo_activo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.causal_excepcion_transparencia TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.parte_interesada TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.escala_probabilidad TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.escala_impacto TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.zona_riesgo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.matriz_valoracion_riesgo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.estrategia_tratamiento_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.estandar_normativo_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.control_referencia_normativa TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.atributo_control_catalogo TO sgspi_rol_oficial_seguridad_privacidad;
-
--- Catálogos documentales (CCD/TRD): solo el gestor documental.
-GRANT INSERT, UPDATE
-    ON sgspi.serie_documental_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.subserie_documental_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.periodicidad_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.estado_publicacion_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.soporte_registro_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.medio_conservacion_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.idioma_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.formato_archivo_catalogo TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_documental_unidad_productora TO sgspi_rol_gestor_documental;
-
--- Tablas con datos del negocio. El comité solo actualiza el estado en [eia] (su firma la escribe el trigger).
-GRANT INSERT, UPDATE
-    ON sgspi.analisis_contexto_factor TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario;
-
-GRANT UPDATE
-    ON sgspi.analisis_contexto_factor TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.requisito_parte_interesada TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT UPDATE
-    ON sgspi.requisito_parte_interesada TO sgspi_rol_lider_propietario;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_informacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
--- El gestor documental solo cambia el estado de [aci] para su aval de Archivo (EN_REVISION_ARCHIVO -> EN_REVISION_SGSPI
--- u OBSERVADO, RN-DOC-06); sin este GRANT la transición que [tef] le asigna fallaba con 229.
-GRANT UPDATE
-    ON sgspi.activo_informacion (aci_fase_registro) TO sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_informacion_responsable TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.sistema_informacion_ficha TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.modulo_sistema_informacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_documental TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
-
-GRANT UPDATE
-    ON sgspi.activo_documental TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT
-    ON sgspi.evento_incertidumbre_activo TO sgspi_rol_custodio_operador;
-
-GRANT INSERT, UPDATE
-    ON sgspi.evento_incertidumbre_activo TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT UPDATE
-    ON sgspi.evento_incertidumbre_activo (eia_fase_registro) TO sgspi_rol_comite_direccion;
-
-GRANT INSERT, UPDATE
-    ON sgspi.plan_tratamiento TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
--- D2: el dictamen de eficacia es solo del auditor; el líder y el oficial no lo escriben ni lo borran (TR_plt solo revisa
--- dictámenes con evaluador). Va después del GRANT de tabla: el DENY de columna prevalece sobre él.
-DENY UPDATE
-    ON sgspi.plan_tratamiento (plt_es_tratamiento_eficaz, plt_dictamen_eficacia, per_codigo_evaluador, plt_fecha_evaluacion_eficacia) TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.actividad_tratamiento TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
-
-GRANT UPDATE
-    ON sgspi.actividad_tratamiento TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT
-    ON sgspi.seguimiento_actividad TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental; -- append-only
-
-GRANT UPDATE
-    ON sgspi.seguimiento_actividad (sga_estado) TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental; -- [AP-22] solo borrado lógico
-
-GRANT INSERT, UPDATE
-    ON sgspi.evaluacion_aplicabilidad_control TO sgspi_rol_oficial_seguridad_privacidad;
-
--- Tablas puente: INSERT y UPDATE; una asociación errada se desactiva con <acr>_estado = 0 (nunca DELETE) [AP-22].
-GRANT INSERT, UPDATE
-    ON sgspi.proceso_institucional_uaa TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.control_referencia_normativa_atributo TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.requisito_parte_interesada_proceso_institucional TO sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_informacion_proceso_institucional TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_informacion_sede TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_documental_soporte_registro TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_documental_medio_conservacion TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_documental_idioma TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.activo_documental_formato_archivo TO sgspi_rol_custodio_operador, sgspi_rol_lider_propietario, sgspi_rol_gestor_documental;
-
-GRANT INSERT, UPDATE
-    ON sgspi.plan_tratamiento_control_referencia_normativa TO sgspi_rol_lider_propietario, sgspi_rol_oficial_seguridad_privacidad;
-
--- Auditor: solo lectura, salvo el dictamen de eficacia del plan (solo él lo registra, TR_plt), el cierre o la reapertura
--- de esa evaluación en eia (D2) y sus observaciones en el SoA.
-GRANT UPDATE
-    ON sgspi.evento_incertidumbre_activo (eia_fase_registro) TO sgspi_rol_auditor_control;
-
-GRANT UPDATE
-    ON sgspi.plan_tratamiento (plt_es_tratamiento_eficaz, plt_dictamen_eficacia, per_codigo_evaluador, plt_fecha_evaluacion_eficacia) TO sgspi_rol_auditor_control;
-
-GRANT UPDATE
-    ON sgspi.evaluacion_aplicabilidad_control (eac_observaciones_auditoria) TO sgspi_rol_auditor_control;
-
--- [AP-01] Auditoría de solo lectura: las tablas aud_* solo las escriben los triggers (encadenamiento de propiedad)
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_periodo_vigencia TO sgspi_rol_base;
+    ON sgspi.aud_periodo_vigencia TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estado_flujo_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_periodo_vigencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estado_flujo_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_transicion_estado_flujo TO sgspi_rol_base;
+    ON sgspi.aud_estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_transicion_estado_flujo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_tipo_proceso_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_proceso_institucional TO sgspi_rol_base;
+    ON sgspi.aud_tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_proceso_institucional TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_proceso_institucional_uaa TO sgspi_rol_base;
+    ON sgspi.aud_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_proceso_institucional_uaa TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_factor_entorno_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_factor_entorno_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_analisis_contexto_factor TO sgspi_rol_base;
+    ON sgspi.aud_factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_analisis_contexto_factor TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_parte_interesada TO sgspi_rol_base;
+    ON sgspi.aud_analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_parte_interesada TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_requisito_parte_interesada TO sgspi_rol_base;
+    ON sgspi.aud_parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_requisito_parte_interesada TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO sgspi_rol_base;
+    ON sgspi.aud_requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_tipo_activo_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_tipo_activo_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_causal_excepcion_transparencia TO sgspi_rol_base;
+    ON sgspi.aud_tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion TO sgspi_rol_base;
+    ON sgspi.aud_causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion_proceso_institucional TO sgspi_rol_base;
+    ON sgspi.aud_activo_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion_sede TO sgspi_rol_base;
+    ON sgspi.aud_activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_sede TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion_responsable TO sgspi_rol_base;
+    ON sgspi.aud_activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_responsable TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_sistema_informacion_ficha TO sgspi_rol_base;
+    ON sgspi.aud_activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_sistema_informacion_ficha TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_modulo_sistema_informacion TO sgspi_rol_base;
+    ON sgspi.aud_sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_modulo_sistema_informacion TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_serie_documental_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_serie_documental_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_subserie_documental_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_subserie_documental_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_base;
+    ON sgspi.aud_subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_periodicidad_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_periodicidad_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estado_publicacion_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_soporte_registro_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_soporte_registro_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_medio_conservacion_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_idioma_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_idioma_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_formato_archivo_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_idioma_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_formato_archivo_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental TO sgspi_rol_base;
+    ON sgspi.aud_formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_soporte_registro TO sgspi_rol_base;
+    ON sgspi.aud_activo_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_medio_conservacion TO sgspi_rol_base;
+    ON sgspi.aud_activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_idioma TO sgspi_rol_base;
+    ON sgspi.aud_activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_idioma TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_formato_archivo TO sgspi_rol_base;
+    ON sgspi.aud_activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_unidad_productora TO sgspi_rol_base;
+    ON sgspi.aud_activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_escala_probabilidad TO sgspi_rol_base;
+    ON sgspi.aud_activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_escala_probabilidad TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_escala_impacto TO sgspi_rol_base;
+    ON sgspi.aud_escala_probabilidad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_escala_impacto TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_zona_riesgo_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_escala_impacto TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_matriz_valoracion_riesgo TO sgspi_rol_base;
+    ON sgspi.aud_zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_evento_incertidumbre_activo TO sgspi_rol_base;
+    ON sgspi.aud_matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estrategia_tratamiento_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_plan_tratamiento TO sgspi_rol_base;
+    ON sgspi.aud_estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_plan_tratamiento TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_actividad_tratamiento TO sgspi_rol_base;
+    ON sgspi.aud_plan_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_actividad_tratamiento TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_seguimiento_actividad TO sgspi_rol_base;
+    ON sgspi.aud_actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_seguimiento_actividad TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estandar_normativo_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_control_referencia_normativa TO sgspi_rol_base;
+    ON sgspi.aud_estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_control_referencia_normativa TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_atributo_control_catalogo TO sgspi_rol_base;
+    ON sgspi.aud_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_atributo_control_catalogo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_control_referencia_normativa_atributo TO sgspi_rol_base;
+    ON sgspi.aud_atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO sgspi_rol_base;
+    ON sgspi.aud_control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
 
 DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_evaluacion_aplicabilidad_control TO sgspi_rol_base;
-
--- [AP-01] [AP-02] Lectura de las 49 tablas aud_* restringida exclusivamente a auditoría y oficial de seguridad/privacidad
-GRANT SELECT
-    ON sgspi.aud_periodo_vigencia TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.aud_estado_flujo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+    ON sgspi.aud_evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_transicion_estado_flujo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_tipo_proceso_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+-- Procedimientos encapsulados por capa (login vs. ejecución transaccional) + maestras FK de [dbo] para ejecución
+GRANT EXECUTE
+    ON sgspi.usp_obtener_contexto_usuario TO grupo_sgspi_login;
 
-GRANT SELECT
-    ON sgspi.aud_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT EXECUTE
+    ON sgspi.usp_siguiente_consecutivo TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_proceso_institucional_uaa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.uaa TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_factor_entorno_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.cargo TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_analisis_contexto_factor TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.persona TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_parte_interesada TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.espacio TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_requisito_parte_interesada TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.sub_sede TO grupo_sgspi_ejecucion;
 
-GRANT SELECT
-    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+-- Permisos exclusivos para el rol de migración Flyway (acotado al esquema sgspi + lectura/FK hacia dbo)
+GRANT CONTROL, SELECT, INSERT, UPDATE, DELETE, EXECUTE, ALTER, REFERENCES, VIEW DEFINITION
+    ON SCHEMA::sgspi TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_tipo_activo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT CREATE TABLE, CREATE VIEW, CREATE PROCEDURE, CREATE FUNCTION TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_causal_excepcion_transparencia TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT REFERENCES, SELECT ON dbo.uaa TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_activo_informacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT REFERENCES, SELECT ON dbo.cargo TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_activo_informacion_proceso_institucional TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT REFERENCES, SELECT ON dbo.persona TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_activo_informacion_sede TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT REFERENCES, SELECT ON dbo.espacio TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_activo_informacion_responsable TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT REFERENCES, SELECT ON dbo.sub_sede TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_sistema_informacion_ficha TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.grupo TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_modulo_sistema_informacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.usuario_grupo TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_serie_documental_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
+GRANT SELECT ON dbo.usuario_administrativos TO grupo_sgspi_migracion;
 
-GRANT SELECT
-    ON sgspi.aud_subserie_documental_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_periodicidad_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_estado_publicacion_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_soporte_registro_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_medio_conservacion_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_idioma_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_formato_archivo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_soporte_registro TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_medio_conservacion TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_idioma TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_formato_archivo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_unidad_productora TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_escala_probabilidad TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_escala_impacto TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_zona_riesgo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_matriz_valoracion_riesgo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_evento_incertidumbre_activo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_estrategia_tratamiento_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_plan_tratamiento TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_actividad_tratamiento TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_seguimiento_actividad TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_estandar_normativo_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_control_referencia_normativa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_atributo_control_catalogo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_control_referencia_normativa_atributo TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-GRANT SELECT
-    ON sgspi.aud_evaluacion_aplicabilidad_control TO sgspi_rol_auditor_control, sgspi_rol_oficial_seguridad_privacidad;
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
--- RLS en lectura y escritura [AP-02][A2]: custodios y líderes solo leen y escriben registros en su alcance UAA/proceso en las 20 tablas operativas y puente.
--- BLOCK PREDICATE es obligatorio junto a FILTER PREDICATE: sin él, FILTER oculta inserted en los triggers AFTER y anula sus validaciones/auditoría.
--- SCHEMABINDING = OFF es obligatorio porque las tablas corporativas de [dbo] no tienen SCHEMABINDING.
-IF EXISTS (SELECT 1
-           FROM   sys.security_policies
-           WHERE  schema_id = SCHEMA_ID(N'sgspi')
-                  AND name = N'spol_alcance_lectura')
-    DROP SECURITY POLICY sgspi.spol_alcance_lectura;
-
-CREATE SECURITY POLICY sgspi.spol_alcance_lectura
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.analisis_contexto_factor,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, rpi_codigo, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada_proceso_institucional,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.requisito_parte_interesada_proceso_institucional,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(aci_codigo, uaa_codigo, NULL, NULL) ON sgspi.activo_informacion,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_aip(pri_codigo) ON sgspi.activo_informacion_proceso_institucional,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_aip(pri_codigo) ON sgspi.activo_informacion_proceso_institucional,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.activo_informacion_sede,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.activo_informacion_sede,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.activo_informacion_responsable,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.activo_informacion_responsable,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_soporte_registro,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_soporte_registro,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_medio_conservacion,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_medio_conservacion,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_idioma,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_idioma,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_formato_archivo,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_formato_archivo,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_unidad_productora,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, ado_codigo, NULL) ON sgspi.activo_documental_unidad_productora,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(pri_codigo, NULL, NULL, NULL, NULL) ON sgspi.evento_incertidumbre_activo,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, eia_codigo, NULL, NULL) ON sgspi.plan_tratamiento,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.plan_tratamiento_control_referencia_normativa,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.plan_tratamiento_control_referencia_normativa,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, plt_codigo, NULL) ON sgspi.actividad_tratamiento,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_proceso(NULL, NULL, NULL, NULL, act_codigo) ON sgspi.seguimiento_actividad,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, aci_codigo, NULL) ON sgspi.sistema_informacion_ficha,
-    ADD FILTER PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion,
-    ADD BLOCK PREDICATE sgspi.ufn_rls_alcance_activo(NULL, NULL, NULL, sif_codigo) ON sgspi.modulo_sistema_informacion
-    WITH (STATE = ON, SCHEMABINDING = OFF);
+GRANT SELECT ON dbo.usuario_docentes TO grupo_sgspi_migracion;
 
 
 GO
@@ -13074,6 +12571,7 @@ SELECT ado.ado_codigo,
        aci.aci_nivel_criticidad AS ado_nivel_criticidad,
        epc.epc_nombre AS ado_fase_publicacion,
        ado.ado_lugar_consulta_ubicacion,
+       aci.aci_clasificacion_transparencia AS ado_clasificacion_transparencia,
        aci.aci_contiene_datos_personales AS ado_contiene_datos_personales,
        aci.aci_contiene_datos_menores AS ado_contiene_datos_menores,
        aci.aci_categoria_dato_personal AS ado_tipo_dato_personal,
@@ -13211,7 +12709,7 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- 6.7 [A4] Vistas públicas restringidas para sgspi_rol_consulta (solo registros VIGENTE, sin borradores ni columnas PII/ICC/reserva interna)
+-- 6.7 [A4] Vistas públicas restringidas (solo registros VIGENTE, sin borradores, sin columnas PII/ICC/reserva interna y con ubicación enmascarada ante reserva o no publicación)
 CREATE OR ALTER VIEW sgspi.vw_consulta_dofa_vigente
 AS
 SELECT acf_codigo,
@@ -13268,7 +12766,11 @@ SELECT ado_codigo,
        ado_nivel_disponibilidad,
        ado_nivel_criticidad,
        ado_fase_publicacion,
-       ado_lugar_consulta_ubicacion,
+       CASE WHEN ado_clasificacion_transparencia IN (N'CLASIFICADA', N'RESERVADA')
+                 OR UPPER(LTRIM(RTRIM(ado_fase_publicacion))) = N'NO PUBLICADA'
+            THEN NULL
+            ELSE ado_lugar_consulta_ubicacion
+       END AS ado_lugar_consulta_ubicacion,
        ado_contiene_datos_personales,
        ado_objeto_legitimo_excepcion,
        ado_fecha_clasificacion_reserva,
@@ -13284,43 +12786,36 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- Lectura de las vistas de reporte para sgspi_rol_base (RLS filtra las filas según alcance del actor)
+-- Lectura de las vistas por capa (grupo_sgspi_consulta ya las cubre vía GRANT SELECT ON SCHEMA::sgspi)
 GRANT SELECT
-    ON sgspi.vw_consolidado_dofa TO sgspi_rol_base;
+    ON sgspi.vw_usuario_rol_alcance_sgspi TO grupo_sgspi_login;
 
 GRANT SELECT
-    ON sgspi.vw_resumen_activos_criticidad TO sgspi_rol_base;
+    ON sgspi.vw_usuario_rol_alcance_sgspi TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_matriz_tratamiento_riesgos TO sgspi_rol_base;
+    ON sgspi.vw_consolidado_dofa TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_desglose_ccd_trd_mr04 TO sgspi_rol_base;
+    ON sgspi.vw_resumen_activos_criticidad TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_inventario_activo_documental_mr04 TO sgspi_rol_base;
+    ON sgspi.vw_matriz_tratamiento_riesgos TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_controles_atributos_iso27002 TO sgspi_rol_base;
+    ON sgspi.vw_desglose_ccd_trd_mr04 TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_consulta_dofa_vigente TO sgspi_rol_base;
+    ON sgspi.vw_inventario_activo_documental_mr04 TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_consulta_inventario_documental_vigente TO sgspi_rol_base;
-
--- D8 / A4: la cuenta compartida solo lee vistas públicas vigentes sin borradores ni PII/ICC/reserva interna (encadenamiento de propiedad con dbo).
-GRANT SELECT
-    ON sgspi.vw_consulta_dofa_vigente TO sgspi_rol_consulta;
+    ON sgspi.vw_controles_atributos_iso27002 TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_resumen_activos_criticidad TO sgspi_rol_consulta;
+    ON sgspi.vw_consulta_dofa_vigente TO grupo_sgspi_ejecucion;
 
 GRANT SELECT
-    ON sgspi.vw_consulta_inventario_documental_vigente TO sgspi_rol_consulta;
-
-GRANT SELECT
-    ON sgspi.vw_controles_atributos_iso27002 TO sgspi_rol_consulta;
+    ON sgspi.vw_consulta_inventario_documental_vigente TO grupo_sgspi_ejecucion;
 
 
 GO
@@ -13427,20 +12922,20 @@ IF (SELECT COUNT(*)
        WHERE  t.schema_id = SCHEMA_ID(N'sgspi')) <> 99
    OR (SELECT COUNT(*)
        FROM   sys.views
-       WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 10
+       WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 9
    OR (SELECT COUNT(*)
        FROM   sys.objects
        WHERE  schema_id = SCHEMA_ID(N'sgspi')
-              AND type = N'IF') <> 6
+              AND type = N'IF') <> 0
+   OR (SELECT COUNT(*)
+       FROM   sys.objects
+       WHERE  schema_id = SCHEMA_ID(N'sgspi')
+              AND type = N'P') <> 2
+   OR OBJECT_ID(N'sgspi.usp_obtener_contexto_usuario', N'P') IS NULL
    OR OBJECT_ID(N'sgspi.usp_siguiente_consecutivo', N'P') IS NULL
-   OR NOT EXISTS (SELECT 1
-                  FROM   sys.security_policies AS sp
-                  WHERE  sp.schema_id = SCHEMA_ID(N'sgspi')
-                         AND sp.name = N'spol_alcance_lectura'
-                         AND sp.is_enabled = 1
-                         AND (SELECT COUNT(*)
-                              FROM   sys.security_predicates AS pr
-                              WHERE  pr.object_id = sp.object_id) = 40)
+   OR EXISTS (SELECT 1
+              FROM   sys.security_policies AS sp
+              WHERE  sp.schema_id = SCHEMA_ID(N'sgspi'))
    OR (SELECT COUNT(*)
        FROM   sys.foreign_keys
        WHERE  schema_id = SCHEMA_ID(N'sgspi')
@@ -13449,21 +12944,44 @@ IF (SELECT COUNT(*)
        FROM   sys.foreign_keys
        WHERE  schema_id = SCHEMA_ID(N'sgspi')
               AND referenced_object_id = OBJECT_ID(N'dbo.persona')) <> 13
-    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 10 vistas, 6 funciones, 1 SP usp_siguiente_consecutivo, política RLS spol_alcance_lectura activa con 40 predicados, 25 FKs a [dbo] con 13 a dbo.persona).';
+    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 9 vistas, 0 funciones IF, 2 SPs usp_obtener_contexto_usuario/usp_siguiente_consecutivo, 0 políticas RLS, 25 FKs a [dbo] con 13 a dbo.persona).';
 
 DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST (v.nombre AS NVARCHAR (MAX)), N', ')
-                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'), (N'sgspi.transicion_estado_flujo', N'U'), (N'sgspi.analisis_contexto_factor', N'U'), (N'sgspi.requisito_parte_interesada', N'U'), (N'sgspi.activo_informacion', N'U'), (N'sgspi.activo_documental', N'U'), (N'sgspi.evento_incertidumbre_activo', N'U'), (N'sgspi.plan_tratamiento', N'U'), (N'sgspi.actividad_tratamiento', N'U'), (N'sgspi.seguimiento_actividad', N'U'), (N'sgspi.evaluacion_aplicabilidad_control', N'U'), (N'sgspi.ufn_persona_sesion', N'IF'), (N'sgspi.ufn_proceso_en_alcance', N'IF'), (N'sgspi.ufn_activo_en_alcance', N'IF'), (N'sgspi.ufn_rls_alcance_proceso', N'IF'), (N'sgspi.ufn_rls_alcance_activo', N'IF'), (N'sgspi.ufn_rls_alcance_aip', N'IF'), (N'sgspi.usp_siguiente_consecutivo', N'P'), (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'), (N'sgspi.vw_sgspi_admin_login', N'V'), (N'sgspi.vw_consolidado_dofa', N'V'), (N'sgspi.vw_resumen_activos_criticidad', N'V'), (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'), (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'), (N'sgspi.vw_inventario_activo_documental_mr04', N'V'), (N'sgspi.vw_controles_atributos_iso27002', N'V'), (N'sgspi.vw_consulta_dofa_vigente', N'V'), (N'sgspi.vw_consulta_inventario_documental_vigente', N'V'), (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_sga_inmutabilidad', N'TR'), (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
+                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'), (N'sgspi.transicion_estado_flujo', N'U'), (N'sgspi.analisis_contexto_factor', N'U'), (N'sgspi.requisito_parte_interesada', N'U'), (N'sgspi.activo_informacion', N'U'), (N'sgspi.activo_documental', N'U'), (N'sgspi.evento_incertidumbre_activo', N'U'), (N'sgspi.plan_tratamiento', N'U'), (N'sgspi.actividad_tratamiento', N'U'), (N'sgspi.seguimiento_actividad', N'U'), (N'sgspi.evaluacion_aplicabilidad_control', N'U'), (N'sgspi.usp_obtener_contexto_usuario', N'P'), (N'sgspi.usp_siguiente_consecutivo', N'P'), (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'), (N'sgspi.vw_consolidado_dofa', N'V'), (N'sgspi.vw_resumen_activos_criticidad', N'V'), (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'), (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'), (N'sgspi.vw_inventario_activo_documental_mr04', N'V'), (N'sgspi.vw_controles_atributos_iso27002', N'V'), (N'sgspi.vw_consulta_dofa_vigente', N'V'), (N'sgspi.vw_consulta_inventario_documental_vigente', N'V'), (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_sga_inmutabilidad', N'TR'), (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
                                                       WHERE  OBJECT_ID(v.nombre, v.tipo) IS NULL), 1000);
 
 IF @objetos_faltantes IS NOT NULL
     SET @fallos += N' Faltan objetos clave: ' + @objetos_faltantes + N'.';
 
 DECLARE @roles_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.rol, N', ')
-                                              FROM   (VALUES (N'sgspi_rol_base'), (N'sgspi_rol_custodio_operador'), (N'sgspi_rol_lider_propietario'), (N'sgspi_rol_gestor_documental'), (N'sgspi_rol_oficial_seguridad_privacidad'), (N'sgspi_rol_comite_direccion'), (N'sgspi_rol_auditor_control'), (N'sgspi_rol_consulta'), (N'sgspi_rol_login')) AS v(rol)
-                                              WHERE  DATABASE_PRINCIPAL_ID(v.rol) IS NULL);
+                                              FROM   (VALUES (N'grupo_sgspi_login'), (N'grupo_sgspi_consulta'), (N'grupo_sgspi_ejecucion'), (N'grupo_sgspi_migracion')) AS v(rol)
+                                              WHERE  NOT EXISTS (SELECT 1
+                                                                 FROM   sys.database_principals AS dp
+                                                                 WHERE  dp.name = v.rol
+                                                                        AND dp.type = 'R'
+                                                                        AND dp.owning_principal_id = USER_ID(N'dbo')));
 
 IF @roles_faltantes IS NOT NULL
-    SET @fallos += N' Faltan roles: ' + @roles_faltantes + N'.';
+    SET @fallos += N' Faltan roles estándar USCO o su propietario no es dbo: ' + @roles_faltantes + N'.';
+
+IF EXISTS (SELECT 1
+           FROM   sys.database_role_members AS rm
+                  INNER JOIN
+                  sys.database_principals AS r
+                  ON r.principal_id = rm.role_principal_id
+                  INNER JOIN
+                  sys.database_principals AS m
+                  ON m.principal_id = rm.member_principal_id
+           WHERE  r.name IN (N'grupo_sgspi_login', N'grupo_sgspi_consulta', N'grupo_sgspi_ejecucion', N'grupo_sgspi_migracion')
+                  AND m.type = 'R')
+    SET @fallos += N' Existen roles anidados dentro de grupo_sgspi_* (el estándar USCO exige estructura plana).';
+
+DECLARE @roles_obsoletos AS NVARCHAR (500) = (SELECT STRING_AGG(v.rol, N', ')
+                                              FROM   (VALUES (N'sgspi_rol_app'), (N'sgspi_rol_migracion'), (N'sgspi_rol_base'), (N'sgspi_rol_custodio_operador'), (N'sgspi_rol_lider_propietario'), (N'sgspi_rol_gestor_documental'), (N'sgspi_rol_oficial_seguridad_privacidad'), (N'sgspi_rol_comite_direccion'), (N'sgspi_rol_auditor_control'), (N'sgspi_rol_consulta'), (N'sgspi_rol_login')) AS v(rol)
+                                              WHERE  DATABASE_PRINCIPAL_ID(v.rol) IS NOT NULL);
+
+IF @roles_obsoletos IS NOT NULL
+    SET @fallos += N' Persisten roles fuera de estándar retirados: ' + @roles_obsoletos + N'.';
 
 DECLARE @aud_rotas AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST (t.name AS NVARCHAR (MAX)), N', ')
                                               FROM   sys.tables AS t
@@ -13495,7 +13013,6 @@ IF LEN(@fallos) > 0
 ELSE
     BEGIN TRY
         EXECUTE sys.sp_refreshview N'sgspi.vw_usuario_rol_alcance_sgspi';
-        EXECUTE sys.sp_refreshview N'sgspi.vw_sgspi_admin_login';
         EXECUTE sys.sp_refreshview N'sgspi.vw_consolidado_dofa';
         EXECUTE sys.sp_refreshview N'sgspi.vw_resumen_activos_criticidad';
         EXECUTE sys.sp_refreshview N'sgspi.vw_matriz_tratamiento_riesgos';
@@ -13528,37 +13045,30 @@ SET LOCK_TIMEOUT -1; -- [E1] restablece timeout por defecto tras aplicar FKs a [
 GO
 /*==================================================================================================
 7. VERIFICACIÓN POSTERIOR AL DESPLIEGUE (SOLO LECTURA)
-Lista desalineaciones entre [dbo].[usuario_grupo]/[dbo].[usuario_administrativos]/[dbo].[usuario_docentes] y los roles de BD del SGSPI. Compara el
-login del usuario de BD (SUSER_SNAME de su sid), que es lo que los triggers buscan con ORIGINAL_LOGIN() en la columna [sys]:
-(a) miembros de grupos SGSPI_* (por gru_id) sin cuenta SQL ([sys] NULL), sin usuario de BD o sin el rol equivalente; (b) usuarios de BD en un rol de actor cuyo
-login no está en [sys] de usuario_administrativos/usuario_docentes; (c) usuarios de BD en más de un rol SGSPI (incluyendo sgspi_rol_consulta y sgspi_rol_login);
-(d) usuarios de un rol SGSPI que también son miembros directos de db_owner, db_datareader, db_datawriter, db_ddladmin o db_securityadmin, que anulan los GRANT;
-(e) logins de un rol de actor con varias personas en usuario_administrativos/usuario_docentes (ufn_persona_sesion falla en cerrado con error 50017 [C2]);
-(f) base sin TDE (sys.databases.is_encrypted = 0); (g) base sin RCSI; (h) compatibility_level < 150 (nota informativa);
-(i) tablas de [dbo] sin índice en las columnas de búsqueda del SGSPI (usuario_administrativos.sys, usuario_docentes.sys, usuario_grupo.usg_usuario).
+Diagnóstico operativo bajo estándar institucional USCO (grupo_sgspi_login, grupo_sgspi_consulta, grupo_sgspi_ejecucion, grupo_sgspi_migracion):
+(a) cuentas de BD presentes en más de un rol grupo_sgspi_* simultáneamente (login, consulta, ejecución y migración deben separarse);
+(b) miembros de roles runtime (grupo_sgspi_login/consulta/ejecucion) en roles fijos privilegiados (db_owner, db_datareader, db_datawriter, db_ddladmin, db_securityadmin) que anulan restricciones, miembros que no son SQL_USER o con permisos directos fuera de roles;
+(c) nombres de usuario [us] ambiguos en dbo.usuario_administrativos/dbo.usuario_docentes que mapean a >1 per_codigo activo distinto (usp_obtener_contexto_usuario falla en cerrado);
+(d) base sin TDE (sys.databases.is_encrypted = 0); (e) base sin RCSI; (f) compatibility_level < 150 (nota informativa);
+(g) tablas de [dbo] sin índice en las columnas de búsqueda del SGSPI (usuario_administrativos.us, usuario_docentes.us, usuario_grupo.usg_usuario).
 ==================================================================================================*/
 WITH     cte_usuarios_sgspi
 AS       (SELECT uid,
                  up,
                  us,
-                 sys,
                  state
           FROM   dbo.usuario_administrativos
-          UNION ALL
+          UNION
           SELECT uid,
                  up,
                  us,
-                 sys,
                  state
           FROM   dbo.usuario_docentes),
-         cte_mapa_roles
-AS       (SELECT v.gru_id,
-                 v.rol_bd
-          FROM   (VALUES (N'SGSPI_CUSTODIO_OPERADOR', N'sgspi_rol_custodio_operador'), (N'SGSPI_LIDER_PROPIETARIO', N'sgspi_rol_lider_propietario'), (N'SGSPI_GESTOR_DOCUMENTAL', N'sgspi_rol_gestor_documental'), (N'SGSPI_ADMIN_OPDP', N'sgspi_rol_oficial_seguridad_privacidad'), (N'SGSPI_COMITE_DIRECCION', N'sgspi_rol_comite_direccion'), (N'SGSPI_AUDITOR_CONTROL', N'sgspi_rol_auditor_control')) AS v(gru_id, rol_bd)),
-         cte_membresia_bd
+         cte_membresia_sgspi
 AS       (SELECT m.principal_id AS usuario_id,
                  m.name AS usuario_bd,
-                 SUSER_SNAME(m.sid) AS login_bd,
+                 m.type AS tipo_miembro,
+                 m.type_desc AS tipo_miembro_desc,
                  r.name AS rol_bd
           FROM   sys.database_role_members AS rm
                  INNER JOIN
@@ -13567,74 +13077,17 @@ AS       (SELECT m.principal_id AS usuario_id,
                  INNER JOIN
                  sys.database_principals AS m
                  ON m.principal_id = rm.member_principal_id
-          WHERE  r.name IN (SELECT rol_bd
-                            FROM   cte_mapa_roles)),
-         cte_membresia_sgspi
-AS       (SELECT usuario_id,
-                 usuario_bd,
-                 rol_bd
-          FROM   cte_membresia_bd
-          UNION ALL
-          SELECT m.principal_id,
-                 m.name,
-                 r.name
-          FROM   sys.database_role_members AS rm
-                 INNER JOIN
-                 sys.database_principals AS r
-                 ON r.principal_id = rm.role_principal_id
-                 INNER JOIN
-                 sys.database_principals AS m
-                 ON m.principal_id = rm.member_principal_id
-          WHERE  r.name IN (N'sgspi_rol_consulta', N'sgspi_rol_login'))
-SELECT   DISTINCT N'Grupo SGSPI_* sin cuenta SQL (sys), sin usuario de BD o sin su rol equivalente' AS hallazgo,
-                  ISNULL(u.sys, u.us) AS usuario,
-                  g.gru_id AS detalle
-FROM     dbo.usuario_grupo AS ug
-         INNER JOIN
-         dbo.grupo AS g
-         ON g.gru_codigo = ug.usg_grupo
-         INNER JOIN
-         cte_usuarios_sgspi AS u
-         ON u.uid = ug.usg_usuario
-         LEFT OUTER JOIN
-         cte_mapa_roles AS mr
-         ON mr.gru_id = g.gru_id
-WHERE    ug.usg_estado = 1
-         AND g.gru_estado = 1
-         AND u.state = 1
-         AND u.up IS NOT NULL
-         AND g.gru_id LIKE 'SGSPI[_]%'
-         AND (u.sys IS NULL
-              OR NOT EXISTS (SELECT 1
-                             FROM   cte_membresia_bd AS mb
-                             WHERE  mb.login_bd = u.sys
-                                    AND mb.rol_bd = mr.rol_bd))
-UNION ALL
-SELECT   DISTINCT N'Usuario de BD en rol de actor cuyo login no está en usuario_administrativos/usuario_docentes.sys' AS hallazgo,
-                  mb.usuario_bd AS usuario,
-                  mb.rol_bd AS detalle
-FROM     cte_membresia_bd AS mb
-WHERE    NOT EXISTS (SELECT 1
-                     FROM   cte_usuarios_sgspi AS u
-                     WHERE  u.sys = mb.login_bd
-                            AND u.sys IS NOT NULL
-                            AND u.state = 1
-                            AND u.up IS NOT NULL)
-UNION ALL
-SELECT   N'Usuario de BD en más de un rol SGSPI' AS hallazgo,
-         ms.usuario_bd AS usuario,
-         STUFF((SELECT   N', ' + ms2.rol_bd
-                FROM     cte_membresia_sgspi AS ms2
-                WHERE    ms2.usuario_bd = ms.usuario_bd
-                ORDER BY ms2.rol_bd
-                FOR XML PATH (N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 2, N'') AS detalle
+          WHERE  r.name IN (N'grupo_sgspi_login', N'grupo_sgspi_consulta', N'grupo_sgspi_ejecucion', N'grupo_sgspi_migracion'))
+SELECT   ms.usuario_bd AS usuario,
+         N'Cuenta de BD en múltiples roles grupo_sgspi_* simultáneamente' AS hallazgo,
+         STRING_AGG(ms.rol_bd, N', ') AS detalle
 FROM     cte_membresia_sgspi AS ms
 GROUP BY ms.usuario_bd
-HAVING   COUNT(*) > 1
+HAVING   COUNT(DISTINCT ms.rol_bd) > 1
 UNION ALL
-SELECT   DISTINCT N'Usuario de rol SGSPI en un rol fijo que anula los GRANT' AS hallazgo,
-                  ms.usuario_bd AS usuario,
-                  f.name AS detalle
+SELECT   DISTINCT ms.usuario_bd AS usuario,
+                  N'Miembro de grupo_sgspi_* runtime en un rol fijo que anula permisos mínimos' AS hallazgo,
+                  CONCAT(ms.rol_bd, N' + ', f.name) AS detalle
 FROM     cte_membresia_sgspi AS ms
          INNER JOIN
          sys.database_role_members AS frm
@@ -13642,52 +13095,66 @@ FROM     cte_membresia_sgspi AS ms
          INNER JOIN
          sys.database_principals AS f
          ON f.principal_id = frm.role_principal_id
-WHERE    f.name IN (N'db_owner', N'db_datareader', N'db_datawriter', N'db_ddladmin', N'db_securityadmin')
+WHERE    ms.rol_bd IN (N'grupo_sgspi_login', N'grupo_sgspi_consulta', N'grupo_sgspi_ejecucion')
+         AND f.name IN (N'db_owner', N'db_datareader', N'db_datawriter', N'db_ddladmin', N'db_securityadmin')
 UNION ALL
-SELECT   N'Login de rol de actor con varias personas en usuario_administrativos/usuario_docentes' AS hallazgo,
-         u.sys AS usuario,
+SELECT   DISTINCT ms.usuario_bd AS usuario,
+                  N'Miembro de grupo_sgspi_* fuera del estándar SQL_USER' AS hallazgo,
+                  CONCAT(ms.rol_bd, N' -> ', ms.tipo_miembro_desc COLLATE DATABASE_DEFAULT) AS detalle
+FROM     cte_membresia_sgspi AS ms
+WHERE    ms.tipo_miembro <> 'S'
+UNION ALL
+SELECT   DISTINCT ms.usuario_bd AS usuario,
+                  N'Miembro de grupo_sgspi_* con permisos directos fuera de roles' AS hallazgo,
+                  CONCAT(dp.state_desc COLLATE DATABASE_DEFAULT, N' ', dp.permission_name COLLATE DATABASE_DEFAULT) AS detalle
+FROM     cte_membresia_sgspi AS ms
+         INNER JOIN
+         sys.database_permissions AS dp
+         ON dp.grantee_principal_id = ms.usuario_id
+WHERE    dp.permission_name COLLATE DATABASE_DEFAULT <> N'CONNECT'
+UNION ALL
+SELECT   u.us AS usuario,
+         N'Usuario [us] con varias personas activas en usuario_administrativos/usuario_docentes' AS hallazgo,
          STUFF((SELECT   N', ' + CONVERT (NVARCHAR (20), x.up)
                 FROM     (SELECT DISTINCT u2.up
                           FROM   cte_usuarios_sgspi AS u2
-                          WHERE  u2.sys = u.sys
+                          WHERE  u2.us = u.us
                                  AND u2.state = 1
                                  AND u2.up IS NOT NULL) AS x
                 ORDER BY x.up
                 FOR XML PATH (N''), TYPE).value(N'.', N'NVARCHAR(MAX)'), 1, 2, N'') AS detalle
 FROM     cte_usuarios_sgspi AS u
-WHERE    u.sys IN (SELECT mb.login_bd
-                   FROM   cte_membresia_bd AS mb)
-         AND u.sys IS NOT NULL
+WHERE    u.us IS NOT NULL
          AND u.state = 1
          AND u.up IS NOT NULL
-GROUP BY u.sys
+GROUP BY u.us
 HAVING   COUNT(DISTINCT u.up) > 1
 UNION ALL
-SELECT   N'Base sin TDE' AS hallazgo,
-         DB_NAME() AS usuario,
+SELECT   DB_NAME() AS usuario,
+         N'Base sin TDE' AS hallazgo,
          N'sys.databases.is_encrypted = 0' AS detalle
 FROM     sys.databases
 WHERE    database_id = DB_ID()
          AND is_encrypted = 0
 UNION ALL
-SELECT   N'Base sin RCSI (ejecutar ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON en ventana de mantenimiento)' AS hallazgo,
-         DB_NAME() AS usuario,
+SELECT   DB_NAME() AS usuario,
+         N'Base sin RCSI (ejecutar ALTER DATABASE ... SET READ_COMMITTED_SNAPSHOT ON en ventana de mantenimiento)' AS hallazgo,
          N'sys.databases.is_read_committed_snapshot_on = 0' AS detalle
 FROM     sys.databases
 WHERE    database_id = DB_ID()
          AND is_read_committed_snapshot_on = 0
 UNION ALL
-SELECT   N'Nivel de compatibilidad heredado (informativo: DDL v2.3 opera en nivel >= 100 sobre SQL Server 2019+)' AS hallazgo,
-         DB_NAME() AS usuario,
+SELECT   DB_NAME() AS usuario,
+         N'Nivel de compatibilidad heredado (informativo: DDL v2.4 opera en nivel >= 100 sobre SQL Server 2019+)' AS hallazgo,
          CONCAT(N'sys.databases.compatibility_level = ', compatibility_level) AS detalle
 FROM     sys.databases
 WHERE    database_id = DB_ID()
          AND compatibility_level < 150
 UNION ALL
-SELECT   N'Tabla de [dbo] sin índice en la columna de búsqueda del SGSPI' AS hallazgo,
-         v.tabla AS usuario,
+SELECT   v.tabla AS usuario,
+         N'Tabla de [dbo] sin índice en la columna de búsqueda del SGSPI' AS hallazgo,
          v.columna AS detalle
-FROM     (VALUES (N'dbo.usuario_administrativos', N'sys'), (N'dbo.usuario_docentes', N'sys'), (N'dbo.usuario_grupo', N'usg_usuario')) AS v(tabla, columna)
+FROM     (VALUES (N'dbo.usuario_administrativos', N'us'), (N'dbo.usuario_docentes', N'us'), (N'dbo.usuario_grupo', N'usg_usuario')) AS v(tabla, columna)
 WHERE    OBJECTPROPERTY(OBJECT_ID(v.tabla), N'IsUserTable') = 1
          AND NOT EXISTS (SELECT 1
                          FROM   sys.indexes AS ix
