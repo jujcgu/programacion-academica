@@ -1,7 +1,7 @@
 -- Base desechable para desplegar DDL_SGSPI_SQLSERVER2019_v2.sql y correr PRUEBAS_DDL_SGSPI_v2.sql (ver especificación 12.3).
 -- Solo para pruebas locales: BORRA y recrea la base sgspi_desechable. Nunca apuntarlo a academia3000.
--- Stubs mínimos de [dbo] con los tipos de sql/dbo/*.sql. usuario_general es tabla porque #sesion_como la actualiza
--- (en producción es la vista UNION de sql/dbo/vistas/usuario_general.sql). El login que ejecuta queda como persona 2.
+-- Replica el entorno real de academia3000: COMPATIBILITY_LEVEL = 100, RCSI activo, dbo.grupo con gru_id y tablas
+-- dbo.usuario_administrativos / dbo.usuario_docentes con columna [sys] (login SQL real) y [uwd2].
 USE master;
 
 IF DB_ID(N'sgspi_desechable') IS NOT NULL
@@ -15,7 +15,7 @@ IF DB_ID(N'sgspi_desechable') IS NOT NULL
 CREATE DATABASE sgspi_desechable COLLATE Modern_Spanish_CI_AS;
 
 ALTER DATABASE sgspi_desechable
-    SET COMPATIBILITY_LEVEL = 150;
+    SET COMPATIBILITY_LEVEL = 100;
 
 ALTER DATABASE sgspi_desechable
     SET READ_COMMITTED_SNAPSHOT ON;
@@ -79,6 +79,7 @@ CREATE TABLE dbo.sub_sede (
 CREATE TABLE dbo.grupo (
     gru_codigo INT           IDENTITY (1, 1) NOT FOR REPLICATION NOT NULL CONSTRAINT PK_grupo PRIMARY KEY NONCLUSTERED,
     gru_nombre VARCHAR (100) NOT NULL,
+    gru_id     VARCHAR (100) NULL,
     gru_estado INT           CONSTRAINT DF_grupo_gru_estado DEFAULT 1 NULL
 );
 
@@ -90,17 +91,37 @@ CREATE TABLE dbo.usuario_grupo (
     usg_estado  TINYINT CONSTRAINT DF_usuario_grupo_usg_estado_1 DEFAULT 1 NULL
 );
 
-CREATE TABLE dbo.usuario_general (
+CREATE TABLE dbo.usuario_administrativos (
     uid   INT           IDENTITY (1, 1) NOT NULL PRIMARY KEY,
     up    INT           NULL,
     us    VARCHAR (100) NOT NULL,
-    state TINYINT       CONSTRAINT DF_usuario_general_state DEFAULT 1 NOT NULL
+    sys   VARCHAR (100) NULL,
+    uwd2  VARCHAR (100) NULL,
+    state TINYINT       CONSTRAINT DF_usuario_administrativos_state DEFAULT 1 NOT NULL
 );
 
-CREATE INDEX IX_usuario_general_us
-    ON dbo.usuario_general(us);
+CREATE TABLE dbo.usuario_docentes (
+    uid   INT           IDENTITY (1000, 1) NOT NULL PRIMARY KEY,
+    up    INT           NULL,
+    us    VARCHAR (100) NOT NULL,
+    sys   VARCHAR (100) NULL,
+    uwd2  VARCHAR (100) NULL,
+    state TINYINT       CONSTRAINT DF_usuario_docentes_state DEFAULT 1 NOT NULL
+);
 
-CREATE INDEX IX_usuario_grupo_usg_usuario
+CREATE INDEX PK_indice_us
+    ON dbo.usuario_administrativos(us);
+
+CREATE INDEX IX_usuario_administrativos_sys
+    ON dbo.usuario_administrativos(sys) INCLUDE (uid, up, state);
+
+CREATE INDEX PK_indice_us
+    ON dbo.usuario_docentes(us);
+
+CREATE INDEX IX_usuario_docentes_sys
+    ON dbo.usuario_docentes(sys) INCLUDE (uid, up, state);
+
+CREATE INDEX ind_usuario_grupo
     ON dbo.usuario_grupo(usg_usuario);
 
 ALTER DATABASE sgspi_desechable
@@ -132,7 +153,9 @@ INSERT  dbo.persona (
 )
 VALUES              ('1001', 'Persona', 'Uno'),
                     ('1002', 'Persona', 'Dos'),
-                    ('1003', 'Persona', 'Tres');
+                    ('1003', 'Persona', 'Tres'),
+                    ('1004', 'Persona', 'Cuatro'),
+                    ('1005', 'Persona', 'Cinco');
 
 INSERT  dbo.espacio (
     esp_nombre
@@ -145,8 +168,18 @@ INSERT  dbo.sub_sede (
 )
 VALUES               ('Sede central', 1);
 
-INSERT  dbo.usuario_general (
+INSERT  dbo.usuario_administrativos (
     up,
-    us
+    us,
+    sys,
+    uwd2
 )
-VALUES                      (2, CONVERT (VARCHAR (100), ORIGINAL_LOGIN()));
+VALUES                              (2, 'admin_prueba', CONVERT (VARCHAR (100), ORIGINAL_LOGIN()), 'HASH_ADMIN_PRUEBA');
+
+INSERT  dbo.usuario_docentes (
+    up,
+    us,
+    sys,
+    uwd2
+)
+VALUES                       (3, 'docente_prueba', 'sys_docente_prueba', 'HASH_DOCENTE_PRUEBA');

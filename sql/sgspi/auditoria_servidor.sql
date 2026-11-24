@@ -60,4 +60,4 @@ WHERE  aci.aci_fase_registro = N'VIGENTE'
        AND aci.aci_estado = 1
        AND (NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion_responsable AS air WHERE air.aci_codigo = aci.aci_codigo AND air.air_estado = 1 AND air.air_tipo_responsabilidad = N'PROPIETARIO')
             OR NOT EXISTS (SELECT 1 FROM sgspi.activo_informacion_responsable AS air WHERE air.aci_codigo = aci.aci_codigo AND air.air_estado = 1 AND air.air_tipo_responsabilidad = N'CUSTODIO')
-            OR EXISTS (SELECT 1 FROM sgspi.activo_documental AS ado WHERE ado.ado_codigo = aci.aci_codigo AND ado.ado_estado = 1 AND ado.per_codigo_revisor_archivo IS NULL));
+            OR EXISTS (SELECT 1 FROM sgspi.activo_documental AS ado WHERE ado.ado_codigo = aci.aci_codigo AND ado.ado_estado = 1 AND aci.per_codigo_revisor_archivo IS NULL));
