@@ -598,29 +598,15 @@ EXECUTE #espera N'AP-01 la auditoría no se borra', N'DELETE sgspi.aud_parte_int
 
 EXECUTE #espera N'AP-01 nadie inserta en la auditoría a mano (229)', N'EXECUTE AS USER = N''sgspi_prueba_ejecucion''; INSERT sgspi.aud_parte_interesada (pai_codigo, apa_nombre, apa_origen, apa_estado, per_codigo) VALUES (1, N''x'', N''INTERNA'', 1, 1);', 229;
 
-EXECUTE #espera N'Fase 1 permisos granulares grupo_sgspi_ejecucion: DELETE solo en 11 puentes N:M, DENY DELETE en 87 tablas, DENY ALTER en esquema', N'
+EXECUTE #espera N'Fase 1 permisos granulares grupo_sgspi_ejecucion: DENY DELETE en las 98 tablas (también las 11 puentes N:M), DENY ALTER en esquema', N'
 EXECUTE AS USER = N''sgspi_prueba_ejecucion'';
 DECLARE @bad_del INT = 0;
 SELECT @bad_del = COUNT(*)
 FROM   sys.tables AS t
 WHERE  t.schema_id = SCHEMA_ID(N''sgspi'')
-       AND HAS_PERMS_BY_NAME(N''sgspi.'' + QUOTENAME(t.name), N''OBJECT'', N''DELETE'') <>
-           CASE WHEN t.name IN (
-               N''proceso_institucional_uaa'',
-               N''requisito_parte_interesada_proceso_institucional'',
-               N''activo_informacion_proceso_institucional'',
-               N''activo_informacion_sede'',
-               N''activo_documental_soporte_registro'',
-               N''activo_documental_medio_conservacion'',
-               N''activo_documental_idioma'',
-               N''activo_documental_formato_archivo'',
-               N''activo_documental_unidad_productora'',
-               N''control_referencia_normativa_atributo'',
-               N''plan_tratamiento_control_referencia_normativa''
-           ) THEN 1 ELSE 0 END;
+       AND HAS_PERMS_BY_NAME(N''sgspi.'' + QUOTENAME(t.name), N''OBJECT'', N''DELETE'') <> 0;
 IF @bad_del <> 0
-    THROW 51000, N''permisos DELETE de grupo_sgspi_ejecucion no coinciden con las 11 tablas puente N:M'', 1;
-DELETE sgspi.activo_informacion_proceso_institucional WHERE 1 = 0;
+    THROW 51000, N''grupo_sgspi_ejecucion tiene permiso DELETE en alguna tabla de sgspi'', 1;
 IF HAS_PERMS_BY_NAME(N''sgspi.parte_interesada'', N''OBJECT'', N''ALTER'') <> 0
     THROW 51000, N''grupo_sgspi_ejecucion tiene permiso ALTER sobre objeto sgspi'', 1;
 BEGIN TRY
@@ -703,19 +689,19 @@ IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codi
 UPDATE sgspi.seguimiento_actividad SET sga_estado = 0 WHERE sga_porcentaje_reportado = 60;
 IF (SELECT act_porcentaje_avance FROM sgspi.actividad_tratamiento WHERE act_codigo = 1) <> 40 THROW 51000, N''avance no recalculado al desactivar'', 1;', 0;
 
-EXECUTE #espera N'AP-22 / Fase 1 grupo_sgspi_ejecucion asocia, desactiva y posee GRANT DELETE en puentes N:M (547 por FK aud_*; no 229)', N'
+EXECUTE #espera N'AP-22 / Fase 1 grupo_sgspi_ejecucion asocia, desactiva y reactiva puentes N:M con UPDATE; el DELETE físico lo niega DENY DELETE (229)', N'
 BEGIN TRAN;
 EXECUTE AS USER = N''sgspi_prueba_ejecucion'';
 INSERT sgspi.activo_informacion_proceso_institucional (aci_codigo, pri_codigo) VALUES (2, 1);
 UPDATE sgspi.activo_informacion_proceso_institucional SET aip_estado = 0 WHERE aci_codigo = 2 AND pri_codigo = 1;
-DELETE sgspi.activo_informacion_proceso_institucional WHERE 1 = 0;
 BEGIN TRY
     DELETE sgspi.activo_informacion_proceso_institucional WHERE aci_codigo = 2 AND pri_codigo = 1;
-    THROW 51000, N''debía bloquearse por FK de auditoría heredada en Fase 1'', 1;
+    THROW 51000, N''debía rechazarse por DENY DELETE'', 1;
 END TRY
 BEGIN CATCH
-    IF ERROR_NUMBER() <> 547 THROW;
+    IF ERROR_NUMBER() <> 229 THROW;
 END CATCH
+UPDATE sgspi.activo_informacion_proceso_institucional SET aip_estado = 1 WHERE aci_codigo = 2 AND pri_codigo = 1;
 REVERT;
 ROLLBACK;', 0;
 

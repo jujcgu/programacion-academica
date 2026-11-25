@@ -83,8 +83,8 @@ DML de [sgspi] y de dbo.usuario_grupo/dbo.grupo, lecturas de [eia] y cambios de 
 la transacción en sql/sgspi/auditoria_servidor.sql.
 AP-02  Privilegios mínimos bajo estándar institucional USCO (sección 5.10.10): roles planos AUTHORIZATION dbo con prefijo
 grupo_sgspi_* (grupo_sgspi_login para usp_obtener_contexto_usuario y vw_usuario_rol_alcance_sgspi; grupo_sgspi_consulta
-para lectura de [sgspi] y maestras FK de [dbo]; grupo_sgspi_ejecucion con GRANT por tabla sobre [sgspi], DELETE solo en
-las 11 puentes N:M y DENY ALTER/DELETE en entidades/aud_*; grupo_sgspi_migracion exclusivo para Flyway CI/CD).
+para lectura de [sgspi] y maestras FK de [dbo]; grupo_sgspi_ejecucion con GRANT por tabla sobre [sgspi], DENY DELETE en
+las 98 tablas (también las 11 puentes N:M, que se desactivan con UPDATE) y DENY ALTER; grupo_sgspi_migracion exclusivo para Flyway CI/CD).
 vw_usuario_rol_alcance_sgspi no expone per_identificacion, per_email_interno, uwd, uwd2 ni sys y solo lista grupos SGSPI_*.
 AP-03  Identidad sin procedimiento de contexto de sesión: sgspi.ufn_persona_sesion() resuelve la persona desde
 ORIGINAL_LOGIN() -> [dbo].[usuario_administrativos]/[dbo].[usuario_docentes].[sys]; los triggers la exigen (error 50017 si falta), firman con ella las
@@ -11829,38 +11829,72 @@ GRANT SELECT, INSERT, UPDATE
 DENY DELETE
     ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
 
--- Tablas puente N:M puras (11 tablas): habilita DELETE para colecciones JPA
-GRANT SELECT, INSERT, UPDATE, DELETE
+-- Tablas puente N:M puras (11 tablas): sin DELETE físico [AP-22]; la asociación se desactiva y reactiva con UPDATE de <acr>_estado
+-- (la FK de su aud_* y el trigger rechazarían el DELETE igualmente: 547 / 50010)
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
     ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+DENY DELETE
+    ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+DENY DELETE
     ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
 
 -- Tablas de auditoría heredadas (49 aud_*): solo lectura para runtime; escritura exclusiva de triggers
