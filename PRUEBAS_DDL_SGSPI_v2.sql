@@ -531,9 +531,7 @@ SELECT * INTO #p1 FROM sgspi.vw_usuario_rol_alcance_sgspi;
 REVERT;
 BEGIN TRAN;
 UPDATE dbo.usuario_administrativos SET sys = NULL WHERE us = ''admin_prueba'';
-SET IDENTITY_INSERT dbo.usuario_docentes ON;
 INSERT dbo.usuario_docentes (uid, us, up, state, sys) VALUES (1, ''admin_doc_dup'', 2, 1, NULL);
-SET IDENTITY_INSERT dbo.usuario_docentes OFF;
 IF (SELECT COUNT(*) FROM sgspi.vw_usuario_rol_alcance_sgspi WHERE per_codigo = 2 AND gru_rol_codigo = ''SGSPI_PRUEBA_ALCANCE'' AND uaa_codigo = 1 AND pri_codigo = 1) <> 1
     THROW 51000, N''vw_usuario_rol_alcance_sgspi duplicó fila admin-docente o falló con sys NULL'', 1;
 ROLLBACK;', 0;
@@ -1869,6 +1867,91 @@ IF CHARINDEX(N''cte_air_agg'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_inventari
    OR CHARINDEX(N''sdo.sdo_estado = 1'', OBJECT_DEFINITION(OBJECT_ID(N''sgspi.vw_inventario_activo_documental_mr04''))) = 0
     THROW 51000, N''vw_inventario_activo_documental_mr04 no aplica optimización C5'', 1;
 SELECT TOP (1) * INTO #c5_chk FROM sgspi.vw_inventario_activo_documental_mr04;', 0;
+
+-- --- Hallazgos dbo.grupo, dbo.usuario_sgspi_login, uid por cuenta y funciones escalares activadas ---
+EXECUTE #espera N'Hallazgo dbo.grupo: existen los 6 grupos funcionales SGSPI_* activos junto con 331 (SGSPI_ADMINISTRADOR) y 332 (SGSPI_GENERAL)', N'
+IF (SELECT COUNT(*) FROM dbo.grupo
+    WHERE  gru_estado = 1
+           AND UPPER(LTRIM(RTRIM(ISNULL(gru_id, '''')))) IN (
+               ''SGSPI_CUSTODIO_OPERADOR'', ''SGSPI_LIDER_PROPIETARIO'', ''SGSPI_GESTOR_DOCUMENTAL'',
+               ''SGSPI_ADMIN_OPDP'', ''SGSPI_COMITE_DIRECCION'', ''SGSPI_AUDITOR_CONTROL'',
+               ''SGSPI_ADMINISTRADOR'', ''SGSPI_GENERAL'')) <> 8
+    THROW 51000, N''faltan grupos funcionales SGSPI_* o 331/332 en dbo.grupo'', 1;', 0;
+
+EXECUTE #espera N'Hallazgo login: dbo.usuario_sgspi_login tiene 23 columnas, uwd2 VARBINARY(64), soporta admin/docente con sys NULL y filtra inactivos', N'
+IF (SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID(N''dbo.usuario_sgspi_login'')) <> 23
+   OR NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N''dbo.usuario_sgspi_login'') AND name = N''uwd2'' AND system_type_id = 165 AND max_length = 64)
+    THROW 51000, N''estructura de dbo.usuario_sgspi_login fuera de especificación'', 1;
+BEGIN TRAN;
+DECLARE @gru_fun INT = (SELECT TOP (1) gru_codigo FROM dbo.grupo WHERE gru_id = ''SGSPI_ADMIN_OPDP'');
+DECLARE @uid_d INT = (SELECT TOP (1) uid FROM dbo.usuario_docentes WHERE us = ''docente_prueba'');
+UPDATE dbo.usuario_administrativos SET sys = NULL WHERE us = ''admin_prueba'';
+UPDATE dbo.usuario_docentes SET sys = NULL WHERE uid = @uid_d;
+INSERT dbo.usuario_grupo (usg_usuario, usg_grupo, usg_uaa) VALUES (@uid_d, @gru_fun, 1);
+IF NOT EXISTS (SELECT 1 FROM dbo.usuario_sgspi_login WHERE us = ''admin_prueba'' AND sys IS NULL AND uwd2 IS NOT NULL AND tii_nombre_corto = ''C.C.'' AND sed_nombre = ''NEIVA'')
+   OR NOT EXISTS (SELECT 1 FROM dbo.usuario_sgspi_login WHERE us = ''docente_prueba'' AND uid = @uid_d AND gru_id = ''SGSPI_ADMIN_OPDP'' AND sys IS NULL AND uwd2 IS NOT NULL)
+    THROW 51000, N''dbo.usuario_sgspi_login no resolvió admin/docente con sys NULL'', 1;
+UPDATE dbo.usuario_docentes SET state = 0 WHERE uid = @uid_d;
+IF EXISTS (SELECT 1 FROM dbo.usuario_sgspi_login WHERE uid = @uid_d)
+    THROW 51000, N''dbo.usuario_sgspi_login expuso docente con state=0'', 1;
+UPDATE dbo.usuario_docentes SET state = 1 WHERE uid = @uid_d;
+UPDATE dbo.persona SET per_estado = 0 WHERE per_codigo = 3;
+IF EXISTS (SELECT 1 FROM dbo.usuario_sgspi_login WHERE uid = @uid_d)
+    THROW 51000, N''dbo.usuario_sgspi_login expuso persona con per_estado=0'', 1;
+UPDATE dbo.persona SET per_estado = 1 WHERE per_codigo = 3;
+UPDATE dbo.uaa SET uaa_estado = 0 WHERE uaa_codigo = 1;
+IF EXISTS (SELECT 1 FROM dbo.usuario_sgspi_login WHERE uaa_codigo = 1)
+    THROW 51000, N''dbo.usuario_sgspi_login expuso uaa con uaa_estado=0'', 1;
+UPDATE dbo.uaa SET uaa_estado = 1 WHERE uaa_codigo = 1;
+UPDATE dbo.usuario_grupo SET usg_estado = 0 WHERE usg_usuario = @uid_d AND usg_grupo = @gru_fun;
+IF EXISTS (SELECT 1 FROM dbo.usuario_sgspi_login WHERE uid = @uid_d AND gru_id = ''SGSPI_ADMIN_OPDP'')
+    THROW 51000, N''dbo.usuario_sgspi_login expuso usg_estado=0'', 1;
+ROLLBACK;', 0;
+
+EXECUTE #espera N'Hallazgo aislamiento login: solo grupo_sgspi_login lee dbo.usuario_sgspi_login; consulta y ejecucion reciben 229', N'
+EXECUTE AS USER = N''sgspi_prueba_login'';
+SELECT TOP (1) per_codigo, uid, us, uwd2, gru_id INTO #ok_login_v FROM dbo.usuario_sgspi_login;
+REVERT;
+EXECUTE AS USER = N''sgspi_prueba_consulta'';
+BEGIN TRY SELECT TOP (1) * INTO #f_con_login FROM dbo.usuario_sgspi_login; THROW 51000, N''grupo_sgspi_consulta leyó dbo.usuario_sgspi_login'', 1; END TRY BEGIN CATCH IF ERROR_NUMBER() <> 229 THROW; END CATCH;
+REVERT;
+EXECUTE AS USER = N''sgspi_prueba_ejecucion'';
+BEGIN TRY SELECT TOP (1) * INTO #f_eje_login FROM dbo.usuario_sgspi_login; THROW 51000, N''grupo_sgspi_ejecucion leyó dbo.usuario_sgspi_login'', 1; END TRY BEGIN CATCH IF ERROR_NUMBER() <> 229 THROW; END CATCH;
+REVERT;', 0;
+
+EXECUTE #espera N'Hallazgo funciones escalares: los 4 roles grupo_sgspi_* ejecutan VarBinToHexStr, encriptarClaveReal, getTokenDocumento y token.getTokenInicioSesion', N'
+DECLARE @hex VARCHAR(64), @cr VARCHAR(64), @td VARCHAR(100), @ti VARCHAR(100);
+EXECUTE AS USER = N''sgspi_prueba_login'';
+SELECT @hex = dbo.VarBinToHexStr(0xABCD), @cr = dbo.encriptarClaveReal(''clave''), @td = dbo.getTokenDocumento(''doc''), @ti = token.getTokenInicioSesion(''131'');
+REVERT;
+EXECUTE AS USER = N''sgspi_prueba_consulta'';
+SELECT @hex = dbo.VarBinToHexStr(0xABCD), @cr = dbo.encriptarClaveReal(''clave''), @td = dbo.getTokenDocumento(''doc''), @ti = token.getTokenInicioSesion(''131'');
+REVERT;
+EXECUTE AS USER = N''sgspi_prueba_ejecucion'';
+SELECT @hex = dbo.VarBinToHexStr(0xABCD), @cr = dbo.encriptarClaveReal(''clave''), @td = dbo.getTokenDocumento(''doc''), @ti = token.getTokenInicioSesion(''131'');
+REVERT;
+EXECUTE AS USER = N''sgspi_prueba_migracion'';
+SELECT @hex = dbo.VarBinToHexStr(0xABCD), @cr = dbo.encriptarClaveReal(''clave''), @td = dbo.getTokenDocumento(''doc''), @ti = token.getTokenInicioSesion(''131'');
+REVERT;
+IF ISNULL(@hex, '''') <> ''0xABCD''
+   OR LEFT(ISNULL(@cr, ''''), 2) <> ''0x'' OR LEN(@cr) <> 42
+   OR LEFT(ISNULL(@td, ''''), 2) <> ''0x'' OR LEN(@td) <> 42
+   OR LEFT(ISNULL(@ti, ''''), 2) <> ''0x'' OR LEN(@ti) <> 42
+    THROW 51000, N''alguna función escalar devolvió resultado incompatible con su firma real'', 1;', 0;
+
+EXECUTE #espera N'Hallazgo dual admin-docente: usp_obtener_contexto_usuario proyecta el uid exacto de la cuenta consultada', N'
+BEGIN TRAN;
+DECLARE @gru_doc INT = (SELECT TOP (1) gru_codigo FROM dbo.grupo WHERE gru_id = ''SGSPI_LIDER_PROPIETARIO'');
+INSERT dbo.usuario_docentes (uid, up, us, state, sys, uwd2) VALUES (22652, 2, ''1002'', 1, NULL, 0x5AE2BACFFEBDF3E8E37DECDD343AC728);
+INSERT dbo.usuario_grupo (usg_usuario, usg_grupo, usg_uaa) VALUES (22652, @gru_doc, 1);
+DECLARE @c_adm TABLE (per_codigo INT, uid BIGINT, nombre_completo NVARCHAR(500), gru_id NVARCHAR(100), uaa_codigo INT, pri_codigo INT);
+DECLARE @c_doc TABLE (per_codigo INT, uid BIGINT, nombre_completo NVARCHAR(500), gru_id NVARCHAR(100), uaa_codigo INT, pri_codigo INT);
+INSERT @c_adm EXECUTE sgspi.usp_obtener_contexto_usuario @us = ''admin_prueba'';
+INSERT @c_doc EXECUTE sgspi.usp_obtener_contexto_usuario @us = ''1002'';
+IF NOT EXISTS (SELECT 1 FROM @c_adm WHERE per_codigo = 2 AND uid = 1)
+   OR NOT EXISTS (SELECT 1 FROM @c_doc WHERE per_codigo = 2 AND uid = 22652 AND gru_id = ''SGSPI_LIDER_PROPIETARIO'')
+    THROW 51000, N''usp_obtener_contexto_usuario no proyectó el uid exacto de cada cuenta'', 1;
+ROLLBACK;', 0;
 
 
 GO

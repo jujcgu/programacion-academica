@@ -67,28 +67,34 @@ MAPA DE ACRÓNIMOS DE LAS TABLAS DE AUDITORÍA (sgspi.aud_<tabla>, sección 5.9,
 ELIMINADAS: [cps] control_propiedad_seguridad y [ccc] control_concepto_ciberseguridad (absorbidas por [aac]/[cra]);
 [bas] bitacora_auditoria_sistema y las tablas *_historial (reemplazadas por las tablas aud_*, ver AP-01);
 [dfc] dominio_formato_catalogo, [fdv] formato_documental_version y [rpc] requisito_parte_interesada_cuestionario.
-ACRÓNIMOS REUTILIZADOS DEL ESQUEMA CORPORATIVO [dbo]:
+ACRÓNIMOS REUTILIZADOS DEL ESQUEMA CORPORATIVO [dbo] Y [token]:
 - [sus] : dbo.sub_sede ([sus_codigo])             - [car] : dbo.cargo ([car_codigo])
 - [esp] : dbo.espacio ([esp_codigo])              - [per] : dbo.persona ([per_codigo])
-- [uaa] : dbo.uaa ([uaa_codigo])                  - [gru] : dbo.grupo ([gru_codigo])
+- [uaa] : dbo.uaa ([uaa_codigo])                  - [sed] : dbo.sede ([sed_codigo])
+- [tii] : dbo.tipo_id ([tii_codigo])              - [gru] : dbo.grupo ([gru_codigo])
 - [usg] : dbo.usuario_grupo ([usg_codigo])
+- Funciones escalares del motor activadas: [dbo].[VarBinToHexStr], [dbo].[encriptarClaveReal], [dbo].[getTokenDocumento] y [token].[getTokenInicioSesion].
 REGISTRO DE CAMBIOS v2.0 (cada cambio está marcado en el código con -- [AP-xx]):
 AP-01  Auditoría por tabla (reemplaza la bitácora [bas] y las tablas temporales): cada tabla tiene su
 sgspi.aud_<tabla> (sección 5.9) con las altas (<aud>_operacion = 'I', con los valores iniciales de la fila creada)
 y la versión resultante after-image de cada fila modificada (<aud>_operacion = 'U') [C2], quién ejecutó la operación (per_codigo de
-ORIGINAL_LOGIN(), error 50017 si no hay persona; también para un DBA) y cuándo. Las tablas aud_* son inmutables
+SESSION_CONTEXT(N'per_codigo'), o NULL si no hay sesión) y cuándo. Las tablas aud_* son inmutables
 (error 50016) y el borrado físico de cualquier tabla lo rechaza la FK de su aud_* (547, también a dbo; el trigger, 50010,
 queda como segunda barrera). La auditoría del servidor (DISABLE TRIGGER, roles de BD y de servidor, usuarios, permisos,
 DML de [sgspi] y de dbo.usuario_grupo/dbo.grupo, lecturas de [eia] y cambios de la propia auditoría) se configura fuera de
 la transacción en sql/sgspi/auditoria_servidor.sql.
-AP-02  Privilegios mínimos bajo estándar institucional USCO (sección 5.10.10): roles planos AUTHORIZATION dbo con prefijo
-grupo_sgspi_* (grupo_sgspi_login para usp_obtener_contexto_usuario y vw_usuario_rol_alcance_sgspi; grupo_sgspi_consulta
-para lectura de [sgspi] y maestras FK de [dbo]; grupo_sgspi_ejecucion con GRANT por tabla sobre [sgspi], DENY DELETE en
-las 98 tablas (también las 11 puentes N:M, que se desactivan con UPDATE) y DENY ALTER; grupo_sgspi_migracion exclusivo para Flyway CI/CD).
+AP-02  Privilegios mínimos bajo estándar institucional USCO (sección 7b al final del DDL): roles planos AUTHORIZATION dbo con prefijo
+grupo_sgspi_* (grupo_sgspi_login para dbo.usuario_sgspi_login, usp_obtener_contexto_usuario y vw_usuario_rol_alcance_sgspi;
+grupo_sgspi_consulta para lectura de [sgspi] y maestras FK de [dbo]; grupo_sgspi_ejecucion con GRANT por tabla sobre [sgspi],
+DENY DELETE en las 98 tablas —también las 11 puentes N:M, que se desactivan con UPDATE— y DENY ALTER; grupo_sgspi_migracion exclusivo para Flyway CI/CD).
+Los roles runtime/migración tienen EXECUTE sobre dbo.encriptarClaveReal, dbo.getTokenDocumento y token.getTokenInicioSesion;
+dbo.usuario_sgspi_login es exclusiva de grupo_sgspi_login (DENY SELECT para consulta y ejecucion).
 vw_usuario_rol_alcance_sgspi no expone per_identificacion, per_email_interno, uwd, uwd2 ni sys y solo lista grupos SGSPI_*.
-AP-03  Identidad sin procedimiento de contexto de sesión: sgspi.ufn_persona_sesion() resuelve la persona desde
-ORIGINAL_LOGIN() -> [dbo].[usuario_administrativos]/[dbo].[usuario_docentes].[sys]; los triggers la exigen (error 50017 si falta), firman con ella las
-aprobaciones y la fecha del dictamen de eficacia, y rechazan (50019) un creador, evaluador o autor distinto.
+AP-03  Identidad y contexto sin depender de [sys]: dbo.usuario_sgspi_login (mismo patrón de 23 columnas que
+dbo.usuario_formulario_admin_login) provee el login por usuario/uwd2 desde [dbo].[usuario_administrativos] y [dbo].[usuario_docentes]
+asociados a [dbo].[grupo]/[dbo].[usuario_grupo]; sgspi.usp_obtener_contexto_usuario resuelve persona, uid, roles SGSPI_* y alcance UAA/proceso
+por [us] (fail-closed si un [us] mapea a >1 per_codigo activo distinto). En escritura, el pool fija SESSION_CONTEXT(N'per_codigo')
+y los triggers firman aprobaciones y rechazan (50019) un creador, evaluador o autor distinto cuando hay sesión.
 AP-04  Todo registro nace en el estado inicial de su flujo (BORRADOR/PENDIENTE); rpi y aci ya no nacen
 VIGENTE (error 50014). Tampoco se crean registros ni se mueven a una vigencia CERRADA o HISTORICA en
 acf, rpi, ado, eia y eac (error 50022, D7). Carga histórica: con la auditoría del servidor encendida
@@ -206,13 +212,23 @@ INSERT  INTO @dependencias (
 )
 VALUES                     (N'dbo.uaa', N'uaa_codigo'),
                            (N'dbo.uaa', N'uaa_nombre'),
+                           (N'dbo.uaa', N'uaa_nombre_corto'),
+                           (N'dbo.uaa', N'sed_codigo'),
                            (N'dbo.uaa', N'uaa_estado'),
+                           (N'dbo.sede', N'sed_codigo'),
+                           (N'dbo.sede', N'sed_nombre'),
                            (N'dbo.cargo', N'car_codigo'),
                            (N'dbo.cargo', N'car_nombre'),
                            (N'dbo.persona', N'per_codigo'),
                            (N'dbo.persona', N'per_nombre'),
                            (N'dbo.persona', N'per_apellido'),
+                           (N'dbo.persona', N'tii_codigo'),
+                           (N'dbo.persona', N'per_identificacion'),
+                           (N'dbo.persona', N'per_email_interno'),
                            (N'dbo.persona', N'per_estado'),
+                           (N'dbo.tipo_id', N'tii_codigo'),
+                           (N'dbo.tipo_id', N'tii_nombre'),
+                           (N'dbo.tipo_id', N'tii_nombre_corto'),
                            (N'dbo.espacio', N'esp_codigo'),
                            (N'dbo.sub_sede', N'sus_codigo'),
                            (N'dbo.grupo', N'gru_codigo'),
@@ -227,13 +243,19 @@ VALUES                     (N'dbo.uaa', N'uaa_codigo'),
                            (N'dbo.usuario_administrativos', N'uid'),
                            (N'dbo.usuario_administrativos', N'up'),
                            (N'dbo.usuario_administrativos', N'us'),
+                           (N'dbo.usuario_administrativos', N'sys'),
+                           (N'dbo.usuario_administrativos', N'ischange'),
+                           (N'dbo.usuario_administrativos', N'uwd2'),
                            (N'dbo.usuario_administrativos', N'state'),
                            (N'dbo.usuario_docentes', N'uid'),
                            (N'dbo.usuario_docentes', N'up'),
                            (N'dbo.usuario_docentes', N'us'),
+                           (N'dbo.usuario_docentes', N'sys'),
+                           (N'dbo.usuario_docentes', N'ischange'),
+                           (N'dbo.usuario_docentes', N'uwd2'),
                            (N'dbo.usuario_docentes', N'state');
 
-DECLARE @faltantes AS NVARCHAR (1000) = (SELECT STRING_AGG(CONCAT(tabla, N'.', columna), N', ')
+DECLARE @faltantes AS NVARCHAR (2000) = (SELECT STRING_AGG(CONCAT(tabla, N'.', columna), N', ')
                                          FROM   @dependencias
                                          WHERE  COL_LENGTH(tabla, columna) IS NULL);
 
@@ -290,6 +312,26 @@ DECLARE @tipo_us_invalido AS NVARCHAR (500) = (SELECT STRING_AGG(CONCAT(v.tabla,
 
 IF @tipo_us_invalido IS NOT NULL
     SET @errores += N' Columna [us] de tipo incompatible (se requiere VARCHAR/NVARCHAR): ' + @tipo_us_invalido + N'.';
+
+-- [E2] Valida tipo VARBINARY (system_type_id = 165) en [uwd2] de usuario_administrativos y usuario_docentes
+DECLARE @tipo_uwd2_invalido AS NVARCHAR (500) = (SELECT STRING_AGG(CONCAT(v.tabla, N'.uwd2 (', TYPE_NAME(c.system_type_id), N')'), N', ')
+                                                   FROM   (VALUES (N'dbo.usuario_administrativos'), (N'dbo.usuario_docentes')) AS v(tabla)
+                                                          INNER JOIN
+                                                          sys.columns AS c
+                                                          ON c.object_id = OBJECT_ID(v.tabla)
+                                                             AND c.name = N'uwd2'
+                                                   WHERE  c.system_type_id <> 165); -- 165 = VARBINARY
+
+IF @tipo_uwd2_invalido IS NOT NULL
+    SET @errores += N' Columna [uwd2] de tipo incompatible (se requiere VARBINARY): ' + @tipo_uwd2_invalido + N'.';
+
+-- [E2] Valida existencia de las 4 funciones escalares de autenticación/tokens requeridas por el aplicativo
+DECLARE @funciones_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.fn, N', ')
+                                                  FROM   (VALUES (N'dbo.VarBinToHexStr'), (N'dbo.encriptarClaveReal'), (N'dbo.getTokenDocumento'), (N'token.getTokenInicioSesion')) AS v(fn)
+                                                  WHERE  ISNULL(OBJECTPROPERTY(OBJECT_ID(v.fn), N'IsScalarFunction'), 0) <> 1);
+
+IF @funciones_faltantes IS NOT NULL
+    SET @errores += N' Faltan funciones escalares institucionales requeridas: ' + @funciones_faltantes + N'.';
 
 -- [E2] Exige READ_COMMITTED_SNAPSHOT ON (prerequisito de concurrencia sin deadlocks [AP-24])
 IF EXISTS (SELECT 1
@@ -1469,7 +1511,7 @@ CREATE TABLE sgspi.plan_tratamiento (
     plt_fecha_fin                   DATE                                                 NOT NULL,
     plt_recursos_humanos_tecnicos   NVARCHAR (500)                                       NOT NULL,
     plt_recursos_economicos_desc    NVARCHAR (500)                                       NOT NULL,
-    plt_presupuesto_estimado_cop    DECIMAL (18, 2) NULL, -- A1: protegido por DENY SELECT de columna (reemplaza DDM + UNMASK global)
+    plt_presupuesto_estimado_cop    DECIMAL (18, 2) NULL,
     plt_restricciones_limitaciones  NVARCHAR (500)                                       NULL,
     plt_nombre_indicador_kpi        NVARCHAR (255)                                       NOT NULL,
     plt_unidad_medida_kpi           NVARCHAR (30)                                        CONSTRAINT DF_plt_unidad_medida_kpi DEFAULT N'PORCENTAJE' NOT NULL, -- [AP-17] Ej: 'PORCENTAJE', 'CANTIDAD', 'DIAS', 'HORAS'
@@ -1728,7 +1770,7 @@ CREATE TABLE sgspi.evaluacion_aplicabilidad_control (
     pdc_codigo                      SMALLINT                                             NULL, -- [AP-08] FK a [sgspi].[periodicidad_catalogo]([pdc_codigo]): frecuencia de revisión (NULL cuando eac_es_aplicable = 0)
     eac_evidencia_objetiva_esperada NVARCHAR (500)                                       NULL,
     eac_fase_implementacion         NVARCHAR (20)                                        NULL, -- 'CUMPLE', 'CUMPLE_PARCIAL', 'NO_CUMPLE' (NULL cuando eac_es_aplicable = 0)
-    eac_observaciones_auditoria     NVARCHAR (1000) NULL, -- A1: protegido por DENY SELECT de columna (reemplaza DDM + UNMASK global)
+    eac_observaciones_auditoria     NVARCHAR (1000) NULL,
     eac_fecha_creacion              DATETIMEOFFSET (0)                                   CONSTRAINT DF_eac_fecha_creacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-12] [AP-17]
     eac_fecha_actualizacion         DATETIMEOFFSET (0)                                   CONSTRAINT DF_eac_fecha_actualizacion DEFAULT SYSDATETIMEOFFSET() NOT NULL, -- [AP-11] La mantiene TR_eac_integridad_y_actualizacion
     eac_estado                      BIT                                                  CONSTRAINT DF_eac_estado DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
@@ -2989,10 +3031,12 @@ IF @@TRANCOUNT = 0
 GO
 /*==================================================================================================
 5.9b SEGURIDAD DE ACCESO Y CONTEXTO DE USUARIO PARA POOL HikariCP + SPRING SECURITY 7
-- Se retiran ufn_persona_sesion, ufn_proceso_en_alcance, ufn_activo_en_alcance, las 3 funciones RLS
-  (ufn_rls_*) y vw_sgspi_admin_login (exponía uwd2).
-- La vista vw_usuario_rol_alcance_sgspi usa UNION (evita duplicados administrativo-docente) y no exige [sys].
-- sgspi.usp_obtener_contexto_usuario encapsula identidad, roles y alcance UAA/proceso sin proyectar hashes.
+- Se retiran ufn_persona_sesion, ufn_proceso_en_alcance, ufn_activo_en_alcance y las 3 funciones RLS
+  (ufn_rls_*).
+- dbo.usuario_sgspi_login (creada en la sección 6 bajo el patrón de dbo.usuario_formulario_admin_login)
+  provee la autenticación inicial exclusivamente a grupo_sgspi_login.
+- sgspi.vw_usuario_rol_alcance_sgspi usa UNION (evita duplicados administrativo-docente) y no exige [sys].
+- sgspi.usp_obtener_contexto_usuario encapsula identidad, uid exacto, roles y alcance UAA/proceso sin proyectar hashes.
 ==================================================================================================*/
 -- 6.0 Vista de Integración de Seguridad y Alcance por Proceso/UAA
 -- CONCAT con literales Unicode (N''); consulta administrativos y docentes deduplicados (UNION sin depender de [sys])
@@ -3092,14 +3136,13 @@ BEGIN
                AND up IS NOT NULL
     ),
     cte_identidad AS (
-        SELECT MIN(up)  AS per_codigo,
-               MIN(uid) AS uid_principal
+        SELECT MIN(up) AS per_codigo
         FROM   cte_cuentas
         HAVING COUNT(DISTINCT up) = 1
     )
     SELECT DISTINCT
            p.per_codigo,
-           id.uid_principal AS uid,
+           c.uid AS uid,
            LTRIM(RTRIM(CONCAT(RTRIM(ISNULL(p.per_nombre, N'')), N' ', RTRIM(ISNULL(p.per_apellido, N''))))) AS nombre_completo,
            g.gru_id,
            u.uaa_codigo,
@@ -11559,687 +11602,6 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- 5.10.10 Roles y permisos bajo estándar institucional USCO (prefijo grupo_<modulo>_*, AUTHORIZATION dbo, estructura plana sin anidamiento).
--- Se retiran todos los roles fuera de estándar (sgspi_rol_*), los DENY de columna (Msg 230 en Hibernate ORM 7) y la política RLS spol_alcance_lectura.
--- dbo / db_owner / sysadmin NO se pueden restringir con DENY; el runtime usa cuentas separadas en grupo_sgspi_login, grupo_sgspi_consulta y grupo_sgspi_ejecucion.
-IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_login') IS NULL
-    CREATE ROLE grupo_sgspi_login AUTHORIZATION dbo; -- Cuenta técnica de autenticación/contexto (sgspi_login)
-
-IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_consulta') IS NULL
-    CREATE ROLE grupo_sgspi_consulta AUTHORIZATION dbo; -- Cuenta técnica de solo lectura (sgspi_consulta)
-
-IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_ejecucion') IS NULL
-    CREATE ROLE grupo_sgspi_ejecucion AUTHORIZATION dbo; -- Cuenta técnica del pool transaccional HikariCP (sgspi_ejecucion)
-
-IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_migracion') IS NULL
-    CREATE ROLE grupo_sgspi_migracion AUTHORIZATION dbo; -- Cuenta exclusiva del pipeline CI/CD de Flyway (sgspi_migracion)
-
--- Capa _login: cero DML/DDL; solo contexto de inicio de sesión y vista de alcance (sin exponer uwd, uwd2 ni sys)
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON SCHEMA::sgspi TO grupo_sgspi_login;
-
--- Capa _consulta (estándar USCO: SELECT sobre el esquema propio + SELECT explícito en las 5 maestras FK de [dbo]; cero DML/DDL)
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON SCHEMA::sgspi TO grupo_sgspi_consulta;
-
-GRANT SELECT
-    ON SCHEMA::sgspi TO grupo_sgspi_consulta;
-
-GRANT SELECT ON dbo.uaa TO grupo_sgspi_consulta;
-
-GRANT SELECT ON dbo.cargo TO grupo_sgspi_consulta;
-
-GRANT SELECT ON dbo.persona TO grupo_sgspi_consulta;
-
-GRANT SELECT ON dbo.espacio TO grupo_sgspi_consulta;
-
-GRANT SELECT ON dbo.sub_sede TO grupo_sgspi_consulta;
-
--- Capa _ejecucion: escritura operativa sobre [sgspi] + lectura de las 5 maestras FK de [dbo] para relaciones JPA/ORM
-DENY ALTER
-    ON SCHEMA::sgspi TO grupo_sgspi_ejecucion;
-
--- Catálogos de máquina de estados: solo lectura para runtime (evolucionan vía Flyway / grupo_sgspi_migracion)
-GRANT SELECT
-    ON sgspi.estado_flujo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE
-    ON sgspi.estado_flujo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.transicion_estado_flujo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE
-    ON sgspi.transicion_estado_flujo TO grupo_sgspi_ejecucion;
-
--- Entidades y catálogos operativos (36 tablas): lectura/escritura sin borrado físico
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.periodo_vigencia TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.periodo_vigencia TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.proceso_institucional TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.proceso_institucional TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.factor_entorno_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.factor_entorno_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.analisis_contexto_factor TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.analisis_contexto_factor TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.parte_interesada TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.parte_interesada TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.requisito_parte_interesada TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.requisito_parte_interesada TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.tipo_activo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.tipo_activo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_informacion TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_informacion TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_informacion_responsable TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_informacion_responsable TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.sistema_informacion_ficha TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.sistema_informacion_ficha TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.modulo_sistema_informacion TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.modulo_sistema_informacion TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.serie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.serie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.subserie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.subserie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.periodicidad_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.periodicidad_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.soporte_registro_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.soporte_registro_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.idioma_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.idioma_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.formato_archivo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.formato_archivo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_documental TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_documental TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.escala_probabilidad TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.escala_probabilidad TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.escala_impacto TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.escala_impacto TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.plan_tratamiento TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.plan_tratamiento TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.actividad_tratamiento TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.actividad_tratamiento TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.seguimiento_actividad TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.seguimiento_actividad TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.atributo_control_catalogo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.atributo_control_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
-
--- Tablas puente N:M puras (11 tablas): sin DELETE físico [AP-22]; la asociación se desactiva y reactiva con UPDATE de <acr>_estado
--- (la FK de su aud_* y el trigger rechazarían el DELETE igualmente: 547 / 50010)
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT, INSERT, UPDATE
-    ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-DENY DELETE
-    ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
-
--- Tablas de auditoría heredadas (49 aud_*): solo lectura para runtime; escritura exclusiva de triggers
-GRANT SELECT
-    ON sgspi.aud_periodo_vigencia TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_periodo_vigencia TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_estado_flujo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estado_flujo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_transicion_estado_flujo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_transicion_estado_flujo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_proceso_institucional TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_proceso_institucional TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_proceso_institucional_uaa TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_proceso_institucional_uaa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_factor_entorno_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_factor_entorno_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_analisis_contexto_factor TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_analisis_contexto_factor TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_parte_interesada TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_parte_interesada TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_requisito_parte_interesada TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_requisito_parte_interesada TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_tipo_activo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_tipo_activo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_informacion TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_informacion_sede TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion_sede TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_informacion_responsable TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_informacion_responsable TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_sistema_informacion_ficha TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_sistema_informacion_ficha TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_modulo_sistema_informacion TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_modulo_sistema_informacion TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_serie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_serie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_subserie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_subserie_documental_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_periodicidad_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_periodicidad_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_soporte_registro_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_soporte_registro_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_idioma_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_idioma_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_formato_archivo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_formato_archivo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_idioma TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_idioma TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_escala_probabilidad TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_escala_probabilidad TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_escala_impacto TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_escala_impacto TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_plan_tratamiento TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_plan_tratamiento TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_actividad_tratamiento TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_actividad_tratamiento TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_seguimiento_actividad TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_seguimiento_actividad TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_atributo_control_catalogo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_atributo_control_catalogo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.aud_evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
-
-DENY INSERT, UPDATE, DELETE, ALTER
-    ON sgspi.aud_evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
-
--- Procedimientos encapsulados por capa (login vs. ejecución transaccional) + maestras FK de [dbo] para ejecución
-GRANT EXECUTE
-    ON sgspi.usp_obtener_contexto_usuario TO grupo_sgspi_login;
-
-GRANT EXECUTE
-    ON sgspi.usp_siguiente_consecutivo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT ON dbo.uaa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT ON dbo.cargo TO grupo_sgspi_ejecucion;
-
-GRANT SELECT ON dbo.persona TO grupo_sgspi_ejecucion;
-
-GRANT SELECT ON dbo.espacio TO grupo_sgspi_ejecucion;
-
-GRANT SELECT ON dbo.sub_sede TO grupo_sgspi_ejecucion;
-
--- Permisos exclusivos para el rol de migración Flyway (acotado al esquema sgspi + lectura/FK hacia dbo)
-GRANT CONTROL, SELECT, INSERT, UPDATE, DELETE, EXECUTE, ALTER, REFERENCES, VIEW DEFINITION
-    ON SCHEMA::sgspi TO grupo_sgspi_migracion;
-
-GRANT CREATE TABLE, CREATE VIEW, CREATE PROCEDURE, CREATE FUNCTION TO grupo_sgspi_migracion;
-
-GRANT REFERENCES, SELECT ON dbo.uaa TO grupo_sgspi_migracion;
-
-GRANT REFERENCES, SELECT ON dbo.cargo TO grupo_sgspi_migracion;
-
-GRANT REFERENCES, SELECT ON dbo.persona TO grupo_sgspi_migracion;
-
-GRANT REFERENCES, SELECT ON dbo.espacio TO grupo_sgspi_migracion;
-
-GRANT REFERENCES, SELECT ON dbo.sub_sede TO grupo_sgspi_migracion;
-
-GRANT SELECT ON dbo.grupo TO grupo_sgspi_migracion;
-
-GRANT SELECT ON dbo.usuario_grupo TO grupo_sgspi_migracion;
-
-GRANT SELECT ON dbo.usuario_administrativos TO grupo_sgspi_migracion;
-
-GRANT SELECT ON dbo.usuario_docentes TO grupo_sgspi_migracion;
-
-
-GO
-IF @@TRANCOUNT = 0
-    SET NOEXEC ON; -- [AP-19]
-
-
-GO
 /*==================================================================================================
                                                                                                                                                                                                                                                                                                                         6. VISTAS DINÁMICAS PARA CAMPOS CALCULADOS E INTEGRACIÓN CON [dbo]
                                                                                                                                                                                                                                                                                                                         ==================================================================================================*/
@@ -12820,36 +12182,106 @@ IF @@TRANCOUNT = 0
 
 
 GO
--- Lectura de las vistas por capa (grupo_sgspi_consulta ya las cubre vía GRANT SELECT ON SCHEMA::sgspi)
-GRANT SELECT
-    ON sgspi.vw_usuario_rol_alcance_sgspi TO grupo_sgspi_login;
-
-GRANT SELECT
-    ON sgspi.vw_usuario_rol_alcance_sgspi TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_consolidado_dofa TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_resumen_activos_criticidad TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_matriz_tratamiento_riesgos TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_desglose_ccd_trd_mr04 TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_inventario_activo_documental_mr04 TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_controles_atributos_iso27002 TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_consulta_dofa_vigente TO grupo_sgspi_ejecucion;
-
-GRANT SELECT
-    ON sgspi.vw_consulta_inventario_documental_vigente TO grupo_sgspi_ejecucion;
+-- 6.8 Vista de Login del Aplicativo SGSPI en [dbo] (patrón institucional dbo.usuario_formulario_admin_login: 23 columnas, sin filtrar [sys])
+CREATE OR ALTER VIEW dbo.usuario_sgspi_login
+AS
+SELECT p.per_codigo,
+       ua.uid,
+       ua.us,
+       ua.sys,
+       ua.ischange,
+       p.per_nombre,
+       p.per_apellido,
+       ti.tii_codigo,
+       ti.tii_nombre,
+       ti.tii_nombre_corto,
+       p.per_identificacion,
+       p.per_email_interno,
+       u.uaa_codigo,
+       u.uaa_nombre,
+       u.uaa_nombre_corto,
+       s.sed_codigo,
+       s.sed_nombre,
+       ua.state,
+       ua.uwd2,
+       ug.usg_estado,
+       g.gru_codigo,
+       g.gru_id,
+       g.gru_nombre
+FROM   dbo.usuario_administrativos AS ua
+       INNER JOIN
+       dbo.persona AS p
+       ON ua.up = p.per_codigo
+       LEFT OUTER JOIN
+       dbo.tipo_id AS ti
+       ON p.tii_codigo = ti.tii_codigo
+       INNER JOIN
+       dbo.usuario_grupo AS ug
+       ON ua.uid = ug.usg_usuario
+       INNER JOIN
+       dbo.grupo AS g
+       ON ug.usg_grupo = g.gru_codigo
+       INNER JOIN
+       dbo.uaa AS u
+       ON ug.usg_uaa = u.uaa_codigo
+       INNER JOIN
+       dbo.sede AS s
+       ON u.sed_codigo = s.sed_codigo
+WHERE  (g.gru_id LIKE 'SGSPI[_]%')
+       AND (g.gru_estado = 1)
+       AND (ug.usg_estado = 1)
+       AND (ua.state = 1)
+       AND (p.per_estado = 1)
+       AND (u.uaa_estado = 1)
+UNION
+SELECT p.per_codigo,
+       ud.uid,
+       ud.us,
+       ud.sys,
+       ud.ischange,
+       p.per_nombre,
+       p.per_apellido,
+       ti.tii_codigo,
+       ti.tii_nombre,
+       ti.tii_nombre_corto,
+       p.per_identificacion,
+       p.per_email_interno,
+       u.uaa_codigo,
+       u.uaa_nombre,
+       u.uaa_nombre_corto,
+       s.sed_codigo,
+       s.sed_nombre,
+       ud.state,
+       ud.uwd2,
+       ug.usg_estado,
+       g.gru_codigo,
+       g.gru_id,
+       g.gru_nombre
+FROM   dbo.usuario_docentes AS ud
+       INNER JOIN
+       dbo.persona AS p
+       ON ud.up = p.per_codigo
+       LEFT OUTER JOIN
+       dbo.tipo_id AS ti
+       ON p.tii_codigo = ti.tii_codigo
+       INNER JOIN
+       dbo.usuario_grupo AS ug
+       ON ud.uid = ug.usg_usuario
+       INNER JOIN
+       dbo.grupo AS g
+       ON ug.usg_grupo = g.gru_codigo
+       INNER JOIN
+       dbo.uaa AS u
+       ON ug.usg_uaa = u.uaa_codigo
+       INNER JOIN
+       dbo.sede AS s
+       ON u.sed_codigo = s.sed_codigo
+WHERE  (g.gru_id LIKE 'SGSPI[_]%')
+       AND (g.gru_estado = 1)
+       AND (ug.usg_estado = 1)
+       AND (ud.state = 1)
+       AND (p.per_estado = 1)
+       AND (u.uaa_estado = 1);
 
 
 GO
@@ -12936,6 +12368,810 @@ ALTER TABLE sgspi.seguimiento_actividad
 ALTER TABLE sgspi.evaluacion_aplicabilidad_control
     WITH CHECK ADD CONSTRAINT FK_eac_dbo_cargo FOREIGN KEY (car_codigo) REFERENCES dbo.cargo (car_codigo);
 
+-- Semilla idempotente de los 6 roles funcionales SGSPI_* en [dbo].[grupo] (conserva 331 SGSPI_ADMINISTRADOR y 332 SGSPI_GENERAL)
+INSERT INTO dbo.grupo (
+    gru_nombre,
+    gru_id,
+    gru_estado
+)
+SELECT v.gru_nombre,
+       v.gru_id,
+       1
+FROM   (VALUES ('SGSPI_Custodio_Operador', 'SGSPI_CUSTODIO_OPERADOR'),
+               ('SGSPI_Lider_Propietario', 'SGSPI_LIDER_PROPIETARIO'),
+               ('SGSPI_Gestor_Documental', 'SGSPI_GESTOR_DOCUMENTAL'),
+               ('SGSPI_Admin_OPDP', 'SGSPI_ADMIN_OPDP'),
+               ('SGSPI_Comite_Direccion', 'SGSPI_COMITE_DIRECCION'),
+               ('SGSPI_Auditor_Control', 'SGSPI_AUDITOR_CONTROL')) AS v(gru_nombre, gru_id)
+WHERE  NOT EXISTS (SELECT 1
+                   FROM   dbo.grupo AS g
+                   WHERE  UPPER(LTRIM(RTRIM(ISNULL(g.gru_id, '')))) = v.gru_id);
+
+GO
+IF @@TRANCOUNT = 0
+    SET NOEXEC ON; -- [AP-19]
+
+
+GO
+/*==================================================================================================
+6b. ROLES DE BASE DE DATOS Y PRIVILEGIOS MÍNIMOS (ESTÁNDAR INSTITUCIONAL USCO)
+- Se ejecuta al final del despliegue, una vez creadas todas las tablas, triggers, SPs y vistas
+  (incluida dbo.usuario_sgspi_login), y tras enlazar las FKs hacia [dbo].
+- Roles planos AUTHORIZATION dbo con prefijo grupo_sgspi_* y estructura plana sin anidamiento.
+- Activa EXECUTE sobre las funciones escalares: dbo.VarBinToHexStr, dbo.encriptarClaveReal,
+  dbo.getTokenDocumento y token.getTokenInicioSesion.
+==================================================================================================*/
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_login') IS NULL
+    CREATE ROLE grupo_sgspi_login AUTHORIZATION dbo; -- Cuenta técnica de autenticación/contexto (sgspi_login)
+
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_consulta') IS NULL
+    CREATE ROLE grupo_sgspi_consulta AUTHORIZATION dbo; -- Cuenta técnica de solo lectura (sgspi_consulta)
+
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_ejecucion') IS NULL
+    CREATE ROLE grupo_sgspi_ejecucion AUTHORIZATION dbo; -- Cuenta técnica del pool transaccional HikariCP (sgspi_ejecucion)
+
+IF DATABASE_PRINCIPAL_ID(N'grupo_sgspi_migracion') IS NULL
+    CREATE ROLE grupo_sgspi_migracion AUTHORIZATION dbo; -- Cuenta exclusiva del pipeline CI/CD de Flyway (sgspi_migracion)
+
+-- Capa _login: cero DML/DDL sobre [sgspi]; lectura exclusiva de dbo.usuario_sgspi_login + alcance y funciones de login/token
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON SCHEMA::sgspi TO grupo_sgspi_login;
+
+GRANT SELECT
+    ON dbo.usuario_sgspi_login TO grupo_sgspi_login;
+
+GRANT SELECT
+    ON sgspi.vw_usuario_rol_alcance_sgspi TO grupo_sgspi_login;
+
+GRANT EXECUTE
+    ON sgspi.usp_obtener_contexto_usuario TO grupo_sgspi_login;
+
+GRANT EXECUTE
+    ON dbo.VarBinToHexStr TO grupo_sgspi_login;
+
+GRANT EXECUTE
+    ON dbo.encriptarClaveReal TO grupo_sgspi_login;
+
+GRANT EXECUTE
+    ON dbo.getTokenDocumento TO grupo_sgspi_login;
+
+GRANT EXECUTE
+    ON token.getTokenInicioSesion TO grupo_sgspi_login;
+
+-- Capa _consulta: SELECT sobre [sgspi] + maestras FK de [dbo] + funciones escalares; DENY sobre dbo.usuario_sgspi_login (uwd2)
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON SCHEMA::sgspi TO grupo_sgspi_consulta;
+
+DENY SELECT
+    ON dbo.usuario_sgspi_login TO grupo_sgspi_consulta;
+
+GRANT SELECT
+    ON SCHEMA::sgspi TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.uaa TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.cargo TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.persona TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.espacio TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.sub_sede TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.sede TO grupo_sgspi_consulta;
+
+GRANT SELECT ON dbo.tipo_id TO grupo_sgspi_consulta;
+
+GRANT EXECUTE
+    ON dbo.VarBinToHexStr TO grupo_sgspi_consulta;
+
+GRANT EXECUTE
+    ON dbo.encriptarClaveReal TO grupo_sgspi_consulta;
+
+GRANT EXECUTE
+    ON dbo.getTokenDocumento TO grupo_sgspi_consulta;
+
+GRANT EXECUTE
+    ON token.getTokenInicioSesion TO grupo_sgspi_consulta;
+
+-- Capa _ejecucion: escritura operativa sobre [sgspi] + vistas + maestras [dbo] + funciones escalares; DENY DELETE y DENY dbo.usuario_sgspi_login
+DENY ALTER
+    ON SCHEMA::sgspi TO grupo_sgspi_ejecucion;
+
+DENY SELECT
+    ON dbo.usuario_sgspi_login TO grupo_sgspi_ejecucion;
+
+-- Catálogos de máquina de estados: solo lectura para runtime (evolucionan vía Flyway / grupo_sgspi_migracion)
+GRANT SELECT
+    ON sgspi.estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE
+    ON sgspi.estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE
+    ON sgspi.transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+-- Entidades y catálogos operativos (36 tablas): lectura/escritura sin borrado físico
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.periodo_vigencia TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.periodo_vigencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.parte_interesada TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_informacion TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.idioma_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.idioma_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.escala_probabilidad TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.escala_probabilidad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.escala_impacto TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.escala_impacto TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.plan_tratamiento TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.plan_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
+
+-- Tablas puente N:M puras (11 tablas): sin DELETE físico [AP-22]; la asociación se desactiva y reactiva con UPDATE de <acr>_estado
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT, INSERT, UPDATE
+    ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+DENY DELETE
+    ON sgspi.plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+-- Tablas de auditoría (49 aud_*): solo lectura para runtime; escritura exclusiva de triggers
+GRANT SELECT
+    ON sgspi.aud_periodo_vigencia TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_periodo_vigencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_estado_flujo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_transicion_estado_flujo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_tipo_proceso_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_proceso_institucional_uaa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_factor_entorno_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_analisis_contexto_factor TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_parte_interesada TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_requisito_parte_interesada TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_requisito_parte_interesada_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_tipo_activo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_causal_excepcion_transparencia TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_informacion_proceso_institucional TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_informacion_sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_informacion_responsable TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_sistema_informacion_ficha TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_modulo_sistema_informacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_serie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_subserie_documental_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_unidad_productora_cuadro_clasificacion_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_periodicidad_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_estado_publicacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_soporte_registro_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_medio_conservacion_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_idioma_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_idioma_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_formato_archivo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_documental TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_documental_soporte_registro TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_documental_medio_conservacion TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_documental_idioma TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_documental_formato_archivo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_activo_documental_unidad_productora TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_escala_probabilidad TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_escala_probabilidad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_escala_impacto TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_escala_impacto TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_zona_riesgo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_matriz_valoracion_riesgo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_evento_incertidumbre_activo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_estrategia_tratamiento_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_plan_tratamiento TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_plan_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_actividad_tratamiento TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_seguimiento_actividad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_estandar_normativo_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_atributo_control_catalogo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_control_referencia_normativa_atributo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_plan_tratamiento_control_referencia_normativa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.aud_evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
+
+DENY INSERT, UPDATE, DELETE, ALTER
+    ON sgspi.aud_evaluacion_aplicabilidad_control TO grupo_sgspi_ejecucion;
+
+-- Lectura de vistas [sgspi], ejecución de consecutivos, maestras FK [dbo] y funciones escalares para grupo_sgspi_ejecucion
+GRANT SELECT
+    ON sgspi.vw_usuario_rol_alcance_sgspi TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_consolidado_dofa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_resumen_activos_criticidad TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_matriz_tratamiento_riesgos TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_desglose_ccd_trd_mr04 TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_inventario_activo_documental_mr04 TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_controles_atributos_iso27002 TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_consulta_dofa_vigente TO grupo_sgspi_ejecucion;
+
+GRANT SELECT
+    ON sgspi.vw_consulta_inventario_documental_vigente TO grupo_sgspi_ejecucion;
+
+GRANT EXECUTE
+    ON sgspi.usp_siguiente_consecutivo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.uaa TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.cargo TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.persona TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.espacio TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.sub_sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.sede TO grupo_sgspi_ejecucion;
+
+GRANT SELECT ON dbo.tipo_id TO grupo_sgspi_ejecucion;
+
+GRANT EXECUTE
+    ON dbo.VarBinToHexStr TO grupo_sgspi_ejecucion;
+
+GRANT EXECUTE
+    ON dbo.encriptarClaveReal TO grupo_sgspi_ejecucion;
+
+GRANT EXECUTE
+    ON dbo.getTokenDocumento TO grupo_sgspi_ejecucion;
+
+GRANT EXECUTE
+    ON token.getTokenInicioSesion TO grupo_sgspi_ejecucion;
+
+-- Capa _migracion: pipeline CI/CD de Flyway (acotado al esquema [sgspi] + lectura/FK hacia [dbo] + funciones escalares)
+GRANT CONTROL, SELECT, INSERT, UPDATE, DELETE, EXECUTE, ALTER, REFERENCES, VIEW DEFINITION
+    ON SCHEMA::sgspi TO grupo_sgspi_migracion;
+
+GRANT CREATE TABLE, CREATE VIEW, CREATE PROCEDURE, CREATE FUNCTION TO grupo_sgspi_migracion;
+
+GRANT REFERENCES, SELECT ON dbo.uaa TO grupo_sgspi_migracion;
+
+GRANT REFERENCES, SELECT ON dbo.cargo TO grupo_sgspi_migracion;
+
+GRANT REFERENCES, SELECT ON dbo.persona TO grupo_sgspi_migracion;
+
+GRANT REFERENCES, SELECT ON dbo.espacio TO grupo_sgspi_migracion;
+
+GRANT REFERENCES, SELECT ON dbo.sub_sede TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.sede TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.tipo_id TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.grupo TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.usuario_grupo TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.usuario_administrativos TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.usuario_docentes TO grupo_sgspi_migracion;
+
+GRANT SELECT ON dbo.usuario_sgspi_login TO grupo_sgspi_migracion;
+
+GRANT EXECUTE
+    ON dbo.VarBinToHexStr TO grupo_sgspi_migracion;
+
+GRANT EXECUTE
+    ON dbo.encriptarClaveReal TO grupo_sgspi_migracion;
+
+GRANT EXECUTE
+    ON dbo.getTokenDocumento TO grupo_sgspi_migracion;
+
+GRANT EXECUTE
+    ON token.getTokenInicioSesion TO grupo_sgspi_migracion;
+
 GO
 IF @@TRANCOUNT = 0
     SET NOEXEC ON; -- [AP-19]
@@ -12957,6 +13193,7 @@ IF (SELECT COUNT(*)
    OR (SELECT COUNT(*)
        FROM   sys.views
        WHERE  schema_id = SCHEMA_ID(N'sgspi')) <> 9
+   OR OBJECT_ID(N'dbo.usuario_sgspi_login', N'V') IS NULL
    OR (SELECT COUNT(*)
        FROM   sys.objects
        WHERE  schema_id = SCHEMA_ID(N'sgspi')
@@ -12978,14 +13215,24 @@ IF (SELECT COUNT(*)
        FROM   sys.foreign_keys
        WHERE  schema_id = SCHEMA_ID(N'sgspi')
               AND referenced_object_id = OBJECT_ID(N'dbo.persona')) <> 13
-    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 9 vistas, 0 funciones IF, 2 SPs usp_obtener_contexto_usuario/usp_siguiente_consecutivo, 0 políticas RLS, 25 FKs a [dbo] con 13 a dbo.persona).';
+    SET @fallos += N' Conteo de objetos incompleto (esperado: 98 tablas, 99 triggers, 9 vistas en sgspi + dbo.usuario_sgspi_login, 0 funciones IF, 2 SPs usp_obtener_contexto_usuario/usp_siguiente_consecutivo, 0 políticas RLS, 25 FKs a [dbo] con 13 a dbo.persona).';
 
 DECLARE @objetos_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CAST (v.nombre AS NVARCHAR (MAX)), N', ')
-                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'), (N'sgspi.transicion_estado_flujo', N'U'), (N'sgspi.analisis_contexto_factor', N'U'), (N'sgspi.requisito_parte_interesada', N'U'), (N'sgspi.activo_informacion', N'U'), (N'sgspi.activo_documental', N'U'), (N'sgspi.evento_incertidumbre_activo', N'U'), (N'sgspi.plan_tratamiento', N'U'), (N'sgspi.actividad_tratamiento', N'U'), (N'sgspi.seguimiento_actividad', N'U'), (N'sgspi.evaluacion_aplicabilidad_control', N'U'), (N'sgspi.usp_obtener_contexto_usuario', N'P'), (N'sgspi.usp_siguiente_consecutivo', N'P'), (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'), (N'sgspi.vw_consolidado_dofa', N'V'), (N'sgspi.vw_resumen_activos_criticidad', N'V'), (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'), (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'), (N'sgspi.vw_inventario_activo_documental_mr04', N'V'), (N'sgspi.vw_controles_atributos_iso27002', N'V'), (N'sgspi.vw_consulta_dofa_vigente', N'V'), (N'sgspi.vw_consulta_inventario_documental_vigente', N'V'), (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_sga_inmutabilidad', N'TR'), (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
+                                                      FROM   (VALUES (N'sgspi.estado_flujo_catalogo', N'U'), (N'sgspi.transicion_estado_flujo', N'U'), (N'sgspi.analisis_contexto_factor', N'U'), (N'sgspi.requisito_parte_interesada', N'U'), (N'sgspi.activo_informacion', N'U'), (N'sgspi.activo_documental', N'U'), (N'sgspi.evento_incertidumbre_activo', N'U'), (N'sgspi.plan_tratamiento', N'U'), (N'sgspi.actividad_tratamiento', N'U'), (N'sgspi.seguimiento_actividad', N'U'), (N'sgspi.evaluacion_aplicabilidad_control', N'U'), (N'sgspi.usp_obtener_contexto_usuario', N'P'), (N'sgspi.usp_siguiente_consecutivo', N'P'), (N'dbo.usuario_sgspi_login', N'V'), (N'sgspi.vw_usuario_rol_alcance_sgspi', N'V'), (N'sgspi.vw_consolidado_dofa', N'V'), (N'sgspi.vw_resumen_activos_criticidad', N'V'), (N'sgspi.vw_matriz_tratamiento_riesgos', N'V'), (N'sgspi.vw_desglose_ccd_trd_mr04', N'V'), (N'sgspi.vw_inventario_activo_documental_mr04', N'V'), (N'sgspi.vw_controles_atributos_iso27002', N'V'), (N'sgspi.vw_consulta_dofa_vigente', N'V'), (N'sgspi.vw_consulta_inventario_documental_vigente', N'V'), (N'sgspi.TR_acf_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_rpi_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_aci_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_ado_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eia_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_plt_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_act_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_eac_integridad_y_actualizacion', N'TR'), (N'sgspi.TR_sga_inmutabilidad', N'TR'), (N'sgspi.TR_sga_sincronizar_avance', N'TR')) AS v(nombre, tipo)
                                                       WHERE  OBJECT_ID(v.nombre, v.tipo) IS NULL), 1000);
 
 IF @objetos_faltantes IS NOT NULL
     SET @fallos += N' Faltan objetos clave: ' + @objetos_faltantes + N'.';
+
+DECLARE @grupos_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.gru_id, N', ')
+                                               FROM   (VALUES (N'SGSPI_CUSTODIO_OPERADOR'), (N'SGSPI_LIDER_PROPIETARIO'), (N'SGSPI_GESTOR_DOCUMENTAL'), (N'SGSPI_ADMIN_OPDP'), (N'SGSPI_COMITE_DIRECCION'), (N'SGSPI_AUDITOR_CONTROL')) AS v(gru_id)
+                                               WHERE  NOT EXISTS (SELECT 1
+                                                                  FROM   dbo.grupo AS g
+                                                                  WHERE  UPPER(LTRIM(RTRIM(ISNULL(g.gru_id, '')))) = v.gru_id
+                                                                         AND g.gru_estado = 1));
+
+IF @grupos_faltantes IS NOT NULL
+    SET @fallos += N' Faltan grupos funcionales SGSPI activos en dbo.grupo: ' + @grupos_faltantes + N'.';
 
 DECLARE @roles_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.rol, N', ')
                                               FROM   (VALUES (N'grupo_sgspi_login'), (N'grupo_sgspi_consulta'), (N'grupo_sgspi_ejecucion'), (N'grupo_sgspi_migracion')) AS v(rol)
@@ -12997,6 +13244,36 @@ DECLARE @roles_faltantes AS NVARCHAR (500) = (SELECT STRING_AGG(v.rol, N', ')
 
 IF @roles_faltantes IS NOT NULL
     SET @fallos += N' Faltan roles estándar USCO o su propietario no es dbo: ' + @roles_faltantes + N'.';
+
+DECLARE @permisos_fn_faltantes AS NVARCHAR (1000) = LEFT((SELECT STRING_AGG(CONCAT(r.rol, N'->', f.fn), N', ')
+                                                          FROM   (VALUES (N'grupo_sgspi_login'), (N'grupo_sgspi_consulta'), (N'grupo_sgspi_ejecucion'), (N'grupo_sgspi_migracion')) AS r(rol)
+                                                                 CROSS JOIN
+                                                                 (VALUES (N'dbo.VarBinToHexStr'), (N'dbo.encriptarClaveReal'), (N'dbo.getTokenDocumento'), (N'token.getTokenInicioSesion')) AS f(fn)
+                                                          WHERE  NOT EXISTS (SELECT 1
+                                                                             FROM   sys.database_permissions AS dp
+                                                                             WHERE  dp.grantee_principal_id = DATABASE_PRINCIPAL_ID(r.rol)
+                                                                                    AND dp.major_id = OBJECT_ID(f.fn)
+                                                                                    AND dp.permission_name = N'EXECUTE'
+                                                                                    AND dp.state = 'G')), 1000);
+
+IF @permisos_fn_faltantes IS NOT NULL
+    SET @fallos += N' Faltan permisos EXECUTE sobre funciones escalares: ' + @permisos_fn_faltantes + N'.';
+
+IF NOT EXISTS (SELECT 1
+               FROM   sys.database_permissions AS dp
+               WHERE  dp.grantee_principal_id = DATABASE_PRINCIPAL_ID(N'grupo_sgspi_login')
+                      AND dp.major_id = OBJECT_ID(N'dbo.usuario_sgspi_login')
+                      AND dp.permission_name = N'SELECT'
+                      AND dp.state = 'G')
+   OR EXISTS (SELECT 1
+              FROM   (VALUES (N'grupo_sgspi_consulta'), (N'grupo_sgspi_ejecucion')) AS r(rol)
+              WHERE  NOT EXISTS (SELECT 1
+                                 FROM   sys.database_permissions AS dp
+                                 WHERE  dp.grantee_principal_id = DATABASE_PRINCIPAL_ID(r.rol)
+                                        AND dp.major_id = OBJECT_ID(N'dbo.usuario_sgspi_login')
+                                        AND dp.permission_name = N'SELECT'
+                                        AND dp.state = 'D'))
+    SET @fallos += N' Permisos de dbo.usuario_sgspi_login incorrectos (solo grupo_sgspi_login con GRANT SELECT; consulta y ejecucion con DENY SELECT).';
 
 IF EXISTS (SELECT 1
            FROM   sys.database_role_members AS rm
@@ -13046,6 +13323,7 @@ IF LEN(@fallos) > 0
     END
 ELSE
     BEGIN TRY
+        EXECUTE sys.sp_refreshview N'dbo.usuario_sgspi_login';
         EXECUTE sys.sp_refreshview N'sgspi.vw_usuario_rol_alcance_sgspi';
         EXECUTE sys.sp_refreshview N'sgspi.vw_consolidado_dofa';
         EXECUTE sys.sp_refreshview N'sgspi.vw_resumen_activos_criticidad';

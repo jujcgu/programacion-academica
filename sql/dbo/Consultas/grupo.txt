@@ -1,0 +1,367 @@
+1	Administrador del Sistema	NO DEFINIDO	0
+2	Secretaria Programa	SECRETARIA	1
+3	Administrador del Sistema  Academico 	NO DEFINIDO	0
+4	Estudiante	ESTUDIANTE	1
+6	Registro y Control - Operario	REGISTRO_Y_CONTROL_OPERARIO	1
+7	Usuario Comité Admisiones	NO DEFINIDO	0
+5	Notas	NO DEFINIDO	0
+42	Registro y Control - Director	REGISTRO_Y_CONTROL_DIRECTOR	1
+10	Usuario Programación Académica	USUARIO_PROGRAMACION_ACADEMICA	1
+12	Usuario Sistema de Gestión Administrativa	USUARIO_SISTEMA_GESTION_ADTIVA	1
+14	Jefe Departamento	JEFE_DEPARTAMENTO	1
+16	Administrador Liquidacion	NO DEFINIDO	0
+19	Secretaria Departamento	NO DEFINIDO	1
+20	Registro y Control - Graduados	REGISTRO_Y_CONTROL_GRADUADOS	1
+22	Administrador Portal	NO DEFINIDO	0
+24	Biblioteca Estadisticas	BIBLIOTECA_ESTADISTICAS	1
+25	Usuario Biblioteca	USUARIO_BIBLIOTECA	1
+27	Graduado	GRADUADO	1
+29	Graduado Administracion Programa	GRADUADO_ADMINISTRADOR_PROGRAMA	1
+31	Administrador Memoria Calculo	ADMINISTRADOR_MEMORIA_CALCULO	0
+33	Peticiones Quejas y Reclamos - SubAdministrador	PQR_SUBADMINISTRADOR	0
+35	Coordinador de Area	COORDINADOR_AREA	1
+37	Usuarios Publicar Web	NO DEFINIDO	0
+9	Planta Fisica - Inventario Consulta	PLANTA_FISICA_INVENTARIO_CONSULTA	1
+11	Administrador Programación Académica	ADMON_PROGRAMACION_ACADEMICA	1
+13	Administrador Plan de Compras	NO DEFINIDO	0
+15	Docente	DOCENTE	1
+17	Usuario Liquidacion	NO DEFINIDO	0
+23	Editor Portal	NO DEFINIDO	0
+26	Secretaria Académica Facultad	SECRETARIA_ACADEMICA_FACULTAD	1
+28	Estudiante Invitado	NO DEFINIDO	0
+30	Evaluacion Docente - Comite Seleccion	EVALUACION_DOCENTE_COMITE	1
+32	Tesoreria	NO DEFINIDO	0
+34	Jefe de Programa	JEFE_PROGRAMA	1
+36	Taller Opinion	NO DEFINIDO	0
+39	Graduado Administracion Facultad	GRADUADO_ADMINISTRADOR_FACULTAD	1
+41	Dirección de Sedes	DIRECCION_SEDES	0
+8	Planta Fisica - Administrador Academico	PLANTA_FISICA_ADMINISTRADOR_ACADEMICO	1
+43	Usuario liquidación de nómina	NO DEFINIDO	0
+45	Usuario SIPPA	USUARIO_SIPPA	0
+46	Usuario Oficina Planeación	USUARIO_OFICINA_PLANEACION	1
+47	Graduado Administracion Universidad	GRADUADO_ADMINISTRADOR_UNIVERSIDAD	1
+51	Admon Egresados Registro	NO DEFINIDO	0
+52	Oficina de Contabilidad	NO DEFINIDO	0
+53	Administrador Consejeros Universidad	NO DEFINIDO	0
+55	Administrador Autorizacion Cupos	AUTORIZACION_CUPOS_ADMINISTRADOR	1
+56	Planta Fisica - Administrador Espacios	PLANTA_FISICA_ADMINISTRADOR_ESPACIOS	1
+57	Estadisticas_Generales	ESTADISTICAS_GENERALES	1
+59	Registro y Control - Inscripciones - Pregrado	REGISTRO_Y_CONTROL_INSCRIPCIONES_PREGRADO	1
+60	Registro y Control - Icfes	REGISTRO_Y_CONTROL_ICFES	1
+61	Registro y Control - Certificados	REGISTRO_Y_CONTROL_CERTIFICADOS	1
+62	Registro y Control - Admin Inscripciones	REGISTRO_Y_CONTROL_INSCRIPCIONES_ADMIN	1
+63	Administrador Cambio Docente	CAMBIO_DOCENTE	1
+64	Personal - Personal	PERSONAL_PERSONAL	0
+65	Personal - Secretarias	PERSONAL_SECRETARIAS	0
+66	Personal - Viceinvestigaciones	PERSONAL_VICEINVESTIGACIONES	0
+67	Personal - Viceacademica	PERSONAL_VICEACADEMICA	0
+68	Programacion Academica Programa	PROGRAMACION_ACADEMICA_PROGRAMA	1
+69	Programacion Academica Administrador	PROGRAMACION_ACADEMICA_ADMINISTRADOR	1
+70	Deudas - Laboratorios	DEUDAS_LABORATORIOS	1
+71	Liquidacion - Admon	LIQUIDACION_ADMON	1
+72	Liquidacion - Operario	LIQUIDACION_OPERARIO	1
+73	Liquidacion - Consulta	LIQUIDACION_CONSULTA	1
+74	Liquidacion - SubAdmon	LIQUIDACION_SUBADMON	1
+75	Liquidacion - Tesoreria	LIQUIDACION_TESORERIA	1
+76	Liquidacion - FondosEspe	LIQUIDACION_FONDOSESPE	1
+77	Sivips - Proyectos - Admon	PROYECTOS_ADMON	1
+78	Sivips - Proyectos - Proyectos	PROYECTOS_PROYECTOS	1
+79	Sivips - Proyectos - Productos	PROYECTOS_PRODUCTOS	1
+80	Sivips - Proyectos - GrupoInves	PROYECTOS_GRUPOINVES	1
+81	Sivips - Proyectos - Semilleros	PROYECTOS_SEMILLEROS	1
+82	Sivips - Proyectos - Reportes	PROYECTOS_REPORTES	1
+83	Siusco - Admin Usuarios	SIUSCO_USUARIOS_ADMIN	1
+84	Sibusco - Salud Medicina General:  Medico(a)	SIBUSCO_SALUD_MEDICINA_GENERAL_MEDICO	1
+85	Sibusco - Salud Odontologia: Odontologo(a)	SIBUSCO_SALUD_ODONTOLOGIA_ODONTOLOGO	1
+86	Sibusco - Salud Psicologia: Psicologo(a)	SIBUSCO_SALUD_PSICOLOGIA_PSICOLOGO	1
+87	Sibusco - Supervisor Seguridad y Salud Trabajo	SIBUSCO_SUPERVISOR_SEGURIDAD_Y_SALUD_TRABAJO	0
+88	Sibusco - Socioeconomico Restaurante: Administrador	SIBUSCO_SOCIOECONOMICO_RESTAURANTE_ADMINISTRADOR	1
+89	Sibusco - Medicina General Ocupacional	SIBUSCO_MEDICINA_GENERAL_OCUPACIONAL	0
+90	Sibusco - Psicologia Ocupacional	SIBUSCO_PSICOLOGIA_OCUPACIONAL	0
+91	Sibusco - Odontologia Ocupacional	SIBUSCO_ODONTOLOGIA_OCUPACIONAL	0
+92	Peticiones Quejas y Reclamos - Administrador	PQR_ADMINISTRADOR	1
+93	Peticiones Quejas y Reclamos - Dependencia	PQR_DEPENDENCIA	1
+95	Peticiones Quejas y Reclamos - Consulta	PQR_CONSULTA	1
+96	indefinido	indefinido	0
+97	Sibusco - Coordinación Deportes: Administrador	SIBUSCO_COORDINACION_DEPORTES_ADMINISTRADOR	1
+98	Sibusco - Extension Cultural: Administrador	SIBUSCO_EXTENSION_CULTURAL_ADMINISTRADOR	1
+99	Sibusco - Salud Enfermeria: Auxiliar	SIBUSCO_SALUD_ENFERMERIA_AUXILIAR	1
+100	Sibusco - Seguridad Industrial	SIBUSCO_SEGURIDAD_INDUSTRIAL	1
+101	Sibusco - Planeacion Actividades: Usuario	SIBUSCO_PLANEACION_ACTIVIDADES_USUARIO	1
+105	Administrador Cambio Espacio	CAMBIO_ESPACIO	1
+103	Sibusco - Citas Medicas	SIBUSCO_CITAS_MEDICAS	1
+104	Sibusco - Socioeconomico Trabajo Social: Trabajador(a) Social	SIBUSCO_SOCIOECONOMICO_TRABAJO_SOCIAL_TRABAJADOR_SOCIAL	1
+106	SGD - Usuarios	SGD - USUARIOS	1
+107	SGD - Admon	SGD - ADMINISTRADOR	1
+108	SGD - Consulta	SGD - CONSULTA	1
+109	SGD - Ventanilladmon	SGD - VENTANILLADMON	1
+110	SGD - Ventanillausuario	SGD - VENTANILLAUSUARIO	1
+111	Sibusco - Coordinación Deportes: Entrenadores	SIBUSCO_COORDINACION_DEPORTES_ENTRENADORES	1
+112	Sibusco - Estadisticas Bienestar: Administrador	SIBUSCO_ESTADISTICAS_BIENESTAR_ADMINISTRADOR	1
+113	Sivips - Proyectos - Secretaria	PROYECTOS_SECRETARIA	1
+114	Sibusco - Extension Cultural: Instructores	SIBUSCO_EXTENSION_CULTURAL_INSTRUCTORES	1
+44	Administrador Plan de Compras	NO DEFINIDO	0
+48	Secretaria Sedes	NO DEFINIDO	0
+50	Tesoreria	NO DEFINIDO	0
+54	Administrador Consejeros Facultad	NO DEFINIDO	0
+58	Talento Humano Admon	TALENTO_HUMANO_ADMON	1
+115	Permanencia y Graduacion: Administrador Universidad	PERMANENCIA_GRADUACION_ADMINISTRADOR_UNIVERSIDAD	1
+116	Permanencia y Graduacion: Administrador Facultad	PERMANENCIA_GRADUACION_ADMINISTRADOR_FACULTAD	1
+117	Permanencia y Graduacion: Administrador Programa	PERMANENCIA_GRADUACION_ADMINISTRADOR_PROGRAMA	1
+118	Permanencia y Graduacion: Administrador Unidad	PERMANENCIA_GRADUACION_ADMINISTRADOR_UNIDAD	1
+119	Permanencia y Graduacion: Administrador Bienestar	PERMANENCIA_GRADUACION_ADMINISTRADOR_BIENESTAR	1
+125	Sivips - Proyectos - Coordinador	PROYECTOS_COORDINADOR	1
+126	Permanencia y Graduacion: Jefe Bienestar	PERMANENCIA_GRADUACION_JEFE_BIENESTAR	1
+128	Sibusco - Desarrollo Humano: Supervisor(a)	SIBUSCO_DESARROLLO_HUMANO_SUPERVISOR	1
+129	Sibusco - Programa Universidad Saludable	SIBUSCO_PROGRAMA_UNIVERSIDAD_SALUDABLE	1
+130	Sibusco - Desarrollo Humano: Inclusión	SIBUSCO_DESARROLLO_HUMANO_INCLUSION	1
+120	Permanencia y Graduacion: Administrador Familias	PERMANENCIA_GRADUACION_ADMINISTRADOR_FAMILIAS	1
+121	Contrato_Admon	CONTRATO_ADMINISTADOR	1
+127	Permanencia y Graduacion: Administrador Curso	PERMANENCIA_GRADUACION_ADMINISTRADOR_CURSO	1
+131	SGD - AdmonGral	SGD - ADMONGENERAL	1
+132	Convocatoria Docente - Facultad	CONVOCATORIA_DOCENTE_FACULTAD	1
+133	Convocatoria Docente - Administrador	CONVOCATORIA_DOCENTE_ADMINISTRADOR	1
+134	Liquidacion - Certificados	LIQUIDACION_CERTIFICADOS	1
+135	Desprendible_Pago_Admon	DESPRENDIBLE_PAGO_ADMON	1
+136	Sibusco - Socioeconomico Restaurante: Ventanilla	SIBUSCO_SOCIOECONOMICO_RESTAURANTE_VENTANILLA	1
+137	Sibusco - Migracion Carnet	SIBUSCO_MIGRACION_CARNET	0
+138	Orni - Administrador	ORNI_ADMINISTRADOR	1
+139	Orni - SubAdministrador	ORNI_SUBADMINISTRADOR	1
+140	Permanencia y Graduacion: Administrador Matricula	PERMANENCIA_GRADUACION_ADMINISTRADOR_MATRICULA	1
+141	Contrato_Publicar	CONTRATO_PUBLICAR	1
+142	Permanencia y Graduacion: Consulta Universidad 	PERMANENCIA_GRADUACION_CONSULTA_UNIVERSIDAD	1
+143	Sivips - Proyectos - Admon - Grupos	PROYECTOS_ADMON_GRUPOS	1
+145	Sibusco - Estadisticas Bienestar: Supervisor(a) Sede	SIBUSCO_ESTADISTICAS_BIENESTAR_SUPERVISOR_SEDE	0
+146	Sivips - Proyectos - Director - Grupo	PROYECTOS_DIRECTOR_GRUPO	1
+148	Orni - Estudiante Registro Unico Movilidad Saliente	ORNI_ESTUDIANTE_REGISTRO_UNICO_MOVILIDAD_SALIENTE	1
+149	Ingreso_Usco_Porteria	INGRESO_USCO_PORTERIA	0
+150	Contrato_Proveedor_Usuario	CONTRATO_PROVEEDOR_USUARIO	1
+153	Evento-Admin	EVENTO_ADMINISTRADOR	0
+154	Evento-Usuario	EVENTO_USUARIO	0
+155	Evento-Consulta	EVENTO_CONSULTA	0
+156	Sibusco - Desarrollo Humano: Jóvenes en Acción	SIBUSCO_DESARROLLO_JOVENES_EN_ACCION	1
+157	Contrato_SubAdmon	CONTRATO_SUBADMINISTRADOR	1
+158	Carnetizar_Admon	CARNETIZAR_ADMON	1
+159	Sivips - Proyectos - Admon - Produccion - Intelectual	PROYECTOS_ADMON_PRODUCCION_INTELECTUAL	1
+160	Portal Publicacion Web	PORTAL_PUBLICACION_WEB	1
+161	Graduado Usuarios Egresados	GRADUADO_USUARIOS_EGRESADOS	1
+163	Ileusco-Admin	ILEUSCO_ADMIN	1
+164	Ileusco-Usuario	ILEUSCO_USUARIO	1
+165	Ileusco-Consulta	ILEUSCO_CONSULTA	1
+166	Sibusco - Salud Enfermeria: Enfermero(a)	SIBUSCO_SALUD_ENFERMERIA_ENFERMERO	0
+167	Sibusco - Salud Medicina General: Auxiliar	SIBUSCO_SALUD_MEDICINA_GENERAL_AUXILIAR	1
+168	Sibusco - Salud Odontologia: Auxiliar	SIBUSCO_SALUD_ODONTOLOGIA_AUXILIAR	1
+169	Sibusco - Salud Psicologia: Auxiliar_Sibusco_Salud_Psicologia_Auxiliar	SIBUSCO_SALUD_PSICOLOGIA_AUXILIAR	1
+170	Sibusco - Estadisticas Bienestar: Usuario	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO	0
+171	Orni - Docente Registro Unico Movilidad Saliente	ORNI_DOCENTE_REGISTRO_UNICO_MOVILIDAD_SALIENTE	1
+172	Orni - Docente Registro Unico Movilidad Entrante	ORNI_DOCENTE_REGISTRO_UNICO_MOVILIDAD_ENTRANTE	1
+173	Orni - Estudiante Registro Unico Movilidad Entrante	ORNI_ESTUDIANTE_REGISTRO_UNICO_MOVILIDAD_ENTRANTE	1
+176	Orni - Consulta Registro Unico Movilidad Estudiante	ORNI_CONSULTA_REGISTRO_UNICO_MOVILIDAD_ESTUDIANTE	1
+177	Orni - Consulta Registro Unico Movilidad Egresados	ORNI_CONSULTA_REGISTRO_UNICO_MOVILIDAD_EGRESADOS	1
+178	Orni - Consulta Registro Unico Movilidad Docentes	ORNI_CONSULTA_REGISTRO_UNICO_MOVILIDAD_DOCENTES	1
+179	Orni - Consulta Registro Unico Movilidad Administrativos	ORNI_CONSULTA_REGISTRO_UNICO_MOVILIDAD_ADMINISTRATIVOS	1
+180	Personal - Consulta	PERSONAL_CONSULTA	0
+181	SGD - AdmonArchivo	SGD - ADMONARCHIVO	1
+184	LCMS Administrador no formal	LCMS_ADMINISTRADOR	1
+185	LCMS Administrador Facultad no formal	LCMS_ADMINISTRADOR_FACULTAD	1
+186	Sibusco - Deportes Usuario	SIBUSCO_DEPORTES_USUARIO	0
+187	Sivips - Proyectos - Admon - CAP	PROYECTOS_ADMON_CAP	1
+191	LCMS Administrador modulo programacion academica no formal	LCMS_ADMIN_PROG_ACADEMICA	1
+192	LCMS Administrador facultad modulo de programacion academica no formal	LCMS_ADMIN_PROG_ACADEMICA_FACULTAD	1
+193	Notas_Posgrados_Programa	NOTAS_POSGRADO_PROGRAMA	1
+194	Consejo Superior Miembro	CONSEJO_SUPERIOR_MIEMBRO	0
+195	Consejo Superior Admin	CONSEJO_SUPERIOR_ADMIN	0
+196	Carrera_adtiva_admin	CARRERA_ADTIVA_ADMIN	1
+197	Contrato_Estudios_Previos_Jefe_Oficina	CONTRATO_ESTUDIOS_PREVIOS_JEFE_OFICINA	1
+198	Contrato_Estudios_Previos_Ordenador_Gasto	CONTRATO_ESTUDIOS_PREVIOS_ORDENADOR_GASTO	1
+199	Contrato_Estudios_Previos_Asesor_Juridico	CONTRATO_ESTUDIOS_PREVIOS_ASESOR_JURIDICO	1
+202	Peticiones Quejas y Reclamos - Linea 018000	PQR_LINEA_018000	1
+210	Contrato_Estudios_Previos_Usuario_Consulta_Fondos_Especiales	CONTRATO_ESTUDIOS_PREVIOS_USUARIO_CONSULTA_FONDOS_ESPECIALES	1
+211	Contrato_Estudios_Previos_Usuario_Consulta_Universidad	CONTRATO_ESTUDIOS_PREVIOS_USUARIO_CONSULTA_UNIVERSIDAD	1
+212	Convocatoria Becas Posgrados Usuario	CONVOCATORIA_BECAS_POSGRADOS_USUARIOS	1
+213	Convocatoria Becas Posgrados Admon	CONVOCATORIA_BECAS_POSGRADOS_ADMON	1
+214	Consejerias Administrador	CONSEJERIAS_ADMON	1
+217	Sga - Administrador - General	SGA_ADMINISTRADOR_GENERAL	0
+218	Sga - Administrador - Subsistema	SGA_ADMINISTRADOR_SUBSISTEMA	0
+219	Sga - Administrador - Productos	SGA_ADMINISTRADOR_PRODUCTOS	0
+223	Registro y Control - Inscripciones - Posgrados	REGISTRO_Y_CONTROL_INSCRIPCIONES_POSGRADOS	1
+230	Contrato_Estudios_Previos_Cuentas_Cobro	CONTRATO_ESTUDIOS_PREVIOS_CUENTAS_COBRO	1
+237	Registro y Control - Notas_Posgrados	REGISTRO_Y_CONTROL_NOTAS_POSGRADO	1
+228	Decano de Facultad	DECANO_DE_FACULTAD	1
+239	Covid19_Encuesta_Estudiante_Consulta	COVID19_ENCUESTA_ESTUDIANTE_CONSULTA	1
+241	Sivips - Proyectos - CoordinadorFacultad - Convocatorias	PROYECTOS_COORDINADORFACULTAD_CONVOCATORIAS	1
+266	Elección_Comité_Electoral_Consulta	ELECCION_COMITE_ELECTORAL_CONSULTA	1
+265	Sivips - Proyectos - Evaluador - Financiero	PROYECTOS_EVALUADOR_FINANCIERO	1
+270	Laboratorio - Consulta	LABORATORIO_CONSULTA	1
+271	Laboratorio - Delegado	LABORATORIO_DELEGADO	1
+272	Laboratorio - Coordinador	LABORATORIO_COORDINADOR	1
+273	Laboratorio - SubAdministrador	LABORATORIO_SUBADMINISTRADOR	1
+274	Laboratorio - Administrador	LABORATORIO_ADMINISTRADOR	1
+122	Contrato_Supervisor	CONTRATO_ SUPERVISOR	1
+123	Contrato_Usuario	CONTRATO_USUARIO	1
+124	Contrato_Consulta	CONTRATO_CONSULTA	1
+206	Pensionado_admin	PENSIONADO_ADMIN	0
+209	Estadisticas_Registro_y_Control	ESTADISTICAS_REGISTRO_Y_CONTROL	1
+229	Peticiones Quejas y Reclamos - Protección Tratamiento de Datos Personales	PQR_PTDP	1
+234	Secretaria Posgrado	SECRETARIA_POSGRADO	1
+235	Sibusco - Salud Fisioterapia	SIBUSCO_SALUD_FISIOTERAPIA	1
+245	Estadisticas_Acreditación	ESTADISTICAS_ACREDITACION	1
+250	Elección_Secretaría_General_Admon	ELECCION_SECRETARIA_GENERAL_ADMON	1
+259	Registro y Control - Planes Academicos	REGISTRO_Y_CONTROL_PLANES_ACADEMICOS	1
+268	Registro y Control - Matricula Primer Semestre	REGISTRO_Y_CONTROL_MATRICULA_PRIMER_SEMESTRE	1
+277	Registro y Control - Inscripción-Admisión - Documentos - Pregrado	REGISTRO_Y_CONTROL_INSCRIPCION_ADMISION_DOCUMENTOS_PREGRADO	1
+281	Elección_Facultades_Subadmon	ELECCION_FACULTADES_SUBADMON	1
+285	Consejerias_Condonacion_SubAdmon	CONSEJERIAS_CONDONACION_SUBADMON	0
+287	CuentasPorPagar_Consulta	CUENTASPORPAGAR_CONSULTA	1
+288	CuentasPorPagar_GestionCuentaDelegado	CUENTASPORPAGAR_GESTIONCUENTADELEGADO	1
+289	CuentasPorPagar_GestionCuentaSupervisor	CUENTASPORPAGAR_GESTIONCUENTASUPERVISOR	1
+290	CuentasPorPagar_Administrador	CUENTASPORPAGAR_ADMINISTRADOR	1
+294	Liquidacion - FacturaElectronica	LIQUIDACION_FACTURAELECTRONICA	1
+295	Estadisticas_Boletin_Estadístico	ESTADISTICAS_BOLETIN_ESTADISTICO	1
+296	Registro y Control - Certificados - Admon	REGISTRO_Y_CONTROL_CERTIFICADOS_ADMON	1
+299	Estadisticas_Programa	ESTADISTICAS_PROGRAMA	1
+300	Liquidacion - Comprobantes	LIQUIDACION_COMPROBANTES	1
+301	Liquidacion - Icetex	LIQUIDACION_ICETEX	1
+303	Estadisticas_Agenda_Docente	ESTADISTICAS_AGENDA_DOCENTE	1
+305	Acuerdo 046 - Administrador	ACUERDO046_ADMINISTRADOR	1
+307	Portal Cobro Coactivo	PORTAL_COBRO_COACTIVO	1
+309	SGD - SoporteMantenimiento-Ctic	SGD - SOPORTEMANTENIMIENTO-CTIC	1
+310	Sibusco - Desarrollo Humano: Biciusco	SIBUSCO_DESARROLLO_HUMANO_BICIUSCO	1
+312	Talento Humano Cesantias	TALENTO_HUMANO_CESANTIAS	1
+314	Sibusco - Desarrollo Humano: Derechos Humanos	SIBUSCO_DESARROLLO_HUMANO_DERECHOS_HUMANOS	1
+319	Estadisticas_Liquidaciones	ESTADISTICAS_LIQUIDACIONES	1
+321	Sibusco - Planeacion Actividades: Administrador	SIBUSCO_PLANEACION_ACTIVIDADES_ADMINISTRADOR	1
+322	CuentasPorPagar_Autorizacion_Pago	CUENTASPORPAGAR_AUTORIZACIONPAGO	1
+324	SGD - Documento-Administrador	SGD - DOCUMENTO-ADMINISTRADOR	1
+326	CuentasPorPagar_Autorizacion_Pago_Supervisor	CUENTASPORPAGAR_AUTORIZACIONPAGOSUPERVISOR	1
+328	Formulario_Super_Administrador	FORMULARIO_SUPER_ADMINISTRADOR	1
+329	Seysatra - Asistente Área Ocupacional	SEYSATRA_ASISTENTE_AREA_OCUPACIONAL	1
+331	SGSPI_Administrador	SGSPI_ADMINISTRADOR	1
+332	SGSPI_General	SGSPI_GENERAL	1
+334	Doble_Titulacion_Admon	DOBLE_TITULACION_ADMON	1
+336	Sibusco - Estadisticas Bienestar: Usuario - Tablet Usco	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_TABLET_USCO	1
+338	Sibusco - Estadisticas Bienestar: Usuario - Ejecución	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_EJECUCION	1
+349	Sigad - Administrador	SIGAD_ADMINISTRADOR	1
+350	Sigad - Responsable de Registro	SIGAD_RESPONSABLE_REGISTRO	1
+351	Sigad - Autorizador de Gasto Tecnico	SIGAD_AUTORIZA_TECNICO_GASTO	1
+352	Sigad - Ordenador del Gasto	SIGAD_ORDENADOR_GASTO	1
+353	Sigad - Responsable Nivel 
+Tres	SIGAD_NIVEL_TRES_RESPONSABLE	1
+354	Sigad - Autorizador de Gasto Financiero	SIGAD_AUTORIZA_FINANCIERO_GASTO	1
+355	Sigad - Responsable Nivel Uno	SIGAD_NIVEL_UNO_RESPONSABLE	1
+356	Sigad - Responsable Nivel Dos	SIGAD_NIVEL_DOS_RESPONSABLE	1
+357	Liquidacion - Juridico	LIQUIDACION_JURIDICO	1
+358	Sigad - Usuario Consulta	SIGAD_USUARIO_CONSULTA	1
+359	Sigad - Usuario Presupuesto	SIGAD_USUARIO_PRESUPUESTO	1
+361	Sigad - Alto Directivo	SIGAD_ALTO_DIRECTIVO	1
+366	Digiturno - Administrador	DIGITURNO_ADMINISTRADOR	1
+368	USCOCrossfit - Gimnasio - Sub Administrador	USCO_CROSSFIT_GIMNASIO_SUB_ADMINISTRADOR	1
+370	Estadisticas_Movilidad	ESTADISTICAS_MOVILIDAD	1
+371	PyG_Consejerias_Academicas	PYG_CONSEJERIAS_ACADEMICAS	1
+374	Siusco - Usuarios Externos	SIUSCO_USUARIOS_EXTERNOS	1
+377	Instructivos - Administrador	INSTRUCTIVOS_ADMINISTRADOR	1
+382	CuentasPorPagar_Supervisor	CUENTASPORPAGAR_SUPERVISOR	1
+383	Registro y Control - Inscripciones - Admon	REGISTRO_Y_CONTROL_INSCRIPCIONES_ADMON	1
+384	SGD - JefeOficina	SGD - JEFEOFICINA	1
+144	Sivips - Proyectos - Admon - Convocatorias	PROYECTOS_ADMON_CONVOCATORIAS	1
+147	Graduado Administrador Portal	GRADUADO_ADMINISTRADOR_PORTAL	1
+151	Contrato_Proveedor_Admin	CONTRATO_PROVEEDOR_ADMIN	1
+152	Contrato_Proveedor_Consulta	CONTRATO_PROVEEDOR_CONSULTA	1
+162	Siusco - Usuarios	SIUSCO_USUARIOS	1
+207	Contrato_Estudios_Previos_Asistente_Oficina	CONTRATO_ESTUDIOS_PREVIOS_ASISTENTE_OFICINA	1
+247	Registro y Control - Oferta y Admision Pregrado	REGISTRO_Y_CONTROL_OFERTA_Y_ADMISION_PREGRADO	1
+293	Elección_Jurado_Votacion	ELECCION_JURADO_VOTACION	1
+298	Estadisticas_Administrador	ESTADISTICAS_ADMINISTRADOR	1
+318	Programacion Academica SubAdministrador	PROGRAMACION_ACADEMICA_SUBADMINISTRADOR	1
+379	Sivips - CAP - Administrador	SIVIPS_CAP_ADMINISTRADOR	1
+174	Orni - Usuario Institucion Registro Unico Movilidad Entrante	ORNI_USUARIO_INSTITUCION_REGISTRO_UNICO_MOVILIDAD_ENTRANTE	1
+200	Duplicado Diploma - Secretaria Genral	DUPLICADO_DIPLOMA_SECRETARIA_GENERAL	1
+201	Duplicado Diploma - Registro y Control	DUPLICADO_DIPLOMA_REGISTRO_Y_CONTROL	1
+208	Contrato_Estudios_Previos_Coordinador	CONTRATO_ESTUDIOS_PREVIOS_COORDINADOR_PROYECTO	1
+282	Consejerias_Condonacion_admon	CONSEJERIAS_CONDONACION_ADMON	0
+297	Portal Administrador	PORTAL_ADMINISTRADOR	1
+315	Estadisticas_Programa_Facultades	ESTADISTICAS_PROGRAMA_FACULTADES	1
+365	USCOCrossfit - Gimnasio - Administrador	USCO_CROSSFIT_GIMNASIO_ADMINISTRADOR	1
+375	USCOCrossfit - Saludable - Administrador	USCO_CROSSFIT_SALUDABLE_ADMINISTRADOR	1
+376	USCOCrossfit - Saludable - Sub Administrador	USCO_CROSSFIT_SALUDABLE_SUB_ADMINISTRADOR	1
+175	Orni - Egresado Registro Unico Movilidad Saliente	ORNI_EGRESADO_REGISTRO_UNICO_MOVILIDAD_SALIENTE	1
+182	LCMS Administrador Videoconferencia no formal	LCMS_ADMIN_VIDEOCONFERENCIA	1
+183	LCMS Administrador Videoconferencia Facultad no formal	LCMS_ADMIN_VIDEOCONFERENCIA_FACULTAD	1
+203	Registro y Control - Matricula Pregrado	REGISTRO_Y_CONTROL_MATRICULA_PREGRADO	1
+204	Registro y Control - Matricula Posgrado	REGISTRO_Y_CONTROL_MATRICULA_POSGRADO	1
+205	Matricula Posgrado Programa	MATRICULA_POSGRADO_PROGRAMA	1
+236	SGD - UsuarioArchivo	SGD - USUARIOARCHIVO	1
+248	Contrato_Estudios_Previos_Cuentas_Cobro_Consulta_Universidad	CONTRATO_ESTUDIOS_PREVIOS_CUENTAS_COBRO_CONSULTA_UNIVERSIDAD	1
+252	Acuerdo 046 - Consulta	ACUERDO046_USUARIO_CONSULTA	1
+283	Acreditacion_Admon	ACREDITACION_ADMON	1
+333	Matriadican_Configuracion_Admin	MATRIADICAN_CONFIGURACION_ADMIN	1
+364	Proteccion Datos - Administrador	PROTECCION_DATOS_ADMINISTRADOR	1
+215	LCMS Gestor Contenido Sakai	LCMS_GESTOR_CONTENIDO_SAKAI	1
+220	Sga - Administrador - Proyecto	SGA_ADMINISTRADOR_PROYECTO	0
+221	Sga - Responsable - Acciones	SGA_RESPONSABLE_ACCIONES	0
+222	Sibusco - Salud Supervisor(a)	SIBUSCO_SALUD_SUPERVISOR	1
+224	Estadisticas_Historial_Academico	ESTADISTICAS_HISTORIAL_ACADEMICO	1
+260	Inventario_Administración	INVENTARIO_ADMINISTRACION	1
+225	Sibusco - Desarrollo Humano: Ejecución	SIBUSCO_DESARROLLO_HUMANO_EJECUCION	1
+244	Seysatra - Medicina Laboral Ocupacional	SEYSATRA_MEDICINA_LABORAL_OCUPACIONAL	1
+276	Formulario_Administrador	FORMULARIO_ADMINISTRADOR	1
+308	Estadisticas_Carnetización	ESTADISTICAS_CARNETIZACION	1
+317	Carnetizacion_ControlAcceso_Admon	CARNETIZACION_CONTROLACCESO_ADMON	1
+238	Sivips - Proyectos - Evaluador - Convocatorias	PROYECTOS_EVALUADOR_CONVOCATORIAS	1
+240	Sibusco - Salud Recepción	SIBUSCO_SALUD_RECEPCION	1
+242	Covid19_Encuesta_General_Vicerrectoría	COVID19_ENCUESTA_GENERAL_VICERRECTORIA	1
+243	Covid19_Encuesta_General_Consulta	COVID19_ENCUESTA_GENERAL_CONSULTA	1
+246	Sibusco - Socioeconomico Trabajo Social: Asistente	SIBUSCO_SOCIOECONOMICO_TRABAJO_SOCIAL_TRABAJADOR_SOCIAL_ASISTENTE	1
+249	Matricula Pregrado Programa	MATRICULA_PREGRADO_PROGRAMA	1
+251	Elección_Unidades_Electorales_Consulta	ELECCION_UNIDADES_ELECTORALES_CONSULTA	1
+254	Alternancia - Administración	ALTERNANCIA_ADMIN	1
+257	Oferta, Inscripción, Admisión, Matricula primer semestre Posgrados Administrador registro y control	OFERTA_INSCRIPCION_ADMISION_MATRICULAPS_POSGRADOS_REGISTRO_Y_CONTROL	1
+258	Oferta, Inscripción, Admisión, Matricula primer semestre Posgrados Administrador secretaria programa	OFERTA_INSCRIPCION_ADMISION_MATRICULAPS_POSGRADOS_SECRETARIA_PROGRAMA	1
+261	CMS_Usuario	CMS_USUARIO	1
+262	CMS_Administrador	CMS_ADMINISTRADOR	1
+263	SGD - Deudas	SGD - DEUDAS	1
+267	Estadisticas_Centro_Graduados	ESTADISTICAS_CENTRO_GRADUADOS	1
+269	Matricula Primer Semestre Programa	MATRICULA_PRIMER_SEMESTRE_PROGRAMA	1
+275	SGD - Secretaria	SGD - SECRETARIA	1
+278	Seysatra - Psicologia Ocupacional	SEYSATRA_PSICOLOGIA_OCUPACIONAL	1
+279	Seysatra - Jefe Área Ocupacional	SEYSATRA_JEFE_AREA_OCUPACIONAL	1
+280	Seysatra - Consulta Talento Humano Ocupacional	SEYSATRA_CONSULTA_TALENTO_HUMANO_OCUPACIONAL	1
+284	Liquidación - Inscripción-Admisión - Documentos - Pregrado	LIQUIDACION_INSCRIPCION_ADMISION_DOCUMENTOS_PREGRADO	1
+286	Graduado_Eleccion_Subadmon	GRADUADO_ELECCION_SUBADMON	1
+291	Seysatra - Fisioterapia Ocupacional	SEYSATRA_FISIOTERAPIA_OCUPACIONAL	1
+292	Seysatra - Historia - Clinica - Updload 	SEYSATRA_HISTORIA_CLINICA_UPDLOAD	1
+302	Sivips - Proyectos - Admon - Convocatorias - Proyeccion - Social	PROYECTOS_ADMON_CONVOCATORIAS_PROYECCION_SOCIAL	1
+304	Estadisticas_Vicerrectoria_Academica	ESTADISTICAS_VICERRECTORIA_ACADEMICA	1
+306	Estadisticas_Centro_Tecnologia	ESTADISTICAS_CENTRO_TECNOLOGIA	1
+311	Liquidacion - Continuidad-Reingresos	LIQUIDACION_CONTINUIDAD_REINGRESOS	1
+313	Sibusco - Desarrollo Humano: Discapacidad	SIBUSCO_DESARROLLO_HUMANO_DISCAPACIDAD	1
+316	Carnetizacion_Admon	CARNETIZACION_ADMON	1
+320	Portal Publicacion Noticia	PORTAL_PUBLICACION_NOTICIA	1
+323	Registro y Control - Notas Pregrado Registro	REGISTRO_Y_CONTROL_NOTAS_PREGRADO	1
+325	SGD - Documento-Gestion	SGD - DOCUMENTO-GESTION	1
+327	Elección_Unidades_Electorales_Subadmon	ELECCION_UNIDADES_ELECTORALES_SUBADMON	1
+330	Estadisticas_Seguridad_Información	ESTADISTICAS_SEGURIDAD_INFORMACION	1
+335	Portal Sitios Administrador	PORTAL_SITIOS_ADMON	1
+337	Sibusco - Estadisticas Bienestar: Usuario - Bicicletas Usco	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_BICICLETAS_USCO	1
+339	Sibusco - Estadisticas Bienestar: Usuario - Medicina	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_MEDICINA	1
+340	Sibusco - Estadisticas Bienestar: Usuario - Odontología	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_ODONTOLOGIA	1
+341	Sibusco - Estadisticas Bienestar: Usuario - Psicología	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_PSICOLOGICA	1
+342	Sibusco - Estadisticas Bienestar: Usuario - Extensión Cultural	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_EXTENSION_CULTURAL	1
+343	Sibusco - Estadisticas Bienestar: Usuario - Enfermería	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_ENFERMERIA	1
+344	Sibusco - Estadisticas Bienestar: Usuario - Usco Saludable	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_USCO_SALUDABLE	1
+345	Sibusco - Estadisticas Bienestar: Usuario - Trabajo Social	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_TRABAJO_SOCIAL	1
+346	Sibusco - Estadisticas Bienestar: Usuario - Restaurante	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_RESTAURANTE	1
+347	Sibusco - Estadisticas Bienestar: Usuario - Deporte	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_DEPORTE	1
+348	Sibusco - Estadisticas Bienestar: Usuario - Jóvenes en Acción	SIBUSCO_ESTADISTICAS_BIENESTAR_USUARIO_JOVENES_ACCION	1
+360	Evaluacion Docente - Comite consulta	EVALUACION_DOCENTE_COMITE_CONSULTA	1
+362	PyG_Administrador_General	PYG_ADMINISTRADOR_GENERAL	1
+363	PyG_Semestre_Cero	PYG_SEMESTRE_CERO	1
+367	Digiturno - Ventanilla	DIGITURNO_VENTANILLA	1
+369	Sibusco - Salud Enfermería: Enfermero(a) Jefe	SIBUSCO_SALUD_ENFERMERIA_ENFERMERO_JEFE	1
+372	Sigad - Plan Compras	SIGAD_PLAN_COMPRAS	1
+373	Ezproxy_administrador_bases_de_datos	EZPROXY_ADMON	1
+378	Biblioteca - KOHA - Administrador	BIBLIOTECA_KOHA_ADMINISTRADOR	1
+380	Sivips - CAP - Colaborador Editorial de Investigación	SIVIPS_CAP_COLABORADOR_EDITORIAL_INVESTIGACION	1
+381	Sivips - CAP - Comité Consulta	SIVIPS_CAP_COMITE_CONSULTA	1
+387	SGD - Rector	SGD - RECTOR	1
+388	SGD - Vicerrector	SGD - VICERRECTOR	1

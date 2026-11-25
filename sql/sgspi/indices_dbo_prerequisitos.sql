@@ -37,7 +37,7 @@ IF OBJECTPROPERTY(OBJECT_ID(N'dbo.usuario_administrativos'), N'IsUserTable') = 1
 BEGIN
     CREATE NONCLUSTERED INDEX IX_usuario_administrativos_us
         ON dbo.usuario_administrativos (us)
-        INCLUDE (uid, up, state);
+        INCLUDE (uid, up, sys, ischange, state, uwd2);
 END;
 GO
 
@@ -60,7 +60,7 @@ IF OBJECTPROPERTY(OBJECT_ID(N'dbo.usuario_docentes'), N'IsUserTable') = 1
 BEGIN
     CREATE NONCLUSTERED INDEX IX_usuario_docentes_us
         ON dbo.usuario_docentes (us)
-        INCLUDE (uid, up, state);
+        INCLUDE (uid, up, sys, ischange, state, uwd2);
 END;
 GO
 
