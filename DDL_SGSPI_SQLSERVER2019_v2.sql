@@ -78,17 +78,17 @@ REGISTRO DE CAMBIOS v2.0 (cada cambio está marcado en el código con -- [AP-xx]
 AP-01  Auditoría por tabla (reemplaza la bitácora [bas] y las tablas temporales): cada tabla tiene su
 sgspi.aud_<tabla> (sección 5.9) con las altas (<aud>_operacion = 'I', con los valores iniciales de la fila creada)
 y la versión resultante after-image de cada fila modificada (<aud>_operacion = 'U') [C2], quién ejecutó la operación (per_codigo de
-SESSION_CONTEXT(N'per_codigo'), o NULL si no hay sesión) y cuándo. Las tablas aud_* son inmutables
+SESSION_CONTEXT(N'per_codigo'); sin sesión, el creador o el firmante si la tabla los tiene, o NULL) y cuándo. Las tablas aud_* son inmutables
 (error 50016) y el borrado físico de cualquier tabla lo rechaza la FK de su aud_* (547, también a dbo; el trigger, 50010,
 queda como segunda barrera). La auditoría del servidor (DISABLE TRIGGER, roles de BD y de servidor, usuarios, permisos,
 DML de [sgspi] y de dbo.usuario_grupo/dbo.grupo, lecturas de [eia] y cambios de la propia auditoría) se configura fuera de
 la transacción en sql/sgspi/auditoria_servidor.sql.
-AP-02  Privilegios mínimos bajo estándar institucional USCO (sección 7b al final del DDL): roles planos AUTHORIZATION dbo con prefijo
+AP-02  Privilegios mínimos bajo estándar institucional USCO (sección 6b al final del DDL): roles planos AUTHORIZATION dbo con prefijo
 grupo_sgspi_* (grupo_sgspi_login para dbo.usuario_sgspi_login, usp_obtener_contexto_usuario y vw_usuario_rol_alcance_sgspi;
 grupo_sgspi_consulta para lectura de [sgspi] y maestras FK de [dbo]; grupo_sgspi_ejecucion con GRANT por tabla sobre [sgspi],
 DENY DELETE en las 98 tablas —también las 11 puentes N:M, que se desactivan con UPDATE— y DENY ALTER; grupo_sgspi_migracion exclusivo para Flyway CI/CD).
-Los roles runtime/migración tienen EXECUTE sobre dbo.encriptarClaveReal, dbo.getTokenDocumento y token.getTokenInicioSesion;
-dbo.usuario_sgspi_login es exclusiva de grupo_sgspi_login (DENY SELECT para consulta y ejecucion).
+Los cuatro roles tienen EXECUTE sobre dbo.VarBinToHexStr, dbo.encriptarClaveReal, dbo.getTokenDocumento y token.getTokenInicioSesion;
+dbo.usuario_sgspi_login la leen solo grupo_sgspi_login y grupo_sgspi_migracion (DENY SELECT para consulta y ejecucion).
 vw_usuario_rol_alcance_sgspi no expone per_identificacion, per_email_interno, uwd, uwd2 ni sys y solo lista grupos SGSPI_*.
 AP-03  Identidad y contexto sin depender de [sys]: dbo.usuario_sgspi_login (mismo patrón de 23 columnas que
 dbo.usuario_formulario_admin_login) provee el login por usuario/uwd2 desde [dbo].[usuario_administrativos] y [dbo].[usuario_docentes]
@@ -105,8 +105,8 @@ usp_habilitar_carga_inicial.
 AP-05  Máquina de estados dirigida por datos: [efc] estados y [tef] transiciones reemplazan 5 CHECK de
 listas y 5 bloques de transiciones copiados en los triggers. La aplican los triggers
 TR_<acr>_integridad_y_actualizacion de acf, rpi, aci, eia y act (error 50011).
-[tef_rol_requerido] restringe transiciones por rol de BD, una fila por rol permitido (NULL = cualquier rol con UPDATE; db_owner pasa siempre).
-Las transiciones de captura de ACI y EIA nombran sus roles: el gestor, el comité y el auditor tienen UPDATE del estado para las suyas.
+[tef_rol_requerido] no restringe: desde v2.4 las 63 transiciones se siembran con NULL y los triggers no lo consultan;
+el rol de cada transición lo verifica la aplicación (Spring Security 7).
 AP-06  Integridad declarativa entre tablas: estrategia/naturaleza del evento, causal/nivel de reserva,
 nivel del padre en la taxonomía, componente afectado = categoría ISO 27005, serie con subseries y, D4, riesgo
 en un proceso que usa su activo primario (FK_eia_activo_proceso hacia [aip]).
@@ -124,7 +124,7 @@ AP-12  Marcas de fecha en DATETIMEOFFSET(0) (zona horaria explícita).
 AP-13  Valores normalizados (PUBLICA, NO_CLASIFICADA, ...) y vistas filtradas por enc_familia_norma.
 AP-14  Claves naturales con UNIQUE (pri, cet, msi, act).
 AP-15  Segregación de funciones: aprobador/firmantes distintos del creador; aprobador obligatorio en
-estados aprobados; rpi gana creador y aprobador. El creador debe ser la persona de la sesión (50019, AP-03):
+estados aprobados; rpi gana creador y aprobador. Con sesión, el creador debe ser la persona de la sesión (50019, AP-03):
 sin eso, declarar a otra persona como creadora anularía los CHECK de segregación.
 AP-16  Coherencia de eficacia del plan, KPI sin desborde (DECIMAL(15,2)), evidencia con formato hex minúscula, seguimiento
 append-only con recálculo de avance al desactivar y requisitos de transición (50020) en aci (propietario D3, aval de Archivo RN-DOC-06 y custodio RN-ACT-05) y en eia (plan, comité, meta residual <= inherente RN-RSG-04, control ISO27701 RN-RSG-05, actividades completadas en paso 11 y eficacia en cierre, D2).
@@ -417,7 +417,7 @@ CREATE TABLE sgspi.transicion_estado_flujo (
     efc_dominio               NVARCHAR (10) NOT NULL,
     efc_identificador_origen  NVARCHAR (30) NOT NULL,
     efc_identificador_destino NVARCHAR (30) NOT NULL,
-    tef_rol_requerido         SYSNAME       NULL, -- NULL = cualquier rol con UPDATE
+    tef_rol_requerido         SYSNAME       NULL, -- v2.4: NULL en las 63 transiciones; los triggers no lo consultan
     tef_estado                BIT           CONSTRAINT DF_tef_estado DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_tef_transicion_estado_flujo PRIMARY KEY CLUSTERED (tef_codigo),
     CONSTRAINT FK_tef_estado_origen FOREIGN KEY (efc_dominio, efc_identificador_origen) REFERENCES sgspi.estado_flujo_catalogo (efc_dominio, efc_identificador),
@@ -1011,7 +1011,7 @@ CREATE UNIQUE NONCLUSTERED INDEX UX_sif_aci_codigo
                                                          AND sif_estado = 1; -- [AP-22]
 
 CREATE NONCLUSTERED INDEX IX_sif_aci_codigo
-    ON sgspi.sistema_informacion_ficha(aci_codigo); -- soporte no filtrado de FK_sif_activo_informacion y RLS
+    ON sgspi.sistema_informacion_ficha(aci_codigo); -- soporte no filtrado de FK_sif_activo_informacion
 
 CREATE TABLE sgspi.modulo_sistema_informacion (
     msi_codigo            INT            IDENTITY (1, 1) NOT NULL,
@@ -1630,7 +1630,7 @@ CREATE TABLE sgspi.seguimiento_actividad (
     sga_porcentaje_reportado         TINYINT            NOT NULL,
     sga_descripcion_avance           NVARCHAR (1000)    NOT NULL,
     sga_nombre_archivo_evidencia     NVARCHAR (255)     NULL,
-    sga_uri_almacenamiento_evidencia NVARCHAR (500)     NULL, -- A1: acceso controlado por RLS y RBAC (sin DDM/UNMASK global)
+    sga_uri_almacenamiento_evidencia NVARCHAR (500)     NULL, -- A1: sin RLS ni DDM; el acceso lo controla la aplicación (RBAC)
     sga_hash_sha256_evidencia        CHAR (64)          NULL,
     sga_estado                       BIT                CONSTRAINT DF_sga_estado DEFAULT 1 NOT NULL, -- [AP-22] Borrado lógico: 1 = activo, 0 = inactivo
     CONSTRAINT PK_sga_seguimiento_actividad PRIMARY KEY CLUSTERED (sga_codigo),
@@ -1825,7 +1825,7 @@ GO
 /*==================================================================================================
 5.9 TABLAS DE AUDITORÍA [AP-01]: una sgspi.aud_<tabla> por cada tabla del esquema (acrónimos en la cabecera)
 Cada fila guarda el tipo de operación (<aud>_operacion: 'I' = fila creada con sus valores nuevos; 'U' = versión
-RESULTANTE after-image de una fila modificada [C2]), quién hizo la operación (per_codigo de ORIGINAL_LOGIN()) y cuándo. Las llena el
+RESULTANTE after-image de una fila modificada [C2]), quién hizo la operación (per_codigo de SESSION_CONTEXT, ver AP-01; <aud>_usuario_bd guarda ORIGINAL_LOGIN()) y cuándo. Las llena el
 trigger de la tabla de origen: TR_<acr>_auditoria (5.10.9c), los 8 TR_<acr>_integridad_y_actualizacion (acf, rpi,
 aci, ado, eia, plt, act, eac) o, en sga, TR_sga_inmutabilidad (UPDATE, 'U') y TR_sga_sincronizar_avance (INSERT, 'I'),
 para no registrar dos veces los UPDATE internos de los triggers.
@@ -3187,7 +3187,7 @@ IF @@TRANCOUNT = 0
 
 GO
 -- [AP-24] [B5] Helper de consecutivos sin bloqueos de rango (HOLDLOCK): serializa con sp_getapplock por llave de secuencia.
--- WITH EXECUTE AS OWNER asegura consecutivos globales únicos por vigencia/plan aunque RLS oculte registros de otras UAA, sin exponer datos.
+-- WITH EXECUTE AS OWNER asegura consecutivos globales únicos por vigencia/plan sin depender de los permisos del llamador ni exponer datos.
 CREATE OR ALTER PROCEDURE sgspi.usp_siguiente_consecutivo
 @dominio NVARCHAR (10), @ambito_codigo INT, @naturaleza NVARCHAR (15)=NULL, @siguiente_numero SMALLINT OUTPUT
 WITH EXECUTE AS OWNER
@@ -3251,7 +3251,7 @@ GO
                                                                     Cada TR_<acr>_integridad_y_actualizacion: (a) impide el borrado físico (error 50010, si antes no lo rechaza la FK de su aud_* con 547); (b) en las tablas
                                                                     con flujo exige el estado inicial en INSERT (50014) y solo admite las transiciones de [tef] y la
                                                                     edición en estados con efc_permite_edicion = 1 (50011); (c) mantiene <acr>_fecha_actualizacion.
-                                                                    (d) en acf, rpi, aci y eia exigen la persona de la sesión (50017), que sea el creador de lo nuevo (50019) y firman con ella (AP-03);
+                                                                    (d) en acf, rpi, aci y eia, si hay persona de sesión, exigen que sea el creador de lo nuevo (50019) y firman con ella (AP-03);
                                                                     (e) en acf, rpi, ado, eia y eac bloquean altas o traslados hacia una vigencia CERRADA o HISTORICA (50022, D7);
                                                                     (f) archivan after-image de las altas ('I') y modificaciones ('U') en aud_<tabla> (AP-01/C2); en las tablas sin estos triggers lo hace TR_<acr>_auditoria (5.10.9b).
                                                                     ==================================================================================================*/
@@ -6591,7 +6591,7 @@ GO
 -- 5.10.9b Triggers de auditoría [AP-01]: inmutabilidad de las 49 tablas aud_* y archivo after-image de altas ('I') y modificaciones ('U')
 -- en las 40 tablas cuyo trigger no se actualiza a sí mismo (las otras 9 lo hacen dentro de su trigger, ver 5.9).
 -- En las 10 tablas puente (rpp, aip, ais, air, ads, adm, adi, adf, adu, ptc) y en sif/msi, el mismo trigger valida
--- primero bloqueo de padre/alcance (con serialización por raíz sp_getapplock en familias aci/eia) y luego audita.
+-- primero bloqueo de padre (tras serializar el agregado con sp_getapplock sobre su raíz rpi, aci o eia) y luego audita.
 -- [apv] La auditoría no se edita ni se borra
 CREATE OR ALTER TRIGGER sgspi.TR_apv_inmutabilidad
     ON sgspi.aud_periodo_vigencia
@@ -11605,7 +11605,7 @@ GO
 /*==================================================================================================
                                                                                                                                                                                                                                                                                                                         6. VISTAS DINÁMICAS PARA CAMPOS CALCULADOS E INTEGRACIÓN CON [dbo]
                                                                                                                                                                                                                                                                                                                         ==================================================================================================*/
--- 6.0 vw_usuario_rol_alcance_sgspi se crea en 5.9b: la usan las funciones de alcance de los triggers [AP-02] D5
+-- 6.0 vw_usuario_rol_alcance_sgspi se crea en 5.9b: la lee la aplicación (alcance UAA/proceso); los triggers no la usan [AP-02] D5
 -- 6.1 Vista Consolidado DOFA (Proyecta los identificadores inmutables persistidos D1..Dn, F1..Fn, A1..An, O1..On)
 CREATE OR ALTER VIEW sgspi.vw_consolidado_dofa
 AS
